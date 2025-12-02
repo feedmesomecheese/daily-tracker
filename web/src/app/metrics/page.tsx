@@ -180,21 +180,19 @@ export default function MetricsPage() {
     if (!draft) return;
     setError(null);
 
-    const current = draft; // narrow for TS
+    const current = draft; // narrowed
+
     const headers = await getAuthHeaders();
     const payload = normalizeDraft(current);
 
-    const res = await fetch(
-      `/api/metrics/${encodeURIComponent(current.metric_id)}`,
-      {
-        method: "PATCH",
-        headers: {
-          ...headers,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload), // NOTE: no extra metric_id spread here
-      }
-    );
+    const res = await fetch("/api/metrics", {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload), // includes metric_id + fields
+    });
 
     const j = await res.json().catch(() => null);
     if (!res.ok) {
@@ -207,22 +205,23 @@ export default function MetricsPage() {
     setDraft(null);
   }
 
+
   // --- archive / unarchive via Active flag -----------------------------
   async function setActive(m: Metric, active: boolean) {
     setError(null);
     const headers = await getAuthHeaders();
 
-    const res = await fetch(
-      `/api/metrics/${encodeURIComponent(m.metric_id)}`,
-      {
-        method: "PATCH",
-        headers: {
-          ...headers,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ active }),
-      }
-    );
+    const res = await fetch("/api/metrics", {
+      method: "PATCH",
+      headers: {
+        ...headers,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        metric_id: m.metric_id,
+        active,
+      }),
+    });
 
     const j = await res.json().catch(() => null);
     if (!res.ok) {
@@ -232,6 +231,7 @@ export default function MetricsPage() {
 
     await loadMetrics();
   }
+
 
 
 

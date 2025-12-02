@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
 const BaseSchema = z.object({
@@ -14,63 +13,176 @@ const BaseSchema = z.object({
   active: z.boolean().optional().default(true),
   show_ma: z.boolean().optional().default(false),
   ma_periods_csv: z.string().nullable().optional(),
+  start_date: z.string().nullable().optional(),
 
+  // validation fields
   default_value: z.number().nullable().optional(),
   min_value: z.number().nullable().optional(),
   max_value: z.number().nullable().optional(),
   disallowed_values: z.string().nullable().optional(),
-  start_date: z.string().nullable().optional(),
-  // required: z.boolean().optional().default(false), // if you added it
+
+  // you mentioned this earlier – keep it optional
+  required: z.boolean().optional().default(false),
 });
 
 const CreateSchema = BaseSchema;
+const UpdateSchema = BaseSchema.partial().extend({
+  // metric_id is still required for updates
+  metric_id: z.string().min(1),
+});
 
 function formatZodError(error: z.ZodError): string {
-  return error.errors.map((e) => e.message).join("; ");
+  return error.issues.map((i) => i.message).join("; ") || "Invalid input";
 }
 
-export async function POST(req: Request) {
-  const supabase = supabaseServerFromRequest(req);
-  const { data: auth, error: authError } = await supabase.auth.getUser();
+// ---------- helpers ----------
 
-  if (authError || !auth?.user) {
+async function getAuthedClient(req: Request) {
+  const supabase = supabaseServerFromRequest(req);
+  const {
+    data: { user },
+    error,
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    return { supabase: null, user: null };
+  }
+  return { supabase, user };
+}
+
+// ---------- POST /api/metrics (create) ----------
+
+export async function POST(req: Request) {
+  const { supabase, user } = await getAuthedClient(req);
+  if (!supabase || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const owner_id = auth.user.id;
-
-  let body: unknown;
+  let json: unknown;
   try {
-    body = await req.json();
+    json = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const parsed = CreateSchema.safeParse(body);
+  const parsed = CreateSchema.safeParse(json);
   if (!parsed.success) {
     return NextResponse.json(
       { error: formatZodError(parsed.error) },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  const row = parsed.data;
+  const body = parsed.data;
 
-  const { error } = await supabaseAdmin.from("config").insert({
-    owner_id,
-    ...row,
+  const { error } = await supabase.from("config").insert({
+    owner_id: user.id,
+    metric_id: body.metric_id.trim(),
+    metric_name: body.metric_name.trim(),
+    type: body.type,
+    private: body.private ?? false,
+    active: body.active ?? true,
+    show_ma: body.show_ma ?? false,
+    ma_periods_csv: body.ma_periods_csv ?? null,
+    start_date: body.start_date ?? null,
+    default_value: body.default_value ?? null,
+    min_value: body.min_value ?? null,
+    max_value: body.max_value ?? null,
+    disallowed_values: body.disallowed_values ?? null,
+    required: body.required ?? false,
   });
 
   if (error) {
-    // 23505 = unique_violation (duplicate metric_id for this owner)
-    if ((error as any).code === "23505") {
+    // unique violation → nicer message
+    if (error.code === "23505") {
       return NextResponse.json(
-        { error: "metric_id already exists for this user" },
-        { status: 409 }
+        { error: "metric_id already exists" },
+        { status: 400 },
       );
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: error.message || "Insert failed" },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true });
+}
+
+// ---------- PATCH /api/metrics (update by metric_id) ----------
+
+export async function PATCH(req: Request) {
+  const { supabase, user } = await getAuthedClient(req);
+  if (!supabase || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const parsed = UpdateSchema.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: formatZodError(parsed.error) },
+      { status: 400 },
+    );
+  }
+
+  const body = parsed.data;
+  const metric_id = body.metric_id.trim();
+
+  // Build update object only with provided fields
+  const updates: Record<string, any> = {};
+
+  if (body.metric_name !== undefined)
+    updates.metric_name = body.metric_name.trim();
+  if (body.type !== undefined) updates.type = body.type;
+  if (body.private !== undefined) updates.private = body.private;
+  if (body.active !== undefined) updates.active = body.active;
+  if (body.show_ma !== undefined) updates.show_ma = body.show_ma;
+  if (body.ma_periods_csv !== undefined)
+    updates.ma_periods_csv = body.ma_periods_csv ?? null;
+  if (body.start_date !== undefined)
+    updates.start_date = body.start_date ?? null;
+  if (body.default_value !== undefined)
+    updates.default_value = body.default_value ?? null;
+  if (body.min_value !== undefined) updates.min_value = body.min_value ?? null;
+  if (body.max_value !== undefined) updates.max_value = body.max_value ?? null;
+  if (body.disallowed_values !== undefined)
+    updates.disallowed_values = body.disallowed_values ?? null;
+  if (body.required !== undefined) updates.required = body.required;
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json(
+      { error: "No fields to update" },
+      { status: 400 },
+    );
+  }
+
+    const { data, error } = await supabase
+      .from("config")
+      .update(updates)
+      .eq("metric_id", metric_id)
+      .select("metric_id");
+
+    if (error) {
+      return NextResponse.json(
+        { error: error.message || "Update failed" },
+        { status: 500 },
+      );
+    }
+
+    if (!data || data.length === 0) {
+      return NextResponse.json(
+        { error: "Metric not found for this user" },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+
 }
