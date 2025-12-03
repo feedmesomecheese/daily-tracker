@@ -59,6 +59,23 @@ export async function GET(req: Request) {
   let last_required_complete_date: string | null = null;
   let missing_required_days = 0;
 
+  // If nothing is required, we don't track required gaps at all
+  if (requiredCount === 0) {
+    // You already computed these earlier – re-use them:
+    // - todayISO
+    // - last_log_date (max date from log, or null if no log rows)
+
+    return NextResponse.json({
+      today: todayISO,
+      last_log_date,
+      last_required_complete_date: null,
+      suggested_date: last_log_date || todayISO,
+      missing_required_days: 0,
+      required_days_completed: 0,
+      required_days_possible: 0,
+    });
+  }
+
   if (requiredCount > 0) {
     // earliest date when any required metric starts being "required"
     const effectiveStarts = required
@@ -114,30 +131,71 @@ export async function GET(req: Request) {
         const diffDays = Math.floor(diffMs / 86400000);
         missing_required_days = Math.max(diffDays - 1, 0);
       }
+    //}
+  //}
+
+  // --- coverage stats ---------------------------------------
+
+  // earliest required_since across all required metrics
+      let requiredStart: string | null = null;
+      for (const m of reqMetrics) {
+        if (!m.required_since) continue;
+        if (!requiredStart || m.required_since < requiredStart) {
+          requiredStart = m.required_since;
+        }
+      }
+
+      let required_days_completed = 0;
+      let required_days_possible = 0;
+
+      if (requiredStart && requiredCount > 0) {
+        const today = todayISO; // however you're already computing today's date
+
+        // inclusive day count between requiredStart and today
+        const daysBetween = (d1: string, d2: string) => {
+          const t1 = Date.parse(d1);
+          const t2 = Date.parse(d2);
+          return Math.floor((t2 - t1) / 86400000) + 1;
+        };
+
+        required_days_possible = daysBetween(requiredStart, today);
+
+        // count days where all required metrics were completed on or after requiredStart
+        const allDates = Object.keys(byDate);
+        for (const d of allDates) {
+          if (d < requiredStart) continue;
+          const set = byDate[d];
+          if (set && set.size === requiredCount) {
+            required_days_completed += 1;
+          }
+        }
+      }
+
+      // 3) Suggested date logic
+      let suggested_date: string = todayISO;
+
+      if (last_required_complete_date) {
+        // day after last fully complete required day, but not in future
+        const d = new Date(last_required_complete_date);
+        d.setDate(d.getDate() + 1);
+        const candidate = d.toISOString().slice(0, 10);
+        suggested_date = candidate > todayISO ? todayISO : candidate;
+      } else if (last_log_date) {
+        // If no complete required day yet, use last log date or today, whichever is later (but not > today)
+        const candidate =
+          last_log_date > todayISO ? todayISO : last_log_date;
+        suggested_date = candidate;
+      }
+
+      return NextResponse.json({
+        today: todayISO,
+        last_log_date,
+        last_required_complete_date,
+        suggested_date,
+        missing_required_days,
+        required_days_completed,
+        required_days_possible,
+      });
     }
   }
-
-  // 3) Suggested date logic
-  let suggested_date: string = todayISO;
-
-  if (last_required_complete_date) {
-    // day after last fully complete required day, but not in future
-    const d = new Date(last_required_complete_date);
-    d.setDate(d.getDate() + 1);
-    const candidate = d.toISOString().slice(0, 10);
-    suggested_date = candidate > todayISO ? todayISO : candidate;
-  } else if (last_log_date) {
-    // If no complete required day yet, use last log date or today, whichever is later (but not > today)
-    const candidate =
-      last_log_date > todayISO ? todayISO : last_log_date;
-    suggested_date = candidate;
-  }
-
-  return NextResponse.json({
-    today: todayISO,
-    last_log_date,
-    last_required_complete_date,
-    suggested_date,
-    missing_required_days,
-  });
 }

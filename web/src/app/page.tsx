@@ -44,7 +44,18 @@ type DateHints = {
   last_required_complete_date: string | null;
   suggested_date: string;
   missing_required_days: number;
+  required_days_completed: number;
+  required_days_possible: number;
 };
+
+function daysBetween(a: string, b: string): number {
+  // a and b are "YYYY-MM-DD"
+  const da = new Date(a + "T00:00:00");
+  const db = new Date(b + "T00:00:00");
+  const ms = db.getTime() - da.getTime();
+  return Math.round(ms / 86400000); // 1000 * 60 * 60 * 24
+}
+
 
 
 export default function Home() {
@@ -73,6 +84,31 @@ export default function Home() {
   const [dateHints, setDateHints] = useState<DateHints | null>(null);
   const [dateInitializedFromHints, setDateInitializedFromHints] = useState(false);
 
+  const hasRequired = metrics.some((m) => m.required);
+
+  const gapMessage = (() => {
+    if (!dateHints) return null;
+
+    // Prefer last_log_date; fall back to last_required_complete_date
+    const anchor =
+      dateHints.last_log_date || dateHints.last_required_complete_date;
+
+    if (!anchor) return null;
+
+    // Only warn when the chosen date is AFTER the anchor
+    if (date <= anchor) return null;
+
+    const gap = daysBetween(anchor, date);
+    if (gap <= 0) return null;
+
+    return `There are ${gap} day${
+      gap === 1 ? "" : "s"
+    } between your last recorded day (${anchor}) and this date.`;
+  })();
+
+  console.log("DateHints for gap check:", dateHints, "current date:", date);
+
+  
   // auth check effect
   useEffect(() => {
     (async () => {
@@ -102,7 +138,7 @@ export default function Home() {
     async function initDate() {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch("/api/date-hints", { headers });
+        const res = await fetch("/api/date_hints", { headers });
         const j = await res.json().catch(() => null);
 
         if (!res.ok || !j?.suggested_date) {
@@ -207,7 +243,7 @@ export default function Home() {
         }
         setDateInitializedFromHints(true);
       } catch (e) {
-        console.error("date-hints fetch failed:", e);
+        console.error("date_hints fetch failed:", e);
       }
     })();
   }, [authChecked, metrics.length, dateInitializedFromHints]);
@@ -546,9 +582,38 @@ export default function Home() {
           value={date}
           onChange={handleDateChange}
         />
+        {dateHints && dateHints.required_days_possible > 0 && (
+          <div className="mt-1 text-xs text-gray-600">
+            Required days completed:{" "}
+            <span className="font-mono">
+              {dateHints.required_days_completed} / {dateHints.required_days_possible}
+            </span>{" "}
+            (
+            {Math.round(
+              (dateHints.required_days_completed / dateHints.required_days_possible) *
+                100
+            )}
+            %)
+            {dateHints.last_required_complete_date && (
+              <>
+                {" "}
+                since{" "}
+                <span className="font-mono">
+                  {dateHints.last_required_complete_date}
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
+        {hasRequired && gapMessage && (
+          <div className="mt-1 inline-block rounded border border-yellow-400 bg-yellow-100 px-2 py-1 text-xs text-yellow-900">
+            {gapMessage}
+          </div>
+        )}
       </div>
 
-      {dateHints && dateHints.missing_required_days > 0 && (
+      {hasRequired && dateHints && dateHints.missing_required_days > 0 && (
         <div className="mt-2 text-xs bg-yellow-50 border border-yellow-300 text-yellow-900 rounded px-3 py-2">
           <div className="font-semibold mb-1">Heads up</div>
           <div>
