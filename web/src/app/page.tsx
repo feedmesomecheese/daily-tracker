@@ -56,7 +56,11 @@ export default function Home() {
   //   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
   //   return local.toISOString().slice(0, 10); // "YYYY-MM-DD" in local time
   // });
-  const [date, setDate] = useState<string>("");         // start empty
+  const [date, setDate] = useState<string>(() => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  });
   const [initialDateLoaded, setInitialDateLoaded] = useState(false);
   const [metrics, setMetrics] = useState<ConfigRow[]>([]);
   const [vals, setVals] = useState<Record<string, string>>({});
@@ -83,6 +87,16 @@ export default function Home() {
       setAuthChecked(true);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!dateHints) return;
+    if (dateInitializedFromHints) return;
+
+    setDate(dateHints.suggested_date || dateHints.today);
+    setDateInitializedFromHints(true);
+  }, [authChecked, dateHints, dateInitializedFromHints]);
+
 
   useEffect(() => {
     async function initDate() {
@@ -155,43 +169,50 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Only run once, after auth + metrics are ready
     if (!authChecked) return;
     if (metrics.length === 0) return;
-    if (dateInitializedFromHints) return; // only run once
+    if (dateInitializedFromHints) return;
 
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const localToday = date; // current local date state
+        const res = await fetch("/api/date_hints", { headers });
 
-        const res = await fetch(
-          `/api/date-hints?today=${encodeURIComponent(localToday)}`,
-          { headers }
-        );
-        const j = await res.json();
-        if (!res.ok) {
-          console.error("date-hints error:", j?.error || j);
+        const ct = res.headers.get("content-type") || "";
+        if (!ct.includes("application/json")) {
+          // Non-JSON (e.g., HTML dev error page) – just bail quietly
+          // If we ever need to debug again, we can temporarily log here.
+          return;
+        }
+
+        let j: any;
+        try {
+          j = await res.json();
+        } catch {
+          // JSON parse failed – bail quietly
+          return;
+        }
+
+        if (!res.ok || j?.error) {
+          // API returned an error payload – also bail quietly
           return;
         }
 
         const hints = j as DateHints;
         setDateHints(hints);
 
-        // Only override the date if the user hasn't moved it yet
-        setDate((prev) => {
-          // If prev === localToday, we assume this is still the initial value
-          if (prev === localToday) {
-            return hints.suggested_date || prev;
-          }
-          return prev;
-        });
-
+        if (!dateInitializedFromHints && hints.suggested_date) {
+          setDate(hints.suggested_date);
+        }
         setDateInitializedFromHints(true);
       } catch (e) {
-        console.error("date-hints fetch failed", e);
+        console.error("date-hints fetch failed:", e);
       }
     })();
-  }, [authChecked, metrics, date, dateInitializedFromHints]);
+  }, [authChecked, metrics.length, dateInitializedFromHints]);
+
+
 
 
 

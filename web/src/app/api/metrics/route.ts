@@ -23,6 +23,7 @@ const BaseSchema = z.object({
 
   // you mentioned this earlier – keep it optional
   required: z.boolean().optional().default(false),
+  required_since: z.string().nullable().optional(),
 });
 
 const CreateSchema = BaseSchema;
@@ -75,6 +76,8 @@ export async function POST(req: Request) {
 
   const body = parsed.data;
 
+  const todayISO = new Date().toISOString().slice(0, 10);
+
   const { error } = await supabase.from("config").insert({
     owner_id: user.id,
     metric_id: body.metric_id.trim(),
@@ -84,12 +87,16 @@ export async function POST(req: Request) {
     active: body.active ?? true,
     show_ma: body.show_ma ?? false,
     ma_periods_csv: body.ma_periods_csv ?? null,
-    start_date: body.start_date ?? null,
+    start_date: body.start_date && body.start_date.trim() !== "" ? body.start_date : null,
     default_value: body.default_value ?? null,
     min_value: body.min_value ?? null,
     max_value: body.max_value ?? null,
     disallowed_values: body.disallowed_values ?? null,
     required: body.required ?? false,
+    required_since:
+      body.required ?? false
+        ? (body.required_since ?? todayISO)
+        : null,
   });
 
   if (error) {
@@ -155,6 +162,13 @@ export async function PATCH(req: Request) {
   if (body.disallowed_values !== undefined)
     updates.disallowed_values = body.disallowed_values ?? null;
   if (body.required !== undefined) updates.required = body.required;
+  if (body.required !== undefined) updates.required = body.required;
+  if (body.required_since !== undefined) {
+    updates.required_since =
+      body.required ? body.required_since ?? new Date().toISOString().slice(0, 10)
+                    : null;
+  }
+
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json(

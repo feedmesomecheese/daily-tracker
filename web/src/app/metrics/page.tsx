@@ -18,6 +18,7 @@ type Metric = {
   disallowed_values: string | null;
   start_date: string | null;
   required: boolean;
+  required_since: string | null;
 };
 
 type MetricDraft = {
@@ -35,6 +36,7 @@ type MetricDraft = {
   disallowed_values: string;
   start_date: string;
   required: boolean;
+  required_since: string;
 };
 
 type NewMetric = MetricDraft;
@@ -53,6 +55,7 @@ const emptyDraft: MetricDraft = {
   disallowed_values: "",
   start_date: "",
   required: false, 
+  required_since: "",
 };
 
 function slugFromName(name: string): string {
@@ -64,15 +67,21 @@ function slugFromName(name: string): string {
 }
 
 // Turn a draft (all strings) into the shape the API/DB expects
-function normalizeDraft(d: MetricDraft): Omit<
-  Metric,
-  "default_value" | "min_value" | "max_value" | "disallowed_values" | "start_date"
-> & {
+function normalizeDraft(d: MetricDraft): {
+  metric_id: string;
+  metric_name: string;
+  type: MetricType;
+  private: boolean;
+  active: boolean;
+  show_ma: boolean;
+  ma_periods_csv: string | null;
+  start_date: string | null;
   default_value: number | null;
   min_value: number | null;
   max_value: number | null;
   disallowed_values: string | null;
-  start_date: string | null;
+  required: boolean;
+  required_since: string | null;
 } {
   const toNum = (s: string): number | null => {
     if (!s.trim()) return null;
@@ -88,14 +97,19 @@ function normalizeDraft(d: MetricDraft): Omit<
     active: d.active,
     show_ma: d.show_ma,
     ma_periods_csv: d.ma_periods_csv || null,
+    start_date: d.start_date.trim() || null,
     default_value: toNum(d.default_value),
     min_value: toNum(d.min_value),
     max_value: toNum(d.max_value),
     disallowed_values: d.disallowed_values.trim() || null,
-    start_date: d.start_date.trim() || null,
+
     required: d.required,
+    required_since: d.required
+      ? (d.required_since.trim() || new Date().toISOString().slice(0, 10))
+      : null,
   };
 }
+
 
 export default function MetricsPage() {
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -136,6 +150,7 @@ export default function MetricsPage() {
         max_value: r.max_value ?? null,
         disallowed_values: r.disallowed_values ?? null,
         required: !!r.required,
+        required_since: r.required_since ?? null,
       }));
 
       setMetrics(normalized);
@@ -163,6 +178,7 @@ export default function MetricsPage() {
       disallowed_values: m.disallowed_values ?? "",
       start_date: m.start_date ?? "",
       required: m.required,
+      required_since: m.required_since ?? "",
     });
   }
 
