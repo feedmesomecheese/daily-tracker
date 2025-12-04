@@ -48,13 +48,13 @@ type DateHints = {
   required_days_possible: number;
 };
 
-function daysBetween(a: string, b: string): number {
-  // a and b are "YYYY-MM-DD"
-  const da = new Date(a + "T00:00:00");
-  const db = new Date(b + "T00:00:00");
-  const ms = db.getTime() - da.getTime();
-  return Math.round(ms / 86400000); // 1000 * 60 * 60 * 24
-}
+// function daysBetween(a: string, b: string): number {
+//   // a and b are "YYYY-MM-DD"
+//   const da = new Date(a + "T00:00:00");
+//   const db = new Date(b + "T00:00:00");
+//   const ms = db.getTime() - da.getTime();
+//   return Math.round(ms / 86400000); // 1000 * 60 * 60 * 24
+// }
 
 
 
@@ -86,25 +86,77 @@ export default function Home() {
 
   const hasRequired = metrics.some((m) => m.required);
 
-  const gapMessage = (() => {
-    if (!dateHints) return null;
+  // function computeGapMessage(
+  //   currentDate: string,
+  //   lastRecordedDate: string | null,
+  //   todayISO: string
+  // ): string | null {
+  //   if (!currentDate || !lastRecordedDate) return null;
 
-    // Prefer last_log_date; fall back to last_required_complete_date
-    const anchor =
-      dateHints.last_log_date || dateHints.last_required_complete_date;
+  //   // 1) Don’t warn for today or future dates
+  //   if (currentDate >= todayISO) return null;
 
-    if (!anchor) return null;
+  //   // 2) Don’t warn if you’re on/before the last recorded day
+  //   if (currentDate <= lastRecordedDate) return null;
 
-    // Only warn when the chosen date is AFTER the anchor
-    if (date <= anchor) return null;
+  //   // 3) How many days strictly *between* lastRecordedDate and currentDate?
+  //   const daysBetween = (d1: string, d2: string) => {
+  //     const t1 = Date.parse(d1);
+  //     const t2 = Date.parse(d2);
+  //     if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
+  //     // pure difference in days (no +1 here)
+  //     return Math.round((t2 - t1) / 86400000);
+  //   };
 
-    const gap = daysBetween(anchor, date);
-    if (gap <= 0) return null;
+  //   const diff = daysBetween(lastRecordedDate, currentDate);
+  //   // Example: last = 2025-12-03, current = 2025-12-04 -> diff = 1
+  //   const missing = diff - 1;
 
-    return `There are ${gap} day${
-      gap === 1 ? "" : "s"
-    } between your last recorded day (${anchor}) and this date.`;
-  })();
+  //   if (missing <= 0) return null;
+
+  //   if (missing === 1) {
+  //     return `There is 1 day between your last recorded day (${lastRecordedDate}) and this date.`;
+  //   }
+
+  //   return `There are ${missing} days between your last recorded day (${lastRecordedDate}) and this date.`;
+  // }
+  
+  // helper near the top of the component (outside gapMessage):
+const daysBetween = (d1: string, d2: string) => {
+  const t1 = Date.parse(d1);
+  const t2 = Date.parse(d2);
+  if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
+  // difference in whole days
+  return Math.floor((t2 - t1) / 86400000);
+};
+
+const gapMessage = (() => {
+  if (!hasRequired) return null;
+  if (!dateHints) return null;
+
+  // Prefer last_log_date; fall back to last_required_complete_date
+  const anchor =
+    dateHints.last_log_date || dateHints.last_required_complete_date;
+
+  if (!anchor) return null;
+
+  // Only warn when the chosen date is AFTER the anchor
+  if (date <= anchor) return null;
+
+  // We want whole days *between* anchor and selected date
+  const diffDays = daysBetween(anchor, date);
+  const missingWholeDays = diffDays - 1;
+
+  // Example:
+  // anchor=2025-12-03, date=2025-12-04
+  // diffDays=1 => missingWholeDays=0 => no banner
+  if (missingWholeDays <= 0) return null;
+
+  return `There ${missingWholeDays === 1 ? "is" : "are"} ${missingWholeDays} missing day${
+    missingWholeDays === 1 ? "" : "s"
+  } between your last recorded day (${anchor}) and this date.`;
+})();
+
 
   console.log("DateHints for gap check:", dateHints, "current date:", date);
 
@@ -125,13 +177,23 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Don’t do anything until auth is known
     if (!authChecked) return;
+
+    // Need hints from the server
     if (!dateHints) return;
+
+    // Only auto-set the date once per page load
     if (dateInitializedFromHints) return;
 
-    setDate(dateHints.suggested_date || dateHints.today);
+    const nextDate = dateHints.suggested_date || dateHints.today;
+    if (nextDate) {
+      setDate(nextDate);
+    }
+
     setDateInitializedFromHints(true);
-  }, [authChecked, dateHints, dateInitializedFromHints]);
+  }, [authChecked, dateHints, dateInitializedFromHints, setDate]);
+
 
 
   useEffect(() => {
@@ -204,51 +266,67 @@ export default function Home() {
     })();
   }, []);
 
+  // useEffect(() => {
+  //   // Only run once, after auth + metrics are ready
+  //   if (!authChecked) return;
+  //   if (metrics.length === 0) return;
+  //   if (dateInitializedFromHints) return;
+
+  //   (async () => {
+  //     try {
+  //       const headers = await getAuthHeaders();
+  //       const res = await fetch("/api/date_hints", { headers });
+
+  //       const ct = res.headers.get("content-type") || "";
+  //       if (!ct.includes("application/json")) {
+  //         // Non-JSON (e.g., HTML dev error page) – just bail quietly
+  //         // If we ever need to debug again, we can temporarily log here.
+  //         return;
+  //       }
+
+  //       let j: any;
+  //       try {
+  //         j = await res.json();
+  //       } catch {
+  //         // JSON parse failed – bail quietly
+  //         return;
+  //       }
+
+  //       if (!res.ok || j?.error) {
+  //         // API returned an error payload – also bail quietly
+  //         return;
+  //       }
+
+  //       const hints = j as DateHints;
+  //       setDateHints(hints);
+
+  //       if (!dateInitializedFromHints && hints.suggested_date) {
+  //         setDate(hints.suggested_date);
+  //       }
+  //       setDateInitializedFromHints(true);
+  //     } catch (e) {
+  //       console.error("date_hints fetch failed:", e);
+  //     }
+  //   })();
+  // }, [authChecked, metrics.length, dateInitializedFromHints]);
+
   useEffect(() => {
-    // Only run once, after auth + metrics are ready
     if (!authChecked) return;
-    if (metrics.length === 0) return;
+    reloadDateHints();
+  }, [authChecked]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!dateHints) return;
     if (dateInitializedFromHints) return;
 
-    (async () => {
-      try {
-        const headers = await getAuthHeaders();
-        const res = await fetch("/api/date_hints", { headers });
-
-        const ct = res.headers.get("content-type") || "";
-        if (!ct.includes("application/json")) {
-          // Non-JSON (e.g., HTML dev error page) – just bail quietly
-          // If we ever need to debug again, we can temporarily log here.
-          return;
-        }
-
-        let j: any;
-        try {
-          j = await res.json();
-        } catch {
-          // JSON parse failed – bail quietly
-          return;
-        }
-
-        if (!res.ok || j?.error) {
-          // API returned an error payload – also bail quietly
-          return;
-        }
-
-        const hints = j as DateHints;
-        setDateHints(hints);
-
-        if (!dateInitializedFromHints && hints.suggested_date) {
-          setDate(hints.suggested_date);
-        }
-        setDateInitializedFromHints(true);
-      } catch (e) {
-        console.error("date_hints fetch failed:", e);
-      }
-    })();
-  }, [authChecked, metrics.length, dateInitializedFromHints]);
-
-
+    // Pick initial date: suggested_date if present, otherwise 'today'
+    const initial = dateHints.suggested_date || dateHints.today;
+    if (initial) {
+      setDate(initial);
+    }
+    setDateInitializedFromHints(true);
+  }, [authChecked, dateHints, dateInitializedFromHints]);
 
 
 
@@ -263,6 +341,15 @@ export default function Home() {
   }, [authChecked, initialDateLoaded, date, metrics]);
 
 
+  // const gapMessage = (() => {
+  //   if (!dateHints) return null;
+
+  //   const anchor =
+  //     dateHints.last_log_date || dateHints.last_required_complete_date;
+  //   if (!anchor) return null;
+
+  //   return computeGapMessage(date, anchor, dateHints.today);
+  // })();
   
   //const setVal = (id: string, v: string) => setVals(s => ({ ...s, [id]: v }));
 
@@ -395,6 +482,28 @@ export default function Home() {
     return null;
   }
 
+  async function reloadDateHints() {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/date_hints", { headers });
+
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        // non-JSON, bail quietly
+        return;
+      }
+
+      const j = await res.json();
+      if (!res.ok || j?.error) {
+        console.error("date-hints error:", j?.error || j);
+        return;
+      }
+
+      setDateHints(j as DateHints);
+    } catch (e) {
+      console.error("date-hints fetch failed:", e);
+    }
+  }
 
 
 
@@ -403,46 +512,105 @@ export default function Home() {
     setError(null);
 
     try {
-      // Full validation pass before saving
-      const newFieldErrors: Record<string, string | null> = {};
-      let hasError = false;
+      // -----------------------------
+      // 1) Numeric / format validation
+      // -----------------------------
+      const newErrors: Record<string, string | null> = {};
+      let hasAnyError = false;
 
       for (const m of metrics) {
         const raw = vals[m.metric_id] ?? "";
+
+        // We don't do numeric validation for checkboxes
+        if (m.type === "checkbox") {
+          newErrors[m.metric_id] = null;
+          continue;
+        }
+
         const msg = validateField(m, raw);
-        newFieldErrors[m.metric_id] = msg;
-        if (msg) hasError = true;
+        if (msg) {
+          hasAnyError = true;
+          newErrors[m.metric_id] = msg;
+        } else {
+          newErrors[m.metric_id] = null;
+        }
       }
 
-      if (hasError) {
-        setFieldErrors(newFieldErrors);
+      if (hasAnyError) {
+        setFieldErrors((prev) => ({ ...prev, ...newErrors }));
+        setError("Please fix the highlighted fields before saving.");
         setSaving(false);
-        setError("Please fix highlighted fields before saving.");
         return;
-      } else {
-        setFieldErrors(newFieldErrors);
       }
 
-      // Build entries for API
+      // -----------------------------------------
+      // 2) Required guard ONLY for past dates (< today)
+      // -----------------------------------------
+      if (date < todayISO) {
+        const missingLabels: string[] = [];
+        const requiredErrors: Record<string, string | null> = {};
+
+        for (const m of metrics) {
+          if (!m.required) continue;
+
+          const raw = vals[m.metric_id];
+
+          let missing = false;
+
+          if (m.type === "checkbox") {
+            // For checkboxes:
+            //   - undefined  => user hasn't touched it => treat as missing
+            //   - "on" or "" => explicitly logged (true/false) => OK
+            if (raw === undefined) {
+              missing = true;
+            }
+          } else {
+            // For numeric / time / hhmm:
+            //   - undefined or "" => missing
+            //   - anything else   => logged (we already validated format above)
+            if (raw === undefined || (typeof raw === "string" && raw.trim() === "")) {
+              missing = true;
+            }
+          }
+
+          if (missing) {
+            const label = m.metric_name || m.metric_id;
+            missingLabels.push(label);
+            requiredErrors[m.metric_id] = `${label} is required for this date`;
+          } else {
+            requiredErrors[m.metric_id] = null;
+          }
+        }
+
+        if (missingLabels.length > 0) {
+          setFieldErrors((prev) => ({ ...prev, ...requiredErrors }));
+          setError(
+            `Please fill these required metrics before saving this past day: ${missingLabels.join(
+              ", "
+            )}.`
+          );
+          setSaving(false);
+          return;
+        }
+      }
+
+      // -----------------------------
+      // 3) Build entries + POST
+      // -----------------------------
       const entries = metrics.map((m) => {
         const raw = vals[m.metric_id] ?? "";
         let value: number | null = null;
 
         if (m.type === "checkbox") {
+          // Checkbox: checked => 1, otherwise 0
           value = raw ? 1 : 0;
-        } else if (m.type === "hhmm") {
-          if (raw !== "") {
-            const minutes = parseHHMM(raw);
-            value = minutes != null ? minutes : null;
-          } else {
-            value = null;
-          }
         } else {
+          // number / time / hhmm: blank => null (delete), otherwise parse
           if (raw !== "") {
             const num = Number(raw);
             value = Number.isFinite(num) ? num : null;
           } else {
-            value = null;
+            value = null; // signals delete
           }
         }
 
@@ -467,12 +635,14 @@ export default function Home() {
 
       await loadSummary();
       setDirty(false);
+      await reloadDateHints();
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
       setSaving(false);
     }
   }
+
 
   async function loadSummary() {
     setError(null);
@@ -580,6 +750,7 @@ export default function Home() {
           className="border p-2 rounded w-full"
           type="date"
           value={date}
+          max={todayISO} // prevents from selecting future dates
           onChange={handleDateChange}
         />
         {dateHints && dateHints.required_days_possible > 0 && (
@@ -607,7 +778,18 @@ export default function Home() {
         )}
 
         {hasRequired && gapMessage && (
-          <div className="mt-1 inline-block rounded border border-yellow-400 bg-yellow-100 px-2 py-1 text-xs text-yellow-900">
+          <div //className="mt-1 inline-block rounded border border-yellow-400 bg-yellow-100 px-2 py-1 text-xs text-yellow-900">
+            style={{
+              marginTop: 4,
+              display: "inline-block",
+              padding: "2px 6px",
+              fontSize: "0.75rem",
+              borderRadius: 4,
+              backgroundColor: "#FEF9C3", // light yellow
+              border: "1px solid #FACC15", // amber border
+              color: "#78350F", // dark amber text
+            }}
+          >
             {gapMessage}
           </div>
         )}

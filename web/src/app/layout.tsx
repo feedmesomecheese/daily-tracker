@@ -34,8 +34,9 @@ export default function RootLayout({
             <Link href="/stats" className="hover:underline">
               Stats 
             </Link>
-            {/* dashboard placeholder for later */}
-            {/* <Link href="/dashboard" className="hover:underline">Dashboard</Link> */}
+            <Link href="/dashboard" className="px-2 text-sm hover:underline">
+              Dashboard
+            </Link>
           </nav>
         </header>
         <main className="max-w-5xl mx-auto px-4 py-4">{children}</main>

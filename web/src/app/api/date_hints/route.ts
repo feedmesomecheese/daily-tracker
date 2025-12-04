@@ -59,6 +59,11 @@ export async function GET(req: Request) {
   let last_required_complete_date: string | null = null;
   let missing_required_days = 0;
 
+  let suggested_date: string = todayISO;
+
+  let required_days_completed = 0;
+  let required_days_possible = 0;
+
   // If nothing is required, we don't track required gaps at all
   if (requiredCount === 0) {
     // You already computed these earlier – re-use them:
@@ -124,13 +129,30 @@ export async function GET(req: Request) {
       }
 
       if (last_required_complete_date) {
-        const lastDate = new Date(last_required_complete_date);
+        const last = new Date(last_required_complete_date);
         const today = new Date(todayISO);
+        const msPerDay = 86400000;
 
-        const diffMs = today.getTime() - lastDate.getTime();
-        const diffDays = Math.floor(diffMs / 86400000);
-        missing_required_days = Math.max(diffDays - 1, 0);
+        const diffDays = Math.floor(
+          (today.getTime() - last.getTime()) / msPerDay
+        );
+
+        // don’t count today as a “missing” day
+        const gapDays = diffDays - 1;
+
+        if (gapDays > 0) {
+          missing_required_days = gapDays;
+
+          // jump to the first truly missing day (day after last full day)
+          const firstMissing = new Date(last.getTime() + msPerDay);
+          suggested_date = firstMissing.toISOString().slice(0, 10);
+        } else {
+          // no real gaps; today just isn't finished yet
+          missing_required_days = 0;
+          suggested_date = todayISO;
+        }
       }
+
     //}
   //}
 
@@ -145,8 +167,7 @@ export async function GET(req: Request) {
         }
       }
 
-      let required_days_completed = 0;
-      let required_days_possible = 0;
+      
 
       if (requiredStart && requiredCount > 0) {
         const today = todayISO; // however you're already computing today's date
@@ -172,7 +193,7 @@ export async function GET(req: Request) {
       }
 
       // 3) Suggested date logic
-      let suggested_date: string = todayISO;
+      
 
       if (last_required_complete_date) {
         // day after last fully complete required day, but not in future
