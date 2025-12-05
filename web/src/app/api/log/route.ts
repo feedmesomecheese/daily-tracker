@@ -6,9 +6,19 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const date = url.searchParams.get("date");
 
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   let q = supabase
     .from("log")
     .select("date,metric_id,value")
+    .eq("owner_id", user.id)
     .order("date", { ascending: true })
     .order("metric_id", { ascending: true });
 
@@ -17,7 +27,6 @@ export async function GET(req: Request) {
   }
 
   const { data, error } = await q;
-
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

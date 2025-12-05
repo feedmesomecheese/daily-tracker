@@ -3,7 +3,6 @@ import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
-
   const {
     data: { user },
     error: userError,
@@ -13,24 +12,26 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // Today in local-ish ISO (we'll treat it as date string)
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  // 1) Get overall log bounds
+  const daysBetween = (d1: string, d2: string) => {
+    const t1 = Date.parse(d1);
+    const t2 = Date.parse(d2);
+    if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
+    return Math.floor((t2 - t1) / 86400000);
+  };
+
+  // 1) last_log_date
   const { data: bounds, error: boundsError } = await supabase
     .from("log")
     .select("date")
     .eq("owner_id", user.id);
 
   if (boundsError) {
-    return NextResponse.json(
-      { error: boundsError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: boundsError.message }, { status: 500 });
   }
 
   let last_log_date: string | null = null;
-
   if (bounds && bounds.length > 0) {
     last_log_date = bounds
       .map((r) => r.date as string)
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
       .at(-1)!;
   }
 
-  // 2) Fetch required metrics
+  // 2) required metrics
   const { data: reqMetrics, error: reqError } = await supabase
     .from("config")
     .select("metric_id, required, required_since, start_date, active")
@@ -47,29 +48,14 @@ export async function GET(req: Request) {
     .eq("required", true);
 
   if (reqError) {
-    return NextResponse.json(
-      { error: reqError.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: reqError.message }, { status: 500 });
   }
 
   const required = reqMetrics ?? [];
   const requiredCount = required.length;
 
-  let last_required_complete_date: string | null = null;
-  let missing_required_days = 0;
-
-  let suggested_date: string = todayISO;
-
-  let required_days_completed = 0;
-  let required_days_possible = 0;
-
-  // If nothing is required, we don't track required gaps at all
+  // If nothing is required, keep it simple
   if (requiredCount === 0) {
-    // You already computed these earlier – re-use them:
-    // - todayISO
-    // - last_log_date (max date from log, or null if no log rows)
-
     return NextResponse.json({
       today: todayISO,
       last_log_date,
@@ -81,142 +67,109 @@ export async function GET(req: Request) {
     });
   }
 
-  if (requiredCount > 0) {
-    // earliest date when any required metric starts being "required"
-    const effectiveStarts = required
-      .map((m) => (m.required_since as string) || (m.start_date as string))
-      .filter(Boolean) as string[];
+  let last_required_complete_date: string | null = null;
+  let missing_required_days = 0;
+  let suggested_date = todayISO;
+  let required_days_completed = 0;
+  let required_days_possible = 0;
 
-    if (effectiveStarts.length > 0) {
-      const minEffective = effectiveStarts.sort()[0];
+  // earliest date when any required metric becomes required
+  const effectiveStarts = required
+    .map(
+      (m) => (m.required_since as string) || (m.start_date as string)
+    )
+    .filter(Boolean) as string[];
 
-      // Pull log rows for required metrics from that date onward
-      const { data: rows, error: logError } = await supabase
-        .from("log")
-        .select("date, metric_id")
-        .eq("owner_id", user.id)
-        .gte("date", minEffective)
-        .in(
-          "metric_id",
-          required.map((m) => m.metric_id)
-        );
+  if (effectiveStarts.length > 0) {
+    const minEffective = effectiveStarts.sort()[0];
 
-      if (logError) {
-        return NextResponse.json(
-          { error: logError.message },
-          { status: 500 }
-        );
+    const { data: rows, error: logError } = await supabase
+      .from("log")
+      .select("date, metric_id")
+      .eq("owner_id", user.id)
+      .gte("date", minEffective)
+      .in(
+        "metric_id",
+        required.map((m) => m.metric_id)
+      );
+
+    if (logError) {
+      return NextResponse.json({ error: logError.message }, { status: 500 });
+    }
+
+    // date -> set of metric_ids with rows
+    const byDate: Record<string, Set<string>> = {};
+    for (const row of rows ?? []) {
+      const d = row.date as string;
+      const mid = row.metric_id as string;
+      if (!byDate[d]) byDate[d] = new Set();
+      byDate[d].add(mid);
+    }
+
+    const dates = Object.keys(byDate).sort();
+
+    // last date where all required metrics are present
+    for (const d of dates) {
+      const set = byDate[d];
+      if (set.size === requiredCount) {
+        last_required_complete_date = d;
       }
+    }
 
-      // Group by date -> set of metric_ids
-      const byDate: Record<string, Set<string>> = {};
-
-      for (const row of rows ?? []) {
-        const d = row.date as string;
-        const mid = row.metric_id as string;
-        if (!byDate[d]) byDate[d] = new Set<string>();
-        byDate[d].add(mid);
+    // ---- coverage stats (all-time required coverage) ----
+    let requiredStart: string | null = null;
+    for (const m of reqMetrics ?? []) {
+      if (!m.required_since) continue;
+      if (!requiredStart || m.required_since < requiredStart) {
+        requiredStart = m.required_since;
       }
+    }
 
-      const dates = Object.keys(byDate).sort();
+    if (requiredStart && requiredCount > 0) {
+      // inclusive possible days from requiredStart to today
+      required_days_possible = daysBetween(requiredStart, todayISO) + 1;
 
       for (const d of dates) {
+        if (d < requiredStart) continue;
         const set = byDate[d];
-        if (set.size === requiredCount) {
-          // all required present for this date
-          last_required_complete_date = d;
+        if (set && set.size === requiredCount) {
+          required_days_completed += 1;
         }
       }
-
-      if (last_required_complete_date) {
-        const last = new Date(last_required_complete_date);
-        const today = new Date(todayISO);
-        const msPerDay = 86400000;
-
-        const diffDays = Math.floor(
-          (today.getTime() - last.getTime()) / msPerDay
-        );
-
-        // don’t count today as a “missing” day
-        const gapDays = diffDays - 1;
-
-        if (gapDays > 0) {
-          missing_required_days = gapDays;
-
-          // jump to the first truly missing day (day after last full day)
-          const firstMissing = new Date(last.getTime() + msPerDay);
-          suggested_date = firstMissing.toISOString().slice(0, 10);
-        } else {
-          // no real gaps; today just isn't finished yet
-          missing_required_days = 0;
-          suggested_date = todayISO;
-        }
-      }
-
-    //}
-  //}
-
-  // --- coverage stats ---------------------------------------
-
-  // earliest required_since across all required metrics
-      let requiredStart: string | null = null;
-      for (const m of reqMetrics) {
-        if (!m.required_since) continue;
-        if (!requiredStart || m.required_since < requiredStart) {
-          requiredStart = m.required_since;
-        }
-      }
-
-      
-
-      if (requiredStart && requiredCount > 0) {
-        const today = todayISO; // however you're already computing today's date
-
-        // inclusive day count between requiredStart and today
-        const daysBetween = (d1: string, d2: string) => {
-          const t1 = Date.parse(d1);
-          const t2 = Date.parse(d2);
-          return Math.floor((t2 - t1) / 86400000) + 1;
-        };
-
-        required_days_possible = daysBetween(requiredStart, today);
-
-        // count days where all required metrics were completed on or after requiredStart
-        const allDates = Object.keys(byDate);
-        for (const d of allDates) {
-          if (d < requiredStart) continue;
-          const set = byDate[d];
-          if (set && set.size === requiredCount) {
-            required_days_completed += 1;
-          }
-        }
-      }
-
-      // 3) Suggested date logic
-      
-
-      if (last_required_complete_date) {
-        // day after last fully complete required day, but not in future
-        const d = new Date(last_required_complete_date);
-        d.setDate(d.getDate() + 1);
-        const candidate = d.toISOString().slice(0, 10);
-        suggested_date = candidate > todayISO ? todayISO : candidate;
-      } else if (last_log_date) {
-        // If no complete required day yet, use last log date or today, whichever is later (but not > today)
-        const candidate =
-          last_log_date > todayISO ? todayISO : last_log_date;
-        suggested_date = candidate;
-      }
-
-      return NextResponse.json({
-        today: todayISO,
-        last_log_date,
-        last_required_complete_date,
-        suggested_date,
-        missing_required_days,
-        required_days_completed,
-        required_days_possible,
-      });
     }
   }
+
+  // ---- gap + suggested date logic ----
+  if (last_required_complete_date) {
+    // how many days strictly between last complete day and today?
+    // example: last=2025-12-03, today=2025-12-04 -> diff=1 -> missing=0
+    const diff = daysBetween(last_required_complete_date, todayISO);
+    const missing = Math.max(0, diff - 1);
+
+    missing_required_days = missing;
+
+    // candidate next date is always "day after last complete required day",
+    // clamped to today
+    const d = new Date(last_required_complete_date + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + 1);
+    const candidate = d.toISOString().slice(0, 10);
+    suggested_date = candidate > todayISO ? todayISO : candidate;
+  } else if (last_log_date) {
+    // no fully complete required day yet
+    const candidate = last_log_date > todayISO ? todayISO : last_log_date;
+    suggested_date = candidate;
+  } else {
+    // no logs at all
+    suggested_date = todayISO;
+  }
+
+  return NextResponse.json({
+    today: todayISO,
+    last_log_date,
+    last_required_complete_date,
+    suggested_date,
+    missing_required_days,
+    required_days_completed,
+    required_days_possible,
+  });
 }

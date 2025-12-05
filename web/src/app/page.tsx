@@ -86,6 +86,10 @@ export default function Home() {
 
   const hasRequired = metrics.some((m) => m.required);
 
+  const [showHeadsUp, setShowHeadsUp] = useState(true);
+  const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
+
+
   // function computeGapMessage(
   //   currentDate: string,
   //   lastRecordedDate: string | null,
@@ -339,6 +343,27 @@ const gapMessage = (() => {
 
     loadDayValues(date);
   }, [authChecked, initialDateLoaded, date, metrics]);
+
+  useEffect(() => {
+    if (!dateHints) {
+      setShowHeadsUp(false);
+      return;
+    }
+
+    // If we've already shown it once this page load, never show again
+    if (hasShownHeadsUp) return;
+
+    const initial = dateHints.suggested_date || dateHints.today;
+
+    if (
+      dateHints.missing_required_days > 0 &&
+      date === initial
+    ) {
+      setShowHeadsUp(true);
+      setHasShownHeadsUp(true); // lock it so it won't turn back on later
+    }
+  }, [dateHints, date, hasShownHeadsUp]);
+
 
 
   // const gapMessage = (() => {
@@ -647,7 +672,7 @@ const gapMessage = (() => {
   async function loadSummary() {
     setError(null);
     const headers = await getAuthHeaders();
-    const res = await fetch("/api/summary-7d", { headers });
+    const res = await fetch("/api/summary_7d", { headers });
     const data = await res.json();
     if (!res.ok) {
       setError(data?.error || "Failed to load summary");
@@ -718,17 +743,20 @@ const gapMessage = (() => {
     const newDate = e.target.value;
 
     if (dirty) {
-      const ok = window.confirm("You have unsaved changes. Discard them and switch date?");
+      const ok = window.confirm(
+        "You have unsaved changes.\nDiscard them and switch date?"
+      );
       if (!ok) {
-        e.target.value = date;  // revert visual value
+        e.target.value = date; // revert
         return;
       }
     }
 
     setDate(newDate);
-    // immediately load that day's values
-    //loadDayValues(newDate);
+    setShowHeadsUp(false); // user navigated -> hide global heads up
+    loadDayValues(newDate); // if/when you want immediate load
   }
+
 
   
 
@@ -795,25 +823,36 @@ const gapMessage = (() => {
         )}
       </div>
 
-      {hasRequired && dateHints && dateHints.missing_required_days > 0 && (
-        <div className="mt-2 text-xs bg-yellow-50 border border-yellow-300 text-yellow-900 rounded px-3 py-2">
-          <div className="font-semibold mb-1">Heads up</div>
-          <div>
-            Required metrics were last fully completed on{" "}
-            <span className="font-mono">{dateHints.last_required_complete_date}</span>.
-          </div>
-          <div>
-            There may be{" "}
-            <span className="font-semibold">
+      {hasRequired &&
+        dateHints &&
+        dateHints.missing_required_days > 0 &&
+        showHeadsUp && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "6px 8px",
+              fontSize: "0.8rem",
+              borderRadius: 4,
+              backgroundColor: "#FEF9C3",
+              border: "1px solid #FACC15",
+              color: "#78350F",
+              maxWidth: 520,
+            }}
+          >
+            <strong>Heads up</strong>
+            <div style={{ marginTop: 2 }}>
+              Required metrics were last fully completed on{" "}
+              {dateHints.last_required_complete_date}.{" "}
+              There may be{" "}
               {dateHints.missing_required_days} missing day
-              {dateHints.missing_required_days === 1 ? "" : "s"}
-            </span>{" "}
-            between then and today.
-            We’ve jumped you to{" "}
-            <span className="font-mono">{dateHints.suggested_date}</span>.
+              {dateHints.missing_required_days === 1 ? "" : "s"}{" "}
+              between then and today. We’ve jumped you to{" "}
+              {dateHints.suggested_date}.
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+
 
 
       {metrics.length === 0 ? (

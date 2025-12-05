@@ -51,7 +51,7 @@ export default function DashboardPage() {
         const today = localTodayISO();
 
         const [sumRes, statsRes] = await Promise.all([
-          fetch(`/api/summary-7d?date=${encodeURIComponent(today)}`, { headers }),
+          fetch(`/api/summary_7d?date=${encodeURIComponent(today)}`, { headers }),
           fetch("/api/stats", { headers }),
         ]);
 
