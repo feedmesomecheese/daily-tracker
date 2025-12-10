@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import React from "react";
@@ -88,6 +88,37 @@ export default function Home() {
 
   const [showHeadsUp, setShowHeadsUp] = useState(true);
   const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
+
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  function toggleGroup(name: string) {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  }
+
+
+  const groupedMetrics = React.useMemo<
+    { groupName: string; items: ConfigRow[] }[]
+  >(() => {
+    if (!metrics || metrics.length === 0) return [];
+
+    const map = new Map<string, ConfigRow[]>();
+
+    for (const m of metrics) {
+      const groupName = m.group || "Other";
+      if (!map.has(groupName)) map.set(groupName, []);
+      map.get(groupName)!.push(m);
+    }
+
+    return Array.from(map.entries()).map(([groupName, items]) => ({
+      groupName,
+      items,
+    }));
+  }, [metrics]);
+
+
 
 
   // function computeGapMessage(
@@ -269,6 +300,41 @@ const gapMessage = (() => {
       }
     })();
   }, []);
+
+  type GroupedMetrics = {
+  groupName: string;
+  metrics: ConfigRow[];
+};
+
+// const grouped: GroupedMetrics[] = React.useMemo(() => {
+//   if (!metrics) return [];
+
+//   const map = new Map<string, ConfigRow[]>();
+
+//   for (const m of metrics) {
+//     const name = m.group || "Other";
+//     if (!map.has(name)) map.set(name, []);
+//     map.get(name)!.push(m);
+//   }
+
+//   // metrics already ordered by group_order + metric_order from API,
+//   // so we just preserve that order while grouping.
+//   const orderedGroups: GroupedMetrics[] = [];
+//   for (const [groupName, groupMetrics] of map.entries()) {
+//     orderedGroups.push({ groupName, metrics: groupMetrics });
+//   }
+
+//   // sort groups by the first metric's group_order / group name just in case
+//   orderedGroups.sort((a, b) => {
+//     const aOrder = a.metrics[0]?.group_order ?? 0;
+//     const bOrder = b.metrics[0]?.group_order ?? 0;
+//     if (aOrder !== bOrder) return aOrder - bOrder;
+//     return a.groupName.localeCompare(b.groupName);
+//   });
+
+//   return orderedGroups;
+// }, [metrics]);
+
 
   // useEffect(() => {
   //   // Only run once, after auth + metrics are ready
@@ -752,6 +818,25 @@ const gapMessage = (() => {
       }
     }
 
+  //   const groupedMetrics = React.useMemo(() => {
+  //   if (!metrics || metrics.length === 0) return [];
+
+  //   const map = new Map<string, ConfigRow[]>();
+
+  //   for (const m of metrics) {
+  //     const groupName = m.group || "Other";
+  //     if (!map.has(groupName)) map.set(groupName, []);
+  //     map.get(groupName)!.push(m);
+  //   }
+
+  //   // Preserve original order within groups (metrics already sorted by API)
+  //   return Array.from(map.entries()).map(([groupName, items]) => ({
+  //     groupName,
+  //     items,
+  //   }));
+  // }, [metrics]);
+
+
     setDate(newDate);
     setShowHeadsUp(false); // user navigated -> hide global heads up
     loadDayValues(newDate); // if/when you want immediate load
@@ -856,89 +941,126 @@ const gapMessage = (() => {
 
 
       {metrics.length === 0 ? (
-        <div className="text-sm text-gray-600">
-          {error ? `Error: ${error}` : "Loading metrics…"}
-        </div>
+        <div>{error ? `Error: ${error}` : "Loading metrics…"}</div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {metrics.map((m) => {
-            const raw = vals[m.metric_id] ?? "";
-            const err = fieldErrors[m.metric_id] ?? null;
+        <div>
+          {groupedMetrics.map((group) => {
+            const isCollapsed = collapsedGroups[group.groupName] ?? false;
 
             return (
-              <div key={m.metric_id} className="border rounded p-3">
-                <label className="block text-sm mb-1">
-                  {m.metric_name || m.metric_id}
-                  {m.group ? (
-                    <span className="ml-2 text-xs text-gray-500">[{m.group}]</span>
-                  ) : null}
-                </label>
+              <section
+                key={group.groupName}
+                style={{
+                  marginTop: 16,
+                  borderRadius: 4,
+                  border: "1px solid #e5e7eb",        // light gray border
+                  padding: 0,
+                  overflow: "hidden",
+                  maxWidth: 480,                       // match your input width-ish
+                }}
+              >
+                {/* Group header bar */}
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.groupName)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "6px 8px",
+                    backgroundColor: "#FEF9C3",        // soft yellow
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                  }}
+                >
+                  <span>{group.groupName}</span>
+                  <span style={{ fontSize: "0.8rem" }}>
+                    {isCollapsed ? "▸" : "▾"}
+                  </span>
+                </button>
 
-                {m.type === "checkbox" ? (
-                  <div>
-                    <input
-                      type="checkbox"
-                      checked={raw === "on"}
-                      onChange={(e) => {
-                        const v = e.target.checked ? "on" : "";
-                        setVal(m.metric_id, v);
-                        setDirty(true);
-                        // clear any old error for this field
-                        setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
-                      }}
-                    />
-                    {err && (
-                      <div style={errorBoxStyle}>
-                        {err}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div>
-                    <input
-                      className="border p-2 rounded w-full"
-                      style={err ? errorInputStyle : undefined}
-                      placeholder={
-                        m.type === "hhmm"
-                          ? "HH:MM"
-                          : m.type === "time"
-                          ? "minutes"
-                          : ""
-                      }
-                      value={raw}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setVal(m.metric_id, v);
-                        setDirty(true);
+                {/* Group body */}
+                {!isCollapsed && (
+                  <div style={{ padding: "6px 8px" }}>
+                    {group.items.map((m) => {
+                      const raw = vals[m.metric_id] ?? "";
+                      const err = fieldErrors[m.metric_id] ?? null;
 
-                        const msg = validateField(m, v);
-                        setFieldErrors((prev) => ({
-                          ...prev,
-                          [m.metric_id]: msg,
-                        }));
-                      }}
-                      onBlur={(e) => {
-                        const v = e.target.value;
-                        const msg = validateField(m, v);
-                        setFieldErrors((prev) => ({
-                          ...prev,
-                          [m.metric_id]: msg,
-                        }));
-                      }}
-                    />
-                    {err && (
-                      <div style={errorBoxStyle}>
-                        {err}
-                      </div>
-                    )}
+                      return (
+                        <div key={m.metric_id} style={{ marginBottom: 8 }}>
+                          {/* LABEL */}
+                          <label style={{ display: "block", fontWeight: 500 }}>
+                            {m.metric_name || m.metric_id}
+                            {m.required && (
+                              <span style={{ marginLeft: 4, fontSize: "0.75rem" }}>
+                                *required
+                              </span>
+                            )}
+                          </label>
+
+                          {/* INPUTS: checkbox vs text – same logic you already had */}
+                          {m.type === "checkbox" ? (
+                            <>
+                              <input
+                                type="checkbox"
+                                checked={raw === "on"}
+                                onChange={(e) => {
+                                  const v = e.target.checked ? "on" : "";
+                                  setVal(m.metric_id, v);
+                                  setDirty(true);
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    [m.metric_id]: null,
+                                  }));
+                                }}
+                              />
+                              {err && <div style={errorBoxStyle}>{err}</div>}
+                            </>
+                          ) : (
+                            <>
+                              <input
+                                type="text"
+                                value={raw}
+                                style={err ? errorInputStyle : undefined}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setVal(m.metric_id, v);
+                                  setDirty(true);
+                                  const msg = validateField(m, v);
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    [m.metric_id]: msg,
+                                  }));
+                                }}
+                                onBlur={(e) => {
+                                  const v = e.target.value;
+                                  const msg = validateField(m, v);
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    [m.metric_id]: msg,
+                                  }));
+                                }}
+                              />
+                              {err && <div style={errorBoxStyle}>{err}</div>}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-              </div>
+              </section>
             );
           })}
-        </div>
 
+        </div>
       )}
+
+
       
       <div className="flex items-center gap-3">
         <button

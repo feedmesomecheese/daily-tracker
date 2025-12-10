@@ -24,7 +24,13 @@ const BaseSchema = z.object({
   // you mentioned this earlier – keep it optional
   required: z.boolean().optional().default(false),
   required_since: z.string().nullable().optional(),
+
+  // ⭐ NEW:
+  group: z.string().nullable().optional(),
+  metric_order: z.number().int().nullable().optional(),
+  group_order: z.number().int().nullable().optional(),
 });
+
 
 const CreateSchema = BaseSchema;
 const UpdateSchema = BaseSchema.partial().extend({
@@ -87,7 +93,10 @@ export async function POST(req: Request) {
     active: body.active ?? true,
     show_ma: body.show_ma ?? false,
     ma_periods_csv: body.ma_periods_csv ?? null,
-    start_date: body.start_date && body.start_date.trim() !== "" ? body.start_date : null,
+    start_date:
+      body.start_date && body.start_date.trim() !== ""
+        ? body.start_date
+        : null,
     default_value: body.default_value ?? null,
     min_value: body.min_value ?? null,
     max_value: body.max_value ?? null,
@@ -95,9 +104,14 @@ export async function POST(req: Request) {
     required: body.required ?? false,
     required_since:
       body.required ?? false
-        ? (body.required_since ?? todayISO)
+        ? body.required_since ?? todayISO
         : null,
+
+    group: body.group ?? null,
+    metric_order: body.metric_order ?? 0,
+    group_order: body.group_order != null ? body.group_order : 0,
   });
+
 
   if (error) {
     // unique violation → nicer message
@@ -167,7 +181,20 @@ export async function PATCH(req: Request) {
     updates.required_since =
       body.required ? body.required_since ?? new Date().toISOString().slice(0, 10)
                     : null;
+  
   }
+
+  if (body.group !== undefined) {
+    updates.group = body.group ?? null;
+  }
+  if (body.metric_order !== undefined) {
+    updates.metric_order = body.metric_order;
+  }  
+  if (body.group_order !== undefined) {
+    updates.group_order =
+      body.group_order != null ? body.group_order : 0;
+  }
+
 
 
   if (Object.keys(updates).length === 0) {

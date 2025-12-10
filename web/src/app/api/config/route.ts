@@ -22,7 +22,10 @@ export async function GET(req: Request) {
     .from("config")
     .select("*")
     .eq("owner_id", user.id)
-    .order("metric_id");
+    .order("group_order", { ascending: true })                    // 1️⃣ group order
+    .order("group", { ascending: true, nullsFirst: true })        // 2️⃣ group name fallback
+    .order("metric_order", { ascending: true })                   // 3️⃣ metric order
+    .order("metric_id", { ascending: true });                     // 4️⃣ stable fallback
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
