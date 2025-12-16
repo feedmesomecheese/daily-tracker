@@ -21,14 +21,16 @@ const BaseSchema = z.object({
   max_value: z.number().nullable().optional(),
   disallowed_values: z.string().nullable().optional(),
 
-  // you mentioned this earlier – keep it optional
   required: z.boolean().optional().default(false),
   required_since: z.string().nullable().optional(),
 
-  // ⭐ NEW:
   group: z.string().nullable().optional(),
   metric_order: z.number().int().nullable().optional(),
   group_order: z.number().int().nullable().optional(),
+
+  // calculated metrics
+  is_calculated: z.boolean().default(false),
+  calc_expr: z.string().nullable().default(null),
 });
 
 
@@ -110,6 +112,8 @@ export async function POST(req: Request) {
     group: body.group ?? null,
     metric_order: body.metric_order ?? 0,
     group_order: body.group_order != null ? body.group_order : 0,
+    is_calculated: body.is_calculated ?? false,
+    calc_expr: body.calc_expr ?? null,
   });
 
 
@@ -176,14 +180,15 @@ export async function PATCH(req: Request) {
   if (body.disallowed_values !== undefined)
     updates.disallowed_values = body.disallowed_values ?? null;
   if (body.required !== undefined) updates.required = body.required;
-  if (body.required !== undefined) updates.required = body.required;
   if (body.required_since !== undefined) {
     updates.required_since =
       body.required ? body.required_since ?? new Date().toISOString().slice(0, 10)
                     : null;
-  
   }
 
+  if (body.is_calculated !== undefined) updates.is_calculated = body.is_calculated;
+  if (body.calc_expr !== undefined) updates.calc_expr = body.calc_expr;
+  
   if (body.group !== undefined) {
     updates.group = body.group ?? null;
   }

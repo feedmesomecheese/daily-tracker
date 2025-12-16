@@ -23,6 +23,8 @@ type Metric = {
   group: string | null;
   metric_order: number | null;
   group_order: number | null;
+  is_calculated: boolean;
+  calc_expr: string | null;
 };
 
 type MetricDraft = {
@@ -43,6 +45,8 @@ type MetricDraft = {
   required_since: string;
   group: string;              // empty string means “no group”
   metric_order: string;       // text input
+  is_calculated: boolean;
+  calc_expr: string;
 };
 
 type NewMetric = MetricDraft;
@@ -64,6 +68,8 @@ const emptyDraft: MetricDraft = {
   required_since: "",
   group: "",
   metric_order: "",
+  is_calculated: false,
+  calc_expr: "",
 };
 
 function slugFromName(name: string): string {
@@ -92,6 +98,8 @@ function normalizeDraft(d: MetricDraft): {
   required_since: string | null;
   group: string | null;
   metric_order: number;   // ✅ keep as number
+  is_calculated: boolean;
+  calc_expr: string | null;
 } {
   const toNum = (s: string): number | null => {
     if (!s.trim()) return null;
@@ -129,6 +137,8 @@ function normalizeDraft(d: MetricDraft): {
 
     // ✅ always a number
     metric_order: metricOrder,
+    is_calculated: d.is_calculated,
+    calc_expr: d.calc_expr.trim() || null,
   };
 }
 
@@ -267,6 +277,8 @@ export default function MetricsPage() {
           typeof r.metric_order === "number" ? r.metric_order : null,
         group_order:
           typeof r.group_order === "number" ? r.group_order : null,
+        is_calculated: !!r.is_calculated,
+        calc_expr: r.calc_expr ?? null,
       }));
 
       setMetrics(sortMetrics(normalized));
@@ -298,6 +310,8 @@ export default function MetricsPage() {
       group: m.group ?? "",
       metric_order:
         m.metric_order != null ? String(m.metric_order) : "",
+      is_calculated: m.is_calculated,
+      calc_expr: m.calc_expr ?? "",
     });
   }
 
@@ -594,6 +608,8 @@ export default function MetricsPage() {
       group: source.group ?? "",
       metric_order:
         source.metric_order != null ? String(source.metric_order) : "",
+      is_calculated: !!source.is_calculated,
+      calc_expr: source.calc_expr ?? "",
     };
 
     setNewMetric(draftCopy);
@@ -830,7 +846,8 @@ export default function MetricsPage() {
             <th className="p-2">Group</th> 
             <th className="p-2">Order</th>
             <th className="p-2">Type</th>
-
+            <th className="p-2">Calculated</th>
+            <th className="p-2">Formula</th>
 
             {showAdvanced && (
               <>
@@ -929,6 +946,34 @@ export default function MetricsPage() {
                   <option value="time">time</option>
                   <option value="hhmm">HH:MM (time of day)</option>
                 </select>
+              </td>
+
+              {/* Calculated */}
+              <td>
+                <input
+                  type="checkbox"
+                  checked={newMetric.is_calculated}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    updateNew("is_calculated", checked);
+
+                    if (checked) {
+                      // Force type=number and required=false when making it calculated
+                      updateNew("type", "number");
+                      updateNew("required", false);
+                    }
+                  }}
+                />
+              </td>
+
+              {/* Formula */}
+              <td>
+                <input
+                  value={newMetric.calc_expr}
+                  onChange={(e) => updateNew("calc_expr", e.target.value)}
+                  placeholder="e.g. daily_score + sleep_score"
+                  style={{ width: "100%" }}
+                />
               </td>
 
               {/* Default / Min / Max / Disallowed */}
@@ -1046,7 +1091,11 @@ export default function MetricsPage() {
           {/* Existing metrics */}
           {visibleMetrics.map((m, idx) => {
             const isEditing = editing === m.metric_id;
-            const d = draft && isEditing ? draft : null;
+            if (isEditing && !draft) {
+              // should never happen, but keeps TS happy
+              return null;
+            }
+            const d = draft!;// && isEditing ? draft : null;
 
             return (
               <tr
@@ -1072,7 +1121,7 @@ export default function MetricsPage() {
                   )}
                 </td>
 
-                {/* NEW: Group cell */}
+                {/* Group */}
                 <td style={{ textAlign: "right" }}>
                   {isEditing && d ? (
                     <input
@@ -1086,7 +1135,7 @@ export default function MetricsPage() {
                   )}
                 </td>
 
-                {/* NEW: Order cell */}
+                {/* Order */}
                 <td style={{ textAlign: "right" }}>
                   {isEditing && d ? (
                     <input
@@ -1104,6 +1153,43 @@ export default function MetricsPage() {
 
                 {/* Type (read-only) */}
                 <td className="p-2 text-sm text-gray-600">{m.type}</td>
+
+                {/* NEW: Calculated column */}
+                <td style={{ textAlign: "center" }}>
+                  {isEditing ? (
+                    <input
+                      type="checkbox"
+                      checked={d.is_calculated}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        updateExisting("is_calculated", checked);
+
+                        if (checked) {
+                          // force numeric + not-required when making it calculated
+                          updateExisting("type", "number" as any);
+                          updateExisting("required", false as any);
+                        }
+                      }}
+                    />
+                  ) : (
+                    (m.is_calculated && "✓") || ""
+                  )}
+                </td>
+
+                {/* NEW: Formula column */}
+                <td style={{ textAlign: "center" }}>
+                  {isEditing ? (
+                    <input
+                      value={d.calc_expr}
+                      onChange={(e) =>
+                        updateExisting("calc_expr", e.target.value)
+                      }
+                      placeholder="e.g. daily_score + sleep_score"
+                    />
+                  ) : (
+                    m.calc_expr ?? ""
+                  )}
+                </td>
 
                 {/* Default / Min / Max / Disallowed */}
                 {showAdvanced && (

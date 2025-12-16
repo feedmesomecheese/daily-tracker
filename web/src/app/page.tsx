@@ -20,6 +20,12 @@ type ConfigRow = {
   show_ma: boolean;
   ma_periods_csv: string | null;
   start_date: string | null;
+  metric_order?: number | null;
+  group_order?: number | null;
+  preset_values_csv?: string | null;
+  is_calculated: boolean;
+  calc_expr: string | null;
+
 };
 
 const errorInputStyle: React.CSSProperties = {
@@ -57,6 +63,42 @@ type DateHints = {
 // }
 
 
+function sortMetricsForForm(list: ConfigRow[]): ConfigRow[] {
+  // Build a group -> group_order map (using the smallest value per group)
+  const groupOrderMap = new Map<string, number>();
+
+  for (const m of list) {
+    const key = m.group || ""; // Ungrouped becomes ""
+    const existing = groupOrderMap.get(key);
+    const candidate = m.group_order ?? 0;
+
+    if (existing === undefined || candidate < existing) {
+      groupOrderMap.set(key, candidate);
+    }
+  }
+
+  return [...list].sort((a, b) => {
+    const ga = a.group || "";
+    const gb = b.group || "";
+
+    const goa = groupOrderMap.get(ga) ?? 0;
+    const gob = groupOrderMap.get(gb) ?? 0;
+
+    // 1) group_order at the group level
+    if (goa !== gob) return goa - gob;
+
+    // 2) group name as a tie-breaker
+    if (ga !== gb) return ga.localeCompare(gb);
+
+    // 3) metric_order within the group
+    const oa = a.metric_order ?? 0;
+    const ob = b.metric_order ?? 0;
+    if (oa !== ob) return oa - ob;
+
+    // 4) stable fallback by ID
+    return a.metric_id.localeCompare(b.metric_id);
+  });
+}
 
 export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
@@ -86,7 +128,7 @@ export default function Home() {
 
   const hasRequired = metrics.some((m) => m.required);
 
-  const [showHeadsUp, setShowHeadsUp] = useState(true);
+  const [showHeadsUp, setShowHeadsUp] = useState(false);
   const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -98,6 +140,7 @@ export default function Home() {
     }));
   }
 
+  console.log("metrics for form", metrics);
 
   const groupedMetrics = React.useMemo<
     { groupName: string; items: ConfigRow[] }[]
@@ -118,79 +161,35 @@ export default function Home() {
     }));
   }, [metrics]);
 
+  const daysBetween = (d1: string, d2: string) => {
+    const t1 = Date.parse(d1);
+    const t2 = Date.parse(d2);
+    if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
+    // difference in whole days
+    return Math.floor((t2 - t1) / 86400000);
+  };
+
+  const gapMessage = (() => {
+    if (metrics.length === 0) return null;
+    if (!dateHints) return null;
+
+    const anchor =
+      dateHints.last_log_date || dateHints.last_required_complete_date;
+    if (!anchor) return null;
+
+    if (date <= anchor) return null;
+
+    const diffDays = daysBetween(anchor, date);
+    const missingWholeDays = diffDays - 1;
+
+    if (missingWholeDays <= 0) return null;
+
+    return `There ${missingWholeDays === 1 ? "is" : "are"} ${missingWholeDays} missing day${
+      missingWholeDays === 1 ? "" : "s"
+    } between your last recorded day (${anchor}) and this date.`;
+  })();
 
 
-
-  // function computeGapMessage(
-  //   currentDate: string,
-  //   lastRecordedDate: string | null,
-  //   todayISO: string
-  // ): string | null {
-  //   if (!currentDate || !lastRecordedDate) return null;
-
-  //   // 1) Don’t warn for today or future dates
-  //   if (currentDate >= todayISO) return null;
-
-  //   // 2) Don’t warn if you’re on/before the last recorded day
-  //   if (currentDate <= lastRecordedDate) return null;
-
-  //   // 3) How many days strictly *between* lastRecordedDate and currentDate?
-  //   const daysBetween = (d1: string, d2: string) => {
-  //     const t1 = Date.parse(d1);
-  //     const t2 = Date.parse(d2);
-  //     if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
-  //     // pure difference in days (no +1 here)
-  //     return Math.round((t2 - t1) / 86400000);
-  //   };
-
-  //   const diff = daysBetween(lastRecordedDate, currentDate);
-  //   // Example: last = 2025-12-03, current = 2025-12-04 -> diff = 1
-  //   const missing = diff - 1;
-
-  //   if (missing <= 0) return null;
-
-  //   if (missing === 1) {
-  //     return `There is 1 day between your last recorded day (${lastRecordedDate}) and this date.`;
-  //   }
-
-  //   return `There are ${missing} days between your last recorded day (${lastRecordedDate}) and this date.`;
-  // }
-  
-  // helper near the top of the component (outside gapMessage):
-const daysBetween = (d1: string, d2: string) => {
-  const t1 = Date.parse(d1);
-  const t2 = Date.parse(d2);
-  if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
-  // difference in whole days
-  return Math.floor((t2 - t1) / 86400000);
-};
-
-const gapMessage = (() => {
-  if (!hasRequired) return null;
-  if (!dateHints) return null;
-
-  // Prefer last_log_date; fall back to last_required_complete_date
-  const anchor =
-    dateHints.last_log_date || dateHints.last_required_complete_date;
-
-  if (!anchor) return null;
-
-  // Only warn when the chosen date is AFTER the anchor
-  if (date <= anchor) return null;
-
-  // We want whole days *between* anchor and selected date
-  const diffDays = daysBetween(anchor, date);
-  const missingWholeDays = diffDays - 1;
-
-  // Example:
-  // anchor=2025-12-03, date=2025-12-04
-  // diffDays=1 => missingWholeDays=0 => no banner
-  if (missingWholeDays <= 0) return null;
-
-  return `There ${missingWholeDays === 1 ? "is" : "are"} ${missingWholeDays} missing day${
-    missingWholeDays === 1 ? "" : "s"
-  } between your last recorded day (${anchor}) and this date.`;
-})();
 
 
   console.log("DateHints for gap check:", dateHints, "current date:", date);
@@ -210,56 +209,6 @@ const gapMessage = (() => {
       setAuthChecked(true);
     })();
   }, []);
-
-  useEffect(() => {
-    // Don’t do anything until auth is known
-    if (!authChecked) return;
-
-    // Need hints from the server
-    if (!dateHints) return;
-
-    // Only auto-set the date once per page load
-    if (dateInitializedFromHints) return;
-
-    const nextDate = dateHints.suggested_date || dateHints.today;
-    if (nextDate) {
-      setDate(nextDate);
-    }
-
-    setDateInitializedFromHints(true);
-  }, [authChecked, dateHints, dateInitializedFromHints, setDate]);
-
-
-
-  useEffect(() => {
-    async function initDate() {
-      try {
-        const headers = await getAuthHeaders();
-        const res = await fetch("/api/date_hints", { headers });
-        const j = await res.json().catch(() => null);
-
-        if (!res.ok || !j?.suggested_date) {
-          // fallback to local today
-          const now = new Date();
-          const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-          const todayISO = local.toISOString().slice(0, 10);
-          setDate(todayISO);
-        } else {
-          setDate(j.suggested_date);
-        }
-      } catch {
-        const now = new Date();
-        const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-        const todayISO = local.toISOString().slice(0, 10);
-        setDate(todayISO);
-      } finally {
-        setInitialDateLoaded(true);
-      }
-    }
-
-    initDate();
-  }, []);
-
 
   // Load metrics from /api/config
   useEffect(() => {
@@ -288,97 +237,30 @@ const gapMessage = (() => {
           min_value: r.min_value ?? null,
           max_value: r.max_value ?? null,
           disallowed_values: r.disallowed_values ?? null,
+          metric_order:
+            typeof r.metric_order === "number" ? r.metric_order : null,
+          group_order:
+            typeof r.group_order === "number" ? r.group_order : null,
+          preset_values_csv: r.preset_values_csv ?? null,
+          is_calculated: !!r.is_calculated,
+          calc_expr: r.calc_expr ?? null,
         }));
 
         const visible = normalized.filter(
           (r) => !r.private && r.active
         );
 
-        setMetrics(visible);
+        setMetrics(sortMetricsForForm(visible));
       } catch (e: any) {
         setError(String(e?.message || e));
       }
     })();
   }, []);
 
-  type GroupedMetrics = {
-  groupName: string;
-  metrics: ConfigRow[];
-};
-
-// const grouped: GroupedMetrics[] = React.useMemo(() => {
-//   if (!metrics) return [];
-
-//   const map = new Map<string, ConfigRow[]>();
-
-//   for (const m of metrics) {
-//     const name = m.group || "Other";
-//     if (!map.has(name)) map.set(name, []);
-//     map.get(name)!.push(m);
-//   }
-
-//   // metrics already ordered by group_order + metric_order from API,
-//   // so we just preserve that order while grouping.
-//   const orderedGroups: GroupedMetrics[] = [];
-//   for (const [groupName, groupMetrics] of map.entries()) {
-//     orderedGroups.push({ groupName, metrics: groupMetrics });
-//   }
-
-//   // sort groups by the first metric's group_order / group name just in case
-//   orderedGroups.sort((a, b) => {
-//     const aOrder = a.metrics[0]?.group_order ?? 0;
-//     const bOrder = b.metrics[0]?.group_order ?? 0;
-//     if (aOrder !== bOrder) return aOrder - bOrder;
-//     return a.groupName.localeCompare(b.groupName);
-//   });
-
-//   return orderedGroups;
-// }, [metrics]);
-
-
-  // useEffect(() => {
-  //   // Only run once, after auth + metrics are ready
-  //   if (!authChecked) return;
-  //   if (metrics.length === 0) return;
-  //   if (dateInitializedFromHints) return;
-
-  //   (async () => {
-  //     try {
-  //       const headers = await getAuthHeaders();
-  //       const res = await fetch("/api/date_hints", { headers });
-
-  //       const ct = res.headers.get("content-type") || "";
-  //       if (!ct.includes("application/json")) {
-  //         // Non-JSON (e.g., HTML dev error page) – just bail quietly
-  //         // If we ever need to debug again, we can temporarily log here.
-  //         return;
-  //       }
-
-  //       let j: any;
-  //       try {
-  //         j = await res.json();
-  //       } catch {
-  //         // JSON parse failed – bail quietly
-  //         return;
-  //       }
-
-  //       if (!res.ok || j?.error) {
-  //         // API returned an error payload – also bail quietly
-  //         return;
-  //       }
-
-  //       const hints = j as DateHints;
-  //       setDateHints(hints);
-
-  //       if (!dateInitializedFromHints && hints.suggested_date) {
-  //         setDate(hints.suggested_date);
-  //       }
-  //       setDateInitializedFromHints(true);
-  //     } catch (e) {
-  //       console.error("date_hints fetch failed:", e);
-  //     }
-  //   })();
-  // }, [authChecked, metrics.length, dateInitializedFromHints]);
+  // type GroupedMetrics = {
+  //   groupName: string;
+  //   metrics: ConfigRow[];
+  // };
 
   useEffect(() => {
     if (!authChecked) return;
@@ -390,96 +272,90 @@ const gapMessage = (() => {
     if (!dateHints) return;
     if (dateInitializedFromHints) return;
 
-    // Pick initial date: suggested_date if present, otherwise 'today'
-    const initial = dateHints.suggested_date || dateHints.today;
-    if (initial) {
-      setDate(initial);
+    const nextDate = dateHints.suggested_date || dateHints.today;
+    if (nextDate) setDate(nextDate);
+
+    // Decide Heads Up exactly once, at initial auto-jump
+    if (!hasShownHeadsUp && dateHints.missing_required_days > 0) {
+      setShowHeadsUp(true);
+      setHasShownHeadsUp(true);
+    } else {
+      setShowHeadsUp(false);
+      setHasShownHeadsUp(true); // lock it off so it never reappears this page load
     }
+
     setDateInitializedFromHints(true);
-  }, [authChecked, dateHints, dateInitializedFromHints]);
-
-
+  }, [authChecked, dateHints, dateInitializedFromHints, hasShownHeadsUp]);
 
   // Initial load of the date's data
   useEffect(() => {
     if (!authChecked) return;
-    if (!initialDateLoaded) return;
     if (!date) return;
     if (metrics.length === 0) return;
 
     loadDayValues(date);
-  }, [authChecked, initialDateLoaded, date, metrics]);
+  }, [authChecked, date, metrics]);
 
-  useEffect(() => {
-    if (!dateHints) {
-      setShowHeadsUp(false);
-      return;
-    }
-
-    // If we've already shown it once this page load, never show again
-    if (hasShownHeadsUp) return;
-
-    const initial = dateHints.suggested_date || dateHints.today;
-
-    if (
-      dateHints.missing_required_days > 0 &&
-      date === initial
-    ) {
-      setShowHeadsUp(true);
-      setHasShownHeadsUp(true); // lock it so it won't turn back on later
-    }
-  }, [dateHints, date, hasShownHeadsUp]);
-
-
-
-  // const gapMessage = (() => {
-  //   if (!dateHints) return null;
-
-  //   const anchor =
-  //     dateHints.last_log_date || dateHints.last_required_complete_date;
-  //   if (!anchor) return null;
-
-  //   return computeGapMessage(date, anchor, dateHints.today);
-  // })();
   
-  //const setVal = (id: string, v: string) => setVals(s => ({ ...s, [id]: v }));
-
-  //mark the form dirty if any changes were made
   const setVal = (id: string, v: string) => {
     setVals(s => ({ ...s, [id]: v }));
     setDirty(true);
   };
 
-  function buildEntries(metrics: ConfigRow[], vals: Record<string, any>) {
-    const result: { metric_id: string; value: number | null }[] = [];
+  function buildEntries(): { metric_id: string; value: number | null }[] {
+    const entries: { metric_id: string; value: number | null }[] = [];
 
     for (const m of metrics) {
+      // Calculated metrics → use calculatedValues
+      if (m.is_calculated) {
+        const v = calculatedValues[m.metric_id];
+        const num =
+          v != null && Number.isFinite(v) ? (v as number) : null;
+
+        entries.push({
+          metric_id: m.metric_id,
+          value: num,
+        });
+
+        continue;
+      }
+
+      // Non-calculated metrics → use user input
       const raw = vals[m.metric_id];
+      const trimmed = raw?.trim() ?? "";
+
+      let value: number | null = null;
 
       if (m.type === "checkbox") {
-        // Always log 0/1 for visible checkbox metrics
-        const v =
-          raw === 1 ||
-          raw === "1" ||
-          raw === true ||
-          raw === "true"
-            ? 1
-            : 0;
-        result.push({ metric_id: m.metric_id, value: v });
-      } else {
-        // numeric / integer / time
-        if (raw === "" || raw == null) {
-          // user left it blank → no row
-          continue;
+        // checkbox: presence → 1, else 0
+        value = trimmed ? 1 : 0;
+      } else if (m.type === "hhmm") {
+        if (trimmed !== "") {
+          const mins = parseHHMM(trimmed);
+          value = mins != null ? mins : null;
+        } else {
+          value = null; // delete row
         }
-        const num = typeof raw === "number" ? raw : parseFloat(String(raw));
-        if (Number.isNaN(num)) continue;
-        result.push({ metric_id: m.metric_id, value: num });
+      } else {
+        // number / time
+        if (trimmed !== "") {
+          const num = Number(trimmed);
+          value = Number.isFinite(num) ? num : null;
+        } else {
+          value = null;
+        }
       }
+
+      entries.push({
+        metric_id: m.metric_id,
+        value,
+      });
     }
 
-    return result;
+    return entries;
   }
+
+
 
   function parseHHMM(raw: string): number | null {
     const trimmed = raw.trim();
@@ -501,28 +377,6 @@ const gapMessage = (() => {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  }
-
-  function validateNumeric(m: ConfigRow, num: number): string | null {
-    if (m.min_value != null && num < m.min_value) {
-      return `${m.metric_name}: must be ≥ ${m.min_value}`;
-    }
-    if (m.max_value != null && num > m.max_value) {
-      return `${m.metric_name}: must be ≤ ${m.max_value}`;
-    }
-    if (m.disallowed_values) {
-      const banned = m.disallowed_values
-        .split(",")
-        .map((s) => s.trim())
-        .filter((s) => s !== "")
-        .map(Number)
-        .filter((n) => Number.isFinite(n));
-
-      if (banned.includes(num)) {
-        return `${m.metric_name}: ${num} is not an allowed value`;
-      }
-    }
-    return null;
   }
 
   function validateField(m: ConfigRow, raw: string): string | null {
@@ -573,6 +427,267 @@ const gapMessage = (() => {
     return null;
   }
 
+  function getNumericValue(m: ConfigRow, vals: Record<string, string>): number | null {
+    const raw = vals[m.metric_id];
+    if (raw == null || raw.trim() === "") return null;
+
+    switch (m.type) {
+      case "number": {
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+      }
+      case "checkbox": {
+        // checkbox stored as "on" or "" in vals
+        return raw === "on" || raw === "1" ? 1 : 0;
+      }
+      case "time":
+      case "hhmm": {
+        // expect HH:MM → convert to minutes since midnight
+        const match = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (!match) return null;
+        const hours = Number(match[1]);
+        const minutes = Number(match[2]);
+        if (
+          !Number.isFinite(hours) ||
+          !Number.isFinite(minutes) ||
+          hours < 0 ||
+          hours > 23 ||
+          minutes < 0 ||
+          minutes > 59
+        ) {
+          return null;
+        }
+        return hours * 60 + minutes;
+      }
+      default:
+        return null;
+    }
+  }
+
+  type NumericContext = {
+    [metricId: string]: number | null;
+  };
+
+  function buildNumericContext(metrics: ConfigRow[], vals: Record<string, string>): NumericContext {
+    const ctx: NumericContext = {};
+    for (const m of metrics) {
+      ctx[m.metric_id] = getNumericValue(m, vals);
+    }
+    return ctx;
+  }
+
+  type Token =
+    | { kind: "number"; value: number }
+    | { kind: "ident"; name: string }
+    | { kind: "op"; op: "+" | "-" | "*" | "/" }
+    | { kind: "paren"; value: "(" | ")" };
+
+  function tokenizeExpr(expr: string): Token[] | null {
+    const tokens: Token[] = [];
+    let i = 0;
+
+    while (i < expr.length) {
+      const ch = expr[i];
+
+      if (ch === " " || ch === "\t") {
+        i++;
+        continue;
+      }
+
+      if (/[0-9.]/.test(ch)) {
+        let j = i;
+        while (j < expr.length && /[0-9.]/.test(expr[j])) j++;
+        const numStr = expr.slice(i, j);
+        const n = Number(numStr);
+        if (!Number.isFinite(n)) return null;
+        tokens.push({ kind: "number", value: n });
+        i = j;
+        continue;
+      }
+
+      if (/[a-zA-Z_]/.test(ch)) {
+        let j = i;
+        while (j < expr.length && /[a-zA-Z0-9_]/.test(expr[j])) j++;
+        const name = expr.slice(i, j);
+        tokens.push({ kind: "ident", name });
+        i = j;
+        continue;
+      }
+
+      if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
+        tokens.push({ kind: "op", op: ch });
+        i++;
+        continue;
+      }
+
+      if (ch === "(" || ch === ")") {
+        tokens.push({ kind: "paren", value: ch });
+        i++;
+        continue;
+      }
+
+      // unsupported character
+      return null;
+    }
+
+    return tokens;
+  }
+
+  function toRpn(tokens: Token[]): (Token & { kind: "number" | "ident" | "op" })[] | null {
+    const output: (Token & { kind: "number" | "ident" | "op" })[] = [];
+    const ops: ("+" | "-" | "*" | "/" | "(")[] = [];
+
+    const precedence: Record<string, number> = { "+": 1, "-": 1, "*": 2, "/": 2 };
+
+    for (const t of tokens) {
+      if (t.kind === "number" || t.kind === "ident") {
+        output.push(t as any);
+      } else if (t.kind === "op") {
+        while (ops.length > 0) {
+          const top = ops[ops.length - 1];
+          if (top === "(") break;
+          if (precedence[top] >= precedence[t.op]) {
+            output.push({ kind: "op", op: ops.pop()! } as any);
+          } else break;
+        }
+        ops.push(t.op);
+      } else if (t.kind === "paren" && t.value === "(") {
+        ops.push("(");
+      } else if (t.kind === "paren" && t.value === ")") {
+        let found = false;
+        while (ops.length > 0) {
+          const top = ops.pop()!;
+          if (top === "(") {
+            found = true;
+            break;
+          }
+          output.push({ kind: "op", op: top } as any);
+        }
+        if (!found) return null; // mismatched parens
+      }
+    }
+
+    while (ops.length > 0) {
+      const top = ops.pop()!;
+      if (top === "(") return null;
+      output.push({ kind: "op", op: top } as any);
+    }
+
+    return output;
+  }
+
+  function evalRpn(
+    rpn: (Token & { kind: "number" | "ident" | "op" })[],
+    ctx: NumericContext
+  ): number | null {
+    const stack: number[] = [];
+
+    for (const t of rpn) {
+      if (t.kind === "number") {
+        stack.push(t.value);
+      } else if (t.kind === "ident") {
+        const v = ctx[t.name];
+        if (v == null) return null;
+        stack.push(v);
+      } else if (t.kind === "op") {
+        if (stack.length < 2) return null;
+        const b = stack.pop()!;
+        const a = stack.pop()!;
+        if (a == null || b == null) return null;
+        let res: number;
+        switch (t.op) {
+          case "+":
+            res = a + b;
+            break;
+          case "-":
+            res = a - b;
+            break;
+          case "*":
+            res = a * b;
+            break;
+          case "/":
+            if (b === 0) return null;
+            res = a / b;
+            break;
+          default:
+            return null;
+        }
+        if (!Number.isFinite(res)) return null;
+        stack.push(res);
+      }
+    }
+
+    if (stack.length !== 1) return null;
+    return stack[0];
+  }
+
+  function evalCalcExpr(expr: string, ctx: NumericContext): number | null {
+    const trimmed = expr.trim();
+    if (!trimmed) return null;
+
+    const tokens = tokenizeExpr(trimmed);
+    if (!tokens) return null;
+
+    const rpn = toRpn(tokens);
+    if (!rpn) return null;
+
+    return evalRpn(rpn, ctx);
+  }
+
+
+
+  const numericContext = React.useMemo(
+    () => buildNumericContext(metrics, vals),
+    [metrics, vals]
+  );
+
+  const calculatedValues = React.useMemo<Record<string, number | null>>(() => {
+    const result: Record<string, number | null> = {};
+    for (const m of metrics) {
+      if (!m.is_calculated || !m.calc_expr) {
+        result[m.metric_id] = null;
+        continue;
+      }
+
+      const v = evalCalcExpr(m.calc_expr, numericContext);
+      result[m.metric_id] = v;
+    }
+    return result;
+  }, [metrics, numericContext]);
+
+  function parsePresets(metric: ConfigRow): number[] {
+    const raw = (metric as any).preset_values_csv as string | null | undefined;
+    if (!raw) return [];
+
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => Number(s))
+      .filter((n) => Number.isFinite(n));
+  }
+
+  function applyPresetValue(metric: ConfigRow, preset: number) {
+    const raw = String(preset);
+
+    // reuse your existing validation
+    const msg = validateField(metric, raw);
+
+    setVals((prev) => ({
+      ...prev,
+      [metric.metric_id]: raw,
+    }));
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      [metric.metric_id]: msg,
+    }));
+
+    setDirty(true);
+  }
+
+
+
   async function reloadDateHints() {
     try {
       const headers = await getAuthHeaders();
@@ -612,8 +727,8 @@ const gapMessage = (() => {
       for (const m of metrics) {
         const raw = vals[m.metric_id] ?? "";
 
-        // We don't do numeric validation for checkboxes
-        if (m.type === "checkbox") {
+        // No validation for checkboxes or calculated metrics
+        if (m.type === "checkbox" || m.is_calculated) {
           newErrors[m.metric_id] = null;
           continue;
         }
@@ -642,11 +757,13 @@ const gapMessage = (() => {
         const requiredErrors: Record<string, string | null> = {};
 
         for (const m of metrics) {
-          if (!m.required) continue;
+          // Skip non-required OR calculated metrics
+          if (!m.required || m.is_calculated) continue;
 
           const raw = vals[m.metric_id];
 
           let missing = false;
+
 
           if (m.type === "checkbox") {
             // For checkboxes:
@@ -688,25 +805,8 @@ const gapMessage = (() => {
       // -----------------------------
       // 3) Build entries + POST
       // -----------------------------
-      const entries = metrics.map((m) => {
-        const raw = vals[m.metric_id] ?? "";
-        let value: number | null = null;
+      const entries = buildEntries();
 
-        if (m.type === "checkbox") {
-          // Checkbox: checked => 1, otherwise 0
-          value = raw ? 1 : 0;
-        } else {
-          // number / time / hhmm: blank => null (delete), otherwise parse
-          if (raw !== "") {
-            const num = Number(raw);
-            value = Number.isFinite(num) ? num : null;
-          } else {
-            value = null; // signals delete
-          }
-        }
-
-        return { metric_id: m.metric_id, value };
-      });
 
       const headers = await getAuthHeaders();
 
@@ -818,32 +918,10 @@ const gapMessage = (() => {
       }
     }
 
-  //   const groupedMetrics = React.useMemo(() => {
-  //   if (!metrics || metrics.length === 0) return [];
-
-  //   const map = new Map<string, ConfigRow[]>();
-
-  //   for (const m of metrics) {
-  //     const groupName = m.group || "Other";
-  //     if (!map.has(groupName)) map.set(groupName, []);
-  //     map.get(groupName)!.push(m);
-  //   }
-
-  //   // Preserve original order within groups (metrics already sorted by API)
-  //   return Array.from(map.entries()).map(([groupName, items]) => ({
-  //     groupName,
-  //     items,
-  //   }));
-  // }, [metrics]);
-
-
     setDate(newDate);
     setShowHeadsUp(false); // user navigated -> hide global heads up
     loadDayValues(newDate); // if/when you want immediate load
-  }
-
-
-  
+  }  
 
   if (!authChecked) {
     return (
@@ -890,26 +968,26 @@ const gapMessage = (() => {
           </div>
         )}
 
-        {hasRequired && gapMessage && (
-          <div //className="mt-1 inline-block rounded border border-yellow-400 bg-yellow-100 px-2 py-1 text-xs text-yellow-900">
+        {gapMessage && (
+          <div
             style={{
               marginTop: 4,
               display: "inline-block",
               padding: "2px 6px",
               fontSize: "0.75rem",
               borderRadius: 4,
-              backgroundColor: "#FEF9C3", // light yellow
-              border: "1px solid #FACC15", // amber border
-              color: "#78350F", // dark amber text
+              backgroundColor: "#FEF9C3",
+              border: "1px solid #FACC15",
+              color: "#78350F",
             }}
           >
             {gapMessage}
           </div>
         )}
+
       </div>
 
-      {hasRequired &&
-        dateHints &&
+      {dateHints &&
         dateHints.missing_required_days > 0 &&
         showHeadsUp && (
           <div
@@ -927,18 +1005,13 @@ const gapMessage = (() => {
             <strong>Heads up</strong>
             <div style={{ marginTop: 2 }}>
               Required metrics were last fully completed on{" "}
-              {dateHints.last_required_complete_date}.{" "}
-              There may be{" "}
+              {dateHints.last_required_complete_date}. There may be{" "}
               {dateHints.missing_required_days} missing day
-              {dateHints.missing_required_days === 1 ? "" : "s"}{" "}
-              between then and today. We’ve jumped you to{" "}
-              {dateHints.suggested_date}.
+              {dateHints.missing_required_days === 1 ? "" : "s"} between then and
+              today. We’ve jumped you to {dateHints.suggested_date}.
             </div>
           </div>
         )}
-
-
-
 
       {metrics.length === 0 ? (
         <div>{error ? `Error: ${error}` : "Loading metrics…"}</div>
@@ -987,23 +1060,59 @@ const gapMessage = (() => {
                 {!isCollapsed && (
                   <div style={{ padding: "6px 8px" }}>
                     {group.items.map((m) => {
+                      const isCalculated = m.is_calculated;
+
+                      const calcValue = isCalculated ? calculatedValues[m.metric_id] : null;
+
+                      // current raw value + error for this metric
                       const raw = vals[m.metric_id] ?? "";
                       const err = fieldErrors[m.metric_id] ?? null;
+
+                      let calcDisplay: string | null = null;
+                      if (isCalculated) {
+                        if (calcValue == null) {
+                          calcDisplay = "—"; // waiting for inputs / invalid
+                        } else {
+                          calcDisplay = String(calcValue);
+                        }
+                      }
 
                       return (
                         <div key={m.metric_id} style={{ marginBottom: 8 }}>
                           {/* LABEL */}
                           <label style={{ display: "block", fontWeight: 500 }}>
-                            {m.metric_name || m.metric_id}
-                            {m.required && (
-                              <span style={{ marginLeft: 4, fontSize: "0.75rem" }}>
-                                *required
+                            {m.metric_name}
+                            {m.required && !isCalculated && (
+                              <span style={{ marginLeft: 4, fontSize: "0.7rem" }}>*required</span>
+                            )}
+                            {isCalculated && (
+                              <span
+                                style={{
+                                  marginLeft: 4,
+                                  fontSize: "0.7rem",
+                                  opacity: 0.7,
+                                }}
+                              >
+                                calc
                               </span>
                             )}
                           </label>
 
-                          {/* INPUTS: checkbox vs text – same logic you already had */}
-                          {m.type === "checkbox" ? (
+                          {isCalculated ? (
+                            <div
+                              style={{
+                                marginTop: 2,
+                                padding: "2px 4px",
+                                border: "1px solid #ddd",
+                                background: "#f5f5f5",
+                                minHeight: 22,
+                                display: "flex",
+                                alignItems: "center",
+                              }}
+                            >
+                              {calcDisplay}
+                            </div>
+                          ) : m.type === "checkbox" ? (
                             <>
                               <input
                                 type="checkbox"
@@ -1021,11 +1130,9 @@ const gapMessage = (() => {
                               {err && <div style={errorBoxStyle}>{err}</div>}
                             </>
                           ) : (
-                            <>
+                            <div>
                               <input
-                                type="text"
                                 value={raw}
-                                style={err ? errorInputStyle : undefined}
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   setVal(m.metric_id, v);
@@ -1044,13 +1151,46 @@ const gapMessage = (() => {
                                     [m.metric_id]: msg,
                                   }));
                                 }}
+                                style={err ? errorInputStyle : undefined}
                               />
+
+                              {parsePresets(m).length > 0 && (
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 4,
+                                  }}
+                                >
+                                  {parsePresets(m).map((p) => (
+                                    <button
+                                      key={p}
+                                      type="button"
+                                      onClick={() => applyPresetValue(m, p)}
+                                      style={{
+                                        padding: "2px 6px",
+                                        borderRadius: 4,
+                                        border: "1px solid #ccc",
+                                        fontSize: "0.75rem",
+                                        cursor: "pointer",
+                                        background:
+                                          String(p) === String(raw) ? "#FFE9A3" : "#f9fafb",
+                                      }}
+                                    >
+                                      {p}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
                               {err && <div style={errorBoxStyle}>{err}</div>}
-                            </>
+                            </div>
                           )}
                         </div>
                       );
                     })}
+
                   </div>
                 )}
               </section>
