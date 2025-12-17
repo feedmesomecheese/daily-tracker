@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import React from "react";
@@ -53,6 +53,9 @@ type DateHints = {
   required_days_completed: number;
   required_days_possible: number;
 };
+
+type Summary7dRow = Record<string, unknown>;
+
 
 // function daysBetween(a: string, b: string): number {
 //   // a and b are "YYYY-MM-DD"
@@ -114,10 +117,10 @@ export default function Home() {
     const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
     return local.toISOString().slice(0, 10);
   });
-  const [initialDateLoaded, setInitialDateLoaded] = useState(false);
   const [metrics, setMetrics] = useState<ConfigRow[]>([]);
   const [vals, setVals] = useState<Record<string, string>>({});
-  const [summary, setSummary] = useState<any[] | null>(null);
+  //type Summary7dRow = Record<string, unknown>;
+  const [summary, setSummary] = useState<Summary7dRow[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -125,13 +128,17 @@ export default function Home() {
 
   const [dateHints, setDateHints] = useState<DateHints | null>(null);
   const [dateInitializedFromHints, setDateInitializedFromHints] = useState(false);
+  const [jumpedFromHints, setJumpedFromHints] = useState<string | null>(null);
 
-  const hasRequired = metrics.some((m) => m.required);
+
+  //const hasRequired = metrics.some((m) => m.required);
 
   const [showHeadsUp, setShowHeadsUp] = useState(false);
   const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  
 
   function toggleGroup(name: string) {
     setCollapsedGroups((prev) => ({
@@ -189,8 +196,17 @@ export default function Home() {
     } between your last recorded day (${anchor}) and this date.`;
   })();
 
+  // const missingRequiredDaysClient = (() => {
+  //   if (!dateHints?.last_required_complete_date) return 0;
+  //   const diff = daysBetween(dateHints.last_required_complete_date, dateHints.today);
+  //   return Math.max(0, diff - 1);
+  // })();
 
-
+  const missingRequiredDaysClient = React.useMemo(() => {
+    if (!dateHints?.last_required_complete_date) return 0;
+    const diff = daysBetween(dateHints.last_required_complete_date, dateHints.today);
+    return Math.max(0, diff - 1);
+  }, [dateHints]);
 
   console.log("DateHints for gap check:", dateHints, "current date:", date);
 
@@ -220,7 +236,7 @@ export default function Home() {
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Failed to load config");
 
-        const rows = data as any[];
+        const rows = data as ConfigRow[];
 
         const normalized: ConfigRow[] = rows.map((r) => ({
           metric_id: r.metric_id,
@@ -251,8 +267,11 @@ export default function Home() {
         );
 
         setMetrics(sortMetricsForForm(visible));
-      } catch (e: any) {
-        setError(String(e?.message || e));
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+      } finally {
+        setSaving(false);
       }
     })();
   }, []);
@@ -273,19 +292,35 @@ export default function Home() {
     if (dateInitializedFromHints) return;
 
     const nextDate = dateHints.suggested_date || dateHints.today;
-    if (nextDate) setDate(nextDate);
 
-    // Decide Heads Up exactly once, at initial auto-jump
-    if (!hasShownHeadsUp && dateHints.missing_required_days > 0) {
-      setShowHeadsUp(true);
+    // Record the "jump" message only if we changed the date away from today (or away from whatever it currently is)
+    // More robust: compare to current `date` if it exists.
+    const prevDate = date || null;
+
+    setDate(nextDate);
+
+    // Heads-up is ONLY about the initial auto-jump, not date changes later
+    if (!hasShownHeadsUp) {
+      if (nextDate && prevDate && nextDate !== prevDate) {
+        setJumpedFromHints(nextDate);
+        setShowHeadsUp(true);
+      } else if (!prevDate) {
+        // first ever load: we still consider this a "jump" to nextDate if it's not today
+        if (nextDate !== dateHints.today) {
+          setJumpedFromHints(nextDate);
+          setShowHeadsUp(true);
+        } else {
+          setShowHeadsUp(false);
+        }
+      } else {
+        setShowHeadsUp(false);
+      }
       setHasShownHeadsUp(true);
-    } else {
-      setShowHeadsUp(false);
-      setHasShownHeadsUp(true); // lock it off so it never reappears this page load
     }
 
     setDateInitializedFromHints(true);
-  }, [authChecked, dateHints, dateInitializedFromHints, hasShownHeadsUp]);
+  }, [authChecked, dateHints, dateInitializedFromHints, hasShownHeadsUp, date]);
+
 
   // Initial load of the date's data
   useEffect(() => {
@@ -827,8 +862,9 @@ export default function Home() {
       await loadSummary();
       setDirty(false);
       await reloadDateHints();
-    } catch (e: any) {
-      setError(String(e?.message || e));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
     } finally {
       setSaving(false);
     }
@@ -847,12 +883,12 @@ export default function Home() {
     setSummary(data);
   }
 
-  async function loadDayValues(d: string) {
+  const loadDayValues = useCallback(async (day: string) => {
     setError(null);
 
     const headers = await getAuthHeaders();
     const res = await fetch(`/api/log?date=${encodeURIComponent(d)}`, {
-      headers,
+      [headers]);
     });
 
     const rows: { metric_id: string; value: number | null }[] = await res.json();
@@ -944,29 +980,30 @@ export default function Home() {
           max={todayISO} // prevents from selecting future dates
           onChange={handleDateChange}
         />
-        {dateHints && dateHints.required_days_possible > 0 && (
-          <div className="mt-1 text-xs text-gray-600">
-            Required days completed:{" "}
-            <span className="font-mono">
-              {dateHints.required_days_completed} / {dateHints.required_days_possible}
-            </span>{" "}
-            (
-            {Math.round(
-              (dateHints.required_days_completed / dateHints.required_days_possible) *
-                100
-            )}
-            %)
+        {dateHints && showHeadsUp && jumpedFromHints && (
+          <div style={{
+                marginTop: 4,
+                display: "inline-block",
+                padding: "2px 6px",
+                fontSize: "0.75rem",
+                borderRadius: 4,
+                backgroundColor: "#FEF9C3",
+                border: "1px solid #FACC15",
+                color: "#78350F",
+              }}
+            >
+            <strong>Heads up</strong>
+            <div style={{ marginTop: 2 }}>
+              We’ve jumped you to {jumpedFromHints}.
+            </div>
             {dateHints.last_required_complete_date && (
-              <>
-                {" "}
-                since{" "}
-                <span className="font-mono">
-                  {dateHints.last_required_complete_date}
-                </span>
-              </>
+              <div style={{ marginTop: 2 }}>
+                Required metrics were last fully completed on {dateHints.last_required_complete_date}.
+              </div>
             )}
           </div>
         )}
+
 
         {gapMessage && (
           <div
@@ -988,7 +1025,7 @@ export default function Home() {
       </div>
 
       {dateHints &&
-        dateHints.missing_required_days > 0 &&
+        missingRequiredDaysClient > 0 &&
         showHeadsUp && (
           <div
             style={{
@@ -1006,8 +1043,8 @@ export default function Home() {
             <div style={{ marginTop: 2 }}>
               Required metrics were last fully completed on{" "}
               {dateHints.last_required_complete_date}. There may be{" "}
-              {dateHints.missing_required_days} missing day
-              {dateHints.missing_required_days === 1 ? "" : "s"} between then and
+              {missingRequiredDaysClient} missing day
+              {missingRequiredDaysClient === 1 ? "" : "s"} between then and
               today. We’ve jumped you to {dateHints.suggested_date}.
             </div>
           </div>
