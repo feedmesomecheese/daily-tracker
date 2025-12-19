@@ -1,612 +1,936 @@
 "use client";
-
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import React from "react";
 
-// ---------------------------
-// Types
-// ---------------------------
-type MetricType = "checkbox" | "number" | "time" | "hhmm";
 
 type ConfigRow = {
   metric_id: string;
   metric_name: string;
-  type: MetricType;
-  private: boolean;
-  active: boolean;
-
-  required: boolean;
-  required_since: string | null;
-
+  type: "checkbox" | "number" | "time" | "hhmm";
+  group?: string | null;
   default_value: number | null;
   min_value: number | null;
   max_value: number | null;
   disallowed_values: string | null;
-
-  group: string | null;
-  group_order: number | null;
-  metric_order: number | null;
-
-  // presets
+  required: boolean;
+  private: boolean;
+  active: boolean;
+  show_ma: boolean;
+  ma_periods_csv: string | null;
+  start_date: string | null;
+  metric_order?: number | null;
+  group_order?: number | null;
   preset_values_csv?: string | null;
+  is_calculated: boolean;
+  calc_expr: string | null;
 
-  // calculated
-  is_calculated?: boolean | null;
-  calc_expr?: string | null;
+};
+
+const errorInputStyle: React.CSSProperties = {
+  backgroundColor: "#fecaca", // Tailwind-ish red-200
+  borderColor: "#dc2626",     // red-600
+  borderWidth: 1,
+};
+
+const baseInputStyle: React.CSSProperties = {
+  width: 280,
+  padding: "4px 6px",
+  borderWidth: 1,
+  borderColor: "#d1d5db", // gray-300
+  borderRadius: 4,
+};
+
+const errorBoxStyle: React.CSSProperties = {
+  marginTop: 4,
+  backgroundColor: "#dc2626",
+  color: "white",
+  fontSize: "0.75rem",
+  padding: "4px 8px",      // a bit of side padding
+  borderRadius: 4,
+  display: "inline-block", // 🔹 only as wide as content
 };
 
 type DateHints = {
-  today: string; // YYYY-MM-DD
+  today: string;
   last_log_date: string | null;
   last_required_complete_date: string | null;
-  suggested_date: string | null;
+  suggested_date: string;
   missing_required_days: number;
   required_days_completed: number;
   required_days_possible: number;
 };
 
-type LogRow = { metric_id: string; value: number | null };
+// function daysBetween(a: string, b: string): number {
+//   // a and b are "YYYY-MM-DD"
+//   const da = new Date(a + "T00:00:00");
+//   const db = new Date(b + "T00:00:00");
+//   const ms = db.getTime() - da.getTime();
+//   return Math.round(ms / 86400000); // 1000 * 60 * 60 * 24
+// }
 
-type SummaryRow = {
-  metric_id: string;
-  type: MetricType;
-  n_rows?: number | null;
-  sum_7d?: number | null;
-  count_true_7d?: number | null;
-  avg_7d?: number | null;
-};
 
-// ---------------------------
-// Small helpers
-// ---------------------------
-function isoTodayLocal(): string {
-  const d = new Date();
-  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 10);
-}
+function sortMetricsForForm(list: ConfigRow[]): ConfigRow[] {
+  // Build a group -> group_order map (using the smallest value per group)
+  const groupOrderMap = new Map<string, number>();
 
-function addDaysISO(iso: string, days: number): string {
-  const d = new Date(iso + "T00:00:00");
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
-}
+  for (const m of list) {
+    const key = m.group || ""; // Ungrouped becomes ""
+    const existing = groupOrderMap.get(key);
+    const candidate = m.group_order ?? 0;
 
-function daysBetweenISO(a: string, b: string): number {
-  const da = new Date(a + "T00:00:00").getTime();
-  const db = new Date(b + "T00:00:00").getTime();
-  return Math.floor((db - da) / 86_400_000);
-}
-
-function formatHHMM(minutes: number): string {
-  const m = Math.max(0, Math.floor(minutes));
-  const hh = String(Math.floor(m / 60)).padStart(2, "0");
-  const mm = String(m % 60).padStart(2, "0");
-  return `${hh}:${mm}`;
-}
-
-function parseHHMM(raw: string): number | null {
-  const s = raw.trim();
-  if (!s) return null;
-  const m = s.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const hh = Number(m[1]);
-  const mm = Number(m[2]);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-  if (hh < 0 || hh > 23) return null;
-  if (mm < 0 || mm > 59) return null;
-  return hh * 60 + mm;
-}
-
-function parseNumberLike(raw: string): number | null {
-  const s = raw.trim();
-  if (!s) return null;
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-function parseDisallowedSet(csv: string | null): Set<number> {
-  if (!csv) return new Set();
-  const out = new Set<number>();
-  for (const part of csv.split(",")) {
-    const n = Number(part.trim());
-    if (Number.isFinite(n)) out.add(n);
-  }
-  return out;
-}
-
-function validateField(m: ConfigRow, raw: string): string | null {
-  // checkboxes are special; we treat as valid
-  if (m.type === "checkbox") return null;
-
-  let n: number | null;
-  if (m.type === "hhmm") {
-    n = parseHHMM(raw);
-    if (raw.trim() !== "" && n == null) return "Use HH:MM (00:00–23:59).";
-  } else {
-    n = parseNumberLike(raw);
-    if (raw.trim() !== "" && n == null) return "Enter a valid number.";
+    if (existing === undefined || candidate < existing) {
+      groupOrderMap.set(key, candidate);
+    }
   }
 
-  // empty is allowed unless required (required logic handled elsewhere)
-  if (raw.trim() === "") return null;
-  if (n == null) return "Invalid value.";
+  return [...list].sort((a, b) => {
+    const ga = a.group || "";
+    const gb = b.group || "";
 
-  if (m.min_value != null && n < m.min_value) return `Min ${m.min_value}`;
-  if (m.max_value != null && n > m.max_value) return `Max ${m.max_value}`;
+    const goa = groupOrderMap.get(ga) ?? 0;
+    const gob = groupOrderMap.get(gb) ?? 0;
 
-  const disallowed = parseDisallowedSet(m.disallowed_values);
-  if (disallowed.has(n)) return "Value not allowed.";
+    // 1) group_order at the group level
+    if (goa !== gob) return goa - gob;
 
-  return null;
+    // 2) group name as a tie-breaker
+    if (ga !== gb) return ga.localeCompare(gb);
+
+    // 3) metric_order within the group
+    const oa = a.metric_order ?? 0;
+    const ob = b.metric_order ?? 0;
+    if (oa !== ob) return oa - ob;
+
+    // 4) stable fallback by ID
+    return a.metric_id.localeCompare(b.metric_id);
+  });
 }
 
-function parsePresets(metric: ConfigRow): number[] {
-  const raw = metric.preset_values_csv ?? null;
-  if (!raw) return [];
-  return raw
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => Number(s))
-    .filter((n) => Number.isFinite(n));
-}
+export default function Home() {
+  const [authChecked, setAuthChecked] = useState(false);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  // const [date, setDate] = useState<string>(() => {
+  //   const now = new Date();
+  //   // Shift by timezone offset to get local date in ISO format
+  //   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  //   return local.toISOString().slice(0, 10); // "YYYY-MM-DD" in local time
+  // });
+  const [date, setDate] = useState<string>(() => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  });
+  const [initialDateLoaded, setInitialDateLoaded] = useState(false);
+  const [metrics, setMetrics] = useState<ConfigRow[]>([]);
+  const [vals, setVals] = useState<Record<string, string>>({});
+  const [summary, setSummary] = useState<any[] | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
 
-// ---------------------------
-// Expression evaluator (tokenize -> RPN -> eval)
-// supports: numbers, identifiers (metric_id), + - * / and parentheses
-// ---------------------------
-type NumericContext = Record<string, number | null>;
+  const [dateHints, setDateHints] = useState<DateHints | null>(null);
+  const [dateInitializedFromHints, setDateInitializedFromHints] = useState(false);
 
-type TokNumber = { kind: "number"; value: number };
-type TokIdent = { kind: "ident"; name: string };
-type TokOp = { kind: "op"; op: "+" | "-" | "*" | "/" };
-type TokParen = { kind: "paren"; value: "(" | ")" };
-type Token = TokNumber | TokIdent | TokOp | TokParen;
+  const hasRequired = metrics.some((m) => m.required);
 
-function tokenizeExpr(input: string): Token[] | null {
-  const s = input.trim();
-  if (!s) return null;
+  const [showHeadsUp, setShowHeadsUp] = useState(false);
+  const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
 
-  const out: Token[] = [];
-  let i = 0;
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  const isIdentStart = (c: string) => /[A-Za-z_]/.test(c);
-  const isIdent = (c: string) => /[A-Za-z0-9_]/.test(c);
+  function toggleGroup(name: string) {
+    setCollapsedGroups((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  }
 
-  while (i < s.length) {
-    const c = s[i];
+  console.log("metrics for form", metrics);
 
-    if (c === " " || c === "\t" || c === "\n") {
-      i++;
-      continue;
+  const groupedMetrics = React.useMemo<
+    { groupName: string; items: ConfigRow[] }[]
+  >(() => {
+    if (!metrics || metrics.length === 0) return [];
+
+    const map = new Map<string, ConfigRow[]>();
+
+    for (const m of metrics) {
+      const groupName = m.group || "Other";
+      if (!map.has(groupName)) map.set(groupName, []);
+      map.get(groupName)!.push(m);
     }
 
-    if (c === "(" || c === ")") {
-      out.push({ kind: "paren", value: c });
-      i++;
-      continue;
+    return Array.from(map.entries()).map(([groupName, items]) => ({
+      groupName,
+      items,
+    }));
+  }, [metrics]);
+
+  const daysBetween = (d1: string, d2: string) => {
+    const t1 = Date.parse(d1);
+    const t2 = Date.parse(d2);
+    if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
+    // difference in whole days
+    return Math.floor((t2 - t1) / 86400000);
+  };
+
+  const gapMessage = (() => {
+    if (metrics.length === 0) return null;
+    if (!dateHints) return null;
+
+    const anchor =
+      dateHints.last_log_date || dateHints.last_required_complete_date;
+    if (!anchor) return null;
+
+    if (date <= anchor) return null;
+
+    const diffDays = daysBetween(anchor, date);
+    const missingWholeDays = diffDays - 1;
+
+    if (missingWholeDays <= 0) return null;
+
+    return `There ${missingWholeDays === 1 ? "is" : "are"} ${missingWholeDays} missing day${
+      missingWholeDays === 1 ? "" : "s"
+    } between your last recorded day (${anchor}) and this date.`;
+  })();
+
+
+
+
+  console.log("DateHints for gap check:", dateHints, "current date:", date);
+
+  
+  // auth check effect
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabaseBrowser.auth.getSession();
+      console.log("session in Home:", data.session, error);
+      if (!data.session) {
+        // not logged in → go to login
+        window.location.href = "/login";
+        return;
+      }
+      // logged in
+      setAuthChecked(true);
+    })();
+  }, []);
+
+  // Load metrics from /api/config
+  useEffect(() => {
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+
+        const res = await fetch("/api/config", { headers });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Failed to load config");
+
+        const rows = data as any[];
+
+        const normalized: ConfigRow[] = rows.map((r) => ({
+          metric_id: r.metric_id,
+          metric_name: r.metric_name ?? r.metric_id,
+          type: r.type,
+          group: r.group ?? null,
+          private: !!r.private,
+          active: r.active ?? true,
+          show_ma: !!r.show_ma,
+          ma_periods_csv: r.ma_periods_csv ?? "",
+          start_date: r.start_date ?? null,
+          required: !!r.required,              // 👈 now wired up
+          default_value: r.default_value ?? null,
+          min_value: r.min_value ?? null,
+          max_value: r.max_value ?? null,
+          disallowed_values: r.disallowed_values ?? null,
+          metric_order:
+            typeof r.metric_order === "number" ? r.metric_order : null,
+          group_order:
+            typeof r.group_order === "number" ? r.group_order : null,
+          preset_values_csv: r.preset_values_csv ?? null,
+          is_calculated: !!r.is_calculated,
+          calc_expr: r.calc_expr ?? null,
+        }));
+
+        const visible = normalized.filter(
+          (r) => !r.private && r.active
+        );
+
+        setMetrics(sortMetricsForForm(visible));
+      } catch (e: any) {
+        setError(String(e?.message || e));
+      }
+    })();
+  }, []);
+
+  // type GroupedMetrics = {
+  //   groupName: string;
+  //   metrics: ConfigRow[];
+  // };
+
+  useEffect(() => {
+    if (!authChecked) return;
+    reloadDateHints();
+  }, [authChecked]);
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!dateHints) return;
+    if (dateInitializedFromHints) return;
+
+    const nextDate = dateHints.suggested_date || dateHints.today;
+    if (nextDate) setDate(nextDate);
+
+    // Decide Heads Up exactly once, at initial auto-jump
+    if (!hasShownHeadsUp && dateHints.missing_required_days > 0) {
+      setShowHeadsUp(true);
+      setHasShownHeadsUp(true);
+    } else {
+      setShowHeadsUp(false);
+      setHasShownHeadsUp(true); // lock it off so it never reappears this page load
     }
 
-    if (c === "+" || c === "-" || c === "*" || c === "/") {
-      out.push({ kind: "op", op: c });
-      i++;
-      continue;
+    setDateInitializedFromHints(true);
+  }, [authChecked, dateHints, dateInitializedFromHints, hasShownHeadsUp]);
+
+  // Initial load of the date's data
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!date) return;
+    if (metrics.length === 0) return;
+
+    loadDayValues(date);
+  }, [authChecked, date, metrics]);
+
+  
+  const setVal = (id: string, v: string) => {
+    setVals(s => ({ ...s, [id]: v }));
+    setDirty(true);
+  };
+
+  function buildEntries(): { metric_id: string; value: number | null }[] {
+    const entries: { metric_id: string; value: number | null }[] = [];
+
+    for (const m of metrics) {
+      // Calculated metrics → use calculatedValues
+      if (m.is_calculated) {
+        const v = calculatedValues[m.metric_id];
+        const num =
+          v != null && Number.isFinite(v) ? (v as number) : null;
+
+        entries.push({
+          metric_id: m.metric_id,
+          value: num,
+        });
+
+        continue;
+      }
+
+      // Non-calculated metrics → use user input
+      const raw = vals[m.metric_id];
+      const trimmed = raw?.trim() ?? "";
+
+      let value: number | null = null;
+
+      if (m.type === "checkbox") {
+        // checkbox: presence → 1, else 0
+        value = trimmed ? 1 : 0;
+      } else if (m.type === "hhmm") {
+        if (trimmed !== "") {
+          const mins = parseHHMM(trimmed);
+          value = mins != null ? mins : null;
+        } else {
+          value = null; // delete row
+        }
+      } else {
+        // number / time
+        if (trimmed !== "") {
+          const num = Number(trimmed);
+          value = Number.isFinite(num) ? num : null;
+        } else {
+          value = null;
+        }
+      }
+
+      entries.push({
+        metric_id: m.metric_id,
+        value,
+      });
     }
 
-    // number
-    if (/[0-9.]/.test(c)) {
-      let j = i;
-      while (j < s.length && /[0-9.]/.test(s[j])) j++;
-      const raw = s.slice(i, j);
-      const n = Number(raw);
-      if (!Number.isFinite(n)) return null;
-      out.push({ kind: "number", value: n });
-      i = j;
-      continue;
+    return entries;
+  }
+
+
+
+  function parseHHMM(raw: string): number | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    const m = /^(\d{1,2}):([0-5]\d)$/.exec(trimmed);
+    if (!m) return null;
+
+    const hours = Number(m[1]);
+    const minutes = Number(m[2]);
+    if (hours < 0 || hours > 23) return null;
+
+    return hours * 60 + minutes;
+  }
+
+  function formatHHMM(totalMinutes: number | null): string {
+    if (totalMinutes == null || !Number.isFinite(totalMinutes)) return "";
+    const minutes = Math.max(0, Math.min(23 * 60 + 59, Math.round(totalMinutes)));
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  function validateField(m: ConfigRow, raw: string): string | null {
+    // Checkboxes: no numeric validation
+    if (m.type === "checkbox") return null;
+
+    // Empty → treat as delete, no error
+    if (raw === "" || raw == null) return null;
+
+    // HH:MM type
+    if (m.type === "hhmm") {
+      const minutes = parseHHMM(raw);
+      if (minutes == null) {
+        return `${m.metric_name}: must be HH:MM (00–23:59)`;
+      }
+      // If you later want min/max for hhmm, you can reuse the numeric block below
+      return null;
     }
 
-    // identifier (metric_id)
-    if (isIdentStart(c)) {
-      let j = i + 1;
-      while (j < s.length && isIdent(s[j])) j++;
-      const name = s.slice(i, j);
-      out.push({ kind: "ident", name });
-      i = j;
-      continue;
+    // NUMBER / TIME: parse
+    const num = Number(raw);
+    if (!Number.isFinite(num)) {
+      return `${m.metric_name}: not a valid number`;
+    }
+
+    // Range checks
+    if (m.min_value != null && num < m.min_value) {
+      return `${m.metric_name}: must be ≥ ${m.min_value}`;
+    }
+    if (m.max_value != null && num > m.max_value) {
+      return `${m.metric_name}: must be ≤ ${m.max_value}`;
+    }
+
+    // Disallowed values (comma-separated in config)
+    if (m.disallowed_values) {
+      const banned = m.disallowed_values
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter((n) => Number.isFinite(n));
+
+      if (banned.includes(num)) {
+        return `${m.metric_name}: ${num} is not an allowed value`;
+      }
     }
 
     return null;
   }
 
-  return out;
-}
+  function getNumericValue(m: ConfigRow, vals: Record<string, string>): number | null {
+    const raw = vals[m.metric_id];
+    if (raw == null || raw.trim() === "") return null;
 
-function precedence(op: TokOp["op"]): number {
-  return op === "*" || op === "/" ? 2 : 1;
-}
-
-type RpnToken = TokNumber | TokIdent | TokOp;
-
-function toRpn(tokens: Token[]): RpnToken[] | null {
-  const output: RpnToken[] = [];
-  const ops: Array<TokOp["op"] | "("> = [];
-
-  for (const t of tokens) {
-    if (t.kind === "number" || t.kind === "ident") {
-      output.push(t);
-      continue;
-    }
-
-    if (t.kind === "op") {
-      while (ops.length > 0) {
-        const top = ops[ops.length - 1];
-        if (top === "(") break;
-        if (precedence(top) >= precedence(t.op)) {
-          ops.pop();
-          output.push({ kind: "op", op: top });
-        } else break;
+    switch (m.type) {
+      case "number": {
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
       }
-      ops.push(t.op);
-      continue;
-    }
-
-    // parens
-    if (t.kind === "paren" && t.value === "(") {
-      ops.push("(");
-      continue;
-    }
-    if (t.kind === "paren" && t.value === ")") {
-      let found = false;
-      while (ops.length > 0) {
-        const top = ops.pop()!;
-        if (top === "(") {
-          found = true;
-          break;
+      case "checkbox": {
+        // checkbox stored as "on" or "" in vals
+        return raw === "on" || raw === "1" ? 1 : 0;
+      }
+      case "time":
+      case "hhmm": {
+        // expect HH:MM → convert to minutes since midnight
+        const match = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (!match) return null;
+        const hours = Number(match[1]);
+        const minutes = Number(match[2]);
+        if (
+          !Number.isFinite(hours) ||
+          !Number.isFinite(minutes) ||
+          hours < 0 ||
+          hours > 23 ||
+          minutes < 0 ||
+          minutes > 59
+        ) {
+          return null;
         }
-        output.push({ kind: "op", op: top });
+        return hours * 60 + minutes;
       }
-      if (!found) return null;
-      continue;
-    }
-  }
-
-  while (ops.length > 0) {
-    const top = ops.pop()!;
-    if (top === "(") return null;
-    output.push({ kind: "op", op: top });
-  }
-
-  return output;
-}
-
-function evalRpn(rpn: RpnToken[], ctx: NumericContext): number | null {
-  const stack: number[] = [];
-
-  for (const t of rpn) {
-    if (t.kind === "number") {
-      stack.push(t.value);
-      continue;
-    }
-    if (t.kind === "ident") {
-      const v = ctx[t.name];
-      if (v == null) return null;
-      stack.push(v);
-      continue;
-    }
-
-    // op
-    if (stack.length < 2) return null;
-    const b = stack.pop()!;
-    const a = stack.pop()!;
-    let res: number;
-
-    switch (t.op) {
-      case "+":
-        res = a + b;
-        break;
-      case "-":
-        res = a - b;
-        break;
-      case "*":
-        res = a * b;
-        break;
-      case "/":
-        if (b === 0) return null;
-        res = a / b;
-        break;
       default:
         return null;
     }
-    if (!Number.isFinite(res)) return null;
-    stack.push(res);
   }
 
-  if (stack.length !== 1) return null;
-  return stack[0];
-}
+  type NumericContext = {
+    [metricId: string]: number | null;
+  };
 
-function evalCalcExpr(expr: string, ctx: NumericContext): number | null {
-  const tokens = tokenizeExpr(expr);
-  if (!tokens) return null;
-  const rpn = toRpn(tokens);
-  if (!rpn) return null;
-  return evalRpn(rpn, ctx);
-}
+  function buildNumericContext(metrics: ConfigRow[], vals: Record<string, string>): NumericContext {
+    const ctx: NumericContext = {};
+    for (const m of metrics) {
+      ctx[m.metric_id] = getNumericValue(m, vals);
+    }
+    return ctx;
+  }
 
-function buildNumericContext(metrics: ConfigRow[], vals: Record<string, string>): NumericContext {
-  const ctx: NumericContext = {};
-  for (const m of metrics) {
-    const raw = vals[m.metric_id] ?? "";
+  type Token =
+    | { kind: "number"; value: number }
+    | { kind: "ident"; name: string }
+    | { kind: "op"; op: "+" | "-" | "*" | "/" }
+    | { kind: "paren"; value: "(" | ")" };
 
-    // checkbox: treat "on" as 1, otherwise null
-    if (m.type === "checkbox") {
-      ctx[m.metric_id] = raw ? 1 : 0;
-      continue;
+  function tokenizeExpr(expr: string): Token[] | null {
+    const tokens: Token[] = [];
+    let i = 0;
+
+    while (i < expr.length) {
+      const ch = expr[i];
+
+      if (ch === " " || ch === "\t") {
+        i++;
+        continue;
+      }
+
+      if (/[0-9.]/.test(ch)) {
+        let j = i;
+        while (j < expr.length && /[0-9.]/.test(expr[j])) j++;
+        const numStr = expr.slice(i, j);
+        const n = Number(numStr);
+        if (!Number.isFinite(n)) return null;
+        tokens.push({ kind: "number", value: n });
+        i = j;
+        continue;
+      }
+
+      if (/[a-zA-Z_]/.test(ch)) {
+        let j = i;
+        while (j < expr.length && /[a-zA-Z0-9_]/.test(expr[j])) j++;
+        const name = expr.slice(i, j);
+        tokens.push({ kind: "ident", name });
+        i = j;
+        continue;
+      }
+
+      if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
+        tokens.push({ kind: "op", op: ch });
+        i++;
+        continue;
+      }
+
+      if (ch === "(" || ch === ")") {
+        tokens.push({ kind: "paren", value: ch });
+        i++;
+        continue;
+      }
+
+      // unsupported character
+      return null;
     }
 
-    // hhmm -> minutes
-    if (m.type === "hhmm") {
-      ctx[m.metric_id] = raw.trim() ? parseHHMM(raw) : null;
-      continue;
+    return tokens;
+  }
+
+  function toRpn(tokens: Token[]): (Token & { kind: "number" | "ident" | "op" })[] | null {
+    const output: (Token & { kind: "number" | "ident" | "op" })[] = [];
+    const ops: ("+" | "-" | "*" | "/" | "(")[] = [];
+
+    const precedence: Record<string, number> = { "+": 1, "-": 1, "*": 2, "/": 2 };
+
+    for (const t of tokens) {
+      if (t.kind === "number" || t.kind === "ident") {
+        output.push(t as any);
+      } else if (t.kind === "op") {
+        while (ops.length > 0) {
+          const top = ops[ops.length - 1];
+          if (top === "(") break;
+          if (precedence[top] >= precedence[t.op]) {
+            output.push({ kind: "op", op: ops.pop()! } as any);
+          } else break;
+        }
+        ops.push(t.op);
+      } else if (t.kind === "paren" && t.value === "(") {
+        ops.push("(");
+      } else if (t.kind === "paren" && t.value === ")") {
+        let found = false;
+        while (ops.length > 0) {
+          const top = ops.pop()!;
+          if (top === "(") {
+            found = true;
+            break;
+          }
+          output.push({ kind: "op", op: top } as any);
+        }
+        if (!found) return null; // mismatched parens
+      }
     }
 
-    // number/time
-    ctx[m.metric_id] = raw.trim() ? parseNumberLike(raw) : null;
+    while (ops.length > 0) {
+      const top = ops.pop()!;
+      if (top === "(") return null;
+      output.push({ kind: "op", op: top } as any);
+    }
+
+    return output;
   }
-  return ctx;
-}
 
-function sortMetricsForForm(rows: ConfigRow[]): ConfigRow[] {
-  const copy = [...rows];
-  copy.sort((a, b) => {
-    const ga = a.group_order ?? 0;
-    const gb = b.group_order ?? 0;
-    if (ga !== gb) return ga - gb;
+  function evalRpn(
+    rpn: (Token & { kind: "number" | "ident" | "op" })[],
+    ctx: NumericContext
+  ): number | null {
+    const stack: number[] = [];
 
-    const na = (a.group ?? "").toLowerCase();
-    const nb = (b.group ?? "").toLowerCase();
-    if (na !== nb) return na.localeCompare(nb);
+    for (const t of rpn) {
+      if (t.kind === "number") {
+        stack.push(t.value);
+      } else if (t.kind === "ident") {
+        const v = ctx[t.name];
+        if (v == null) return null;
+        stack.push(v);
+      } else if (t.kind === "op") {
+        if (stack.length < 2) return null;
+        const b = stack.pop()!;
+        const a = stack.pop()!;
+        if (a == null || b == null) return null;
+        let res: number;
+        switch (t.op) {
+          case "+":
+            res = a + b;
+            break;
+          case "-":
+            res = a - b;
+            break;
+          case "*":
+            res = a * b;
+            break;
+          case "/":
+            if (b === 0) return null;
+            res = a / b;
+            break;
+          default:
+            return null;
+        }
+        if (!Number.isFinite(res)) return null;
+        stack.push(res);
+      }
+    }
 
-    const oa = a.metric_order ?? 0;
-    const ob = b.metric_order ?? 0;
-    if (oa !== ob) return oa - ob;
-
-    return a.metric_name.localeCompare(b.metric_name);
-  });
-  return copy;
-}
-
-type GroupBucket = { groupName: string; items: ConfigRow[] };
-
-function groupMetrics(metrics: ConfigRow[]): GroupBucket[] {
-  const map = new Map<string, ConfigRow[]>();
-  for (const m of metrics) {
-    const name = m.group?.trim() || "Ungrouped";
-    if (!map.has(name)) map.set(name, []);
-    map.get(name)!.push(m);
+    if (stack.length !== 1) return null;
+    return stack[0];
   }
-  return Array.from(map.entries()).map(([groupName, items]) => ({
-    groupName,
-    items,
-  }));
-}
 
-// ---------------------------
-// Component
-// ---------------------------
-export default function Home() {
-  const todayISO = isoTodayLocal();
+  function evalCalcExpr(expr: string, ctx: NumericContext): number | null {
+    const trimmed = expr.trim();
+    if (!trimmed) return null;
 
-  const [authChecked, setAuthChecked] = useState(false);
+    const tokens = tokenizeExpr(trimmed);
+    if (!tokens) return null;
 
-  const [date, setDate] = useState(todayISO);
-  const [metrics, setMetrics] = useState<ConfigRow[]>([]);
-  const [vals, setVals] = useState<Record<string, string>>({});
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
-  const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+    const rpn = toRpn(tokens);
+    if (!rpn) return null;
 
-  const [dateHints, setDateHints] = useState<DateHints | null>(null);
-  const [dateInitializedFromHints, setDateInitializedFromHints] = useState(false);
-  const [showHeadsUp, setShowHeadsUp] = useState(false);
+    return evalRpn(rpn, ctx);
+  }
 
-  const [summary, setSummary] = useState<SummaryRow[] | null>(null);
 
-  // Collapsible groups
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  const toggleGroup = useCallback((groupName: string) => {
-    setCollapsedGroups((prev) => ({ ...prev, [groupName]: !(prev[groupName] ?? false) }));
-  }, []);
+  const numericContext = React.useMemo(
+    () => buildNumericContext(metrics, vals),
+    [metrics, vals]
+  );
 
-  // --------- numeric context + calculated values ---------
-  const numericContext = useMemo(() => buildNumericContext(metrics, vals), [metrics, vals]);
-
-  const calculatedValues = useMemo<Record<string, number | null>>(() => {
+  const calculatedValues = React.useMemo<Record<string, number | null>>(() => {
     const result: Record<string, number | null> = {};
     for (const m of metrics) {
-      if (!m.is_calculated || !m.calc_expr?.trim()) {
+      if (!m.is_calculated || !m.calc_expr) {
         result[m.metric_id] = null;
         continue;
       }
-      result[m.metric_id] = evalCalcExpr(m.calc_expr, numericContext);
+
+      const v = evalCalcExpr(m.calc_expr, numericContext);
+      result[m.metric_id] = v;
     }
     return result;
   }, [metrics, numericContext]);
 
-  // --------- API loaders ---------
-  const loadConfig = useCallback(async () => {
-    setError(null);
+  function parsePresets(metric: ConfigRow): number[] {
+    const raw = (metric as any).preset_values_csv as string | null | undefined;
+    if (!raw) return [];
 
-    const headers = await getAuthHeaders();
-    const res = await fetch("/api/config", { headers });
-    const data: unknown = await res.json();
+    return raw
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((s) => Number(s))
+      .filter((n) => Number.isFinite(n));
+  }
 
-    if (!res.ok) {
-      const msg =
-        typeof data === "object" && data !== null && "error" in data
-          ? String((data as { error?: unknown }).error ?? "Failed to load config")
-          : "Failed to load config";
-      setError(msg);
-      return;
-    }
+  function applyPresetValue(metric: ConfigRow, preset: number) {
+    const raw = String(preset);
 
-    const rows = data as ConfigRow[];
-    const visible = rows.filter((r) => !r.private && r.active);
-    setMetrics(sortMetricsForForm(visible));
-  }, []);
+    // reuse your existing validation
+    const msg = validateField(metric, raw);
 
-  const reloadDateHints = useCallback(async () => {
+    setVals((prev) => ({
+      ...prev,
+      [metric.metric_id]: raw,
+    }));
+
+    setFieldErrors((prev) => ({
+      ...prev,
+      [metric.metric_id]: msg,
+    }));
+
+    setDirty(true);
+  }
+
+
+
+  async function reloadDateHints() {
     try {
       const headers = await getAuthHeaders();
       const res = await fetch("/api/date_hints", { headers });
-      const data: unknown = await res.json();
 
-      if (!res.ok) return;
-      if (typeof data !== "object" || data == null) return;
-
-      setDateHints(data as DateHints);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const loadDayValues = useCallback(
-    async (d: string) => {
-      setError(null);
-
-      const headers = await getAuthHeaders();
-      const res = await fetch(`/api/log?date=${encodeURIComponent(d)}`, { headers });
-      const data: unknown = await res.json();
-
-      if (!res.ok) {
-        const msg =
-          typeof data === "object" && data !== null && "error" in data
-            ? String((data as { error?: unknown }).error ?? "Failed to load day")
-            : "Failed to load day";
-        setError(msg);
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        // non-JSON, bail quietly
         return;
       }
 
-      const rows = data as LogRow[];
-      const valueMap = new Map<string, number | null>();
-      for (const r of rows) valueMap.set(r.metric_id, r.value);
+      const j = await res.json();
+      if (!res.ok || j?.error) {
+        console.error("date-hints error:", j?.error || j);
+        return;
+      }
 
-      const next: Record<string, string> = {};
-      for (const def of metrics) {
-        const existing = valueMap.get(def.metric_id);
+      setDateHints(j as DateHints);
+    } catch (e) {
+      console.error("date-hints fetch failed:", e);
+    }
+  }
 
-        if (def.type === "checkbox") {
-          if (existing != null) next[def.metric_id] = existing >= 0.5 ? "on" : "";
-          else if (def.default_value != null) next[def.metric_id] = def.default_value >= 0.5 ? "on" : "";
-          else next[def.metric_id] = "";
-        } else if (def.type === "hhmm") {
-          if (existing != null) next[def.metric_id] = formatHHMM(existing);
-          else if (def.default_value != null) next[def.metric_id] = formatHHMM(def.default_value);
-          else next[def.metric_id] = "";
+
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+
+    try {
+      // -----------------------------
+      // 1) Numeric / format validation
+      // -----------------------------
+      const newErrors: Record<string, string | null> = {};
+      let hasAnyError = false;
+
+      for (const m of metrics) {
+        const raw = vals[m.metric_id] ?? "";
+
+        // No validation for checkboxes or calculated metrics
+        if (m.type === "checkbox" || m.is_calculated) {
+          newErrors[m.metric_id] = null;
+          continue;
+        }
+
+        const msg = validateField(m, raw);
+        if (msg) {
+          hasAnyError = true;
+          newErrors[m.metric_id] = msg;
         } else {
-          if (existing != null) next[def.metric_id] = String(existing);
-          else if (def.default_value != null) next[def.metric_id] = String(def.default_value);
-          else next[def.metric_id] = "";
+          newErrors[m.metric_id] = null;
         }
       }
 
-      setVals(next);
-      setFieldErrors({});
+      if (hasAnyError) {
+        setFieldErrors((prev) => ({ ...prev, ...newErrors }));
+        setError("Please fix the highlighted fields before saving.");
+        setSaving(false);
+        return;
+      }
+
+      // -----------------------------------------
+      // 2) Required guard ONLY for past dates (< today)
+      // -----------------------------------------
+      if (date < todayISO) {
+        const missingLabels: string[] = [];
+        const requiredErrors: Record<string, string | null> = {};
+
+        for (const m of metrics) {
+          // Skip non-required OR calculated metrics
+          if (!m.required || m.is_calculated) continue;
+
+          const raw = vals[m.metric_id];
+
+          let missing = false;
+
+
+          if (m.type === "checkbox") {
+            // For checkboxes:
+            //   - undefined  => user hasn't touched it => treat as missing
+            //   - "on" or "" => explicitly logged (true/false) => OK
+            if (raw === undefined) {
+              missing = true;
+            }
+          } else {
+            // For numeric / time / hhmm:
+            //   - undefined or "" => missing
+            //   - anything else   => logged (we already validated format above)
+            if (raw === undefined || (typeof raw === "string" && raw.trim() === "")) {
+              missing = true;
+            }
+          }
+
+          if (missing) {
+            const label = m.metric_name || m.metric_id;
+            missingLabels.push(label);
+            requiredErrors[m.metric_id] = `${label} is required for this date`;
+          } else {
+            requiredErrors[m.metric_id] = null;
+          }
+        }
+
+        if (missingLabels.length > 0) {
+          setFieldErrors((prev) => ({ ...prev, ...requiredErrors }));
+          setError(
+            `Please fill these required metrics before saving this past day: ${missingLabels.join(
+              ", "
+            )}.`
+          );
+          setSaving(false);
+          return;
+        }
+      }
+
+      // -----------------------------
+      // 3) Build entries + POST
+      // -----------------------------
+      const entries = buildEntries();
+
+
+      const headers = await getAuthHeaders();
+
+      const res = await fetch("/api/save-log", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ date, entries }),
+      });
+
+      const j = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(j?.error || "Save failed");
+      }
+
+      await loadSummary();
       setDirty(false);
-    },
-    [metrics]
-  );
-
-  // --------- initial bootstrap ---------
-  useEffect(() => {
-    (async () => {
-      await loadConfig();
       await reloadDateHints();
-      setAuthChecked(true);
-    })();
-  }, [loadConfig, reloadDateHints]);
+    } catch (e: any) {
+      setError(String(e?.message || e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
-  // initialize date from hints once
-  useEffect(() => {
-    if (!authChecked) return;
-    if (dateInitializedFromHints) return;
-    if (!dateHints) return;
 
-    const suggested = dateHints.suggested_date ?? todayISO;
-    const clamped = suggested > todayISO ? todayISO : suggested;
+  async function loadSummary() {
+    setError(null);
+    const headers = await getAuthHeaders();
+    const res = await fetch("/api/summary_7d", { headers });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data?.error || "Failed to load summary");
+      return;
+    }
+    setSummary(data);
+  }
 
-    setDate(clamped);
-    setDateInitializedFromHints(true);
+  async function loadDayValues(d: string) {
+    setError(null);
 
-    // show heads up ONLY when we auto-jump and there are missing required days
-    if ((dateHints.missing_required_days ?? 0) > 0) setShowHeadsUp(true);
-  }, [authChecked, dateInitializedFromHints, dateHints, todayISO]);
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/log?date=${encodeURIComponent(d)}`, {
+      headers,
+    });
 
-  // whenever date changes (and metrics loaded), load values
-  useEffect(() => {
-    if (!authChecked) return;
-    if (!date) return;
-    if (metrics.length === 0) return;
-    loadDayValues(date);
-  }, [authChecked, date, metrics, loadDayValues]);
+    const rows: { metric_id: string; value: number | null }[] = await res.json();
+    if (!res.ok) {
+      setError((rows as any)?.error || "Failed to load day");
+      return;
+    }
 
-  // --------- messaging ---------
-  const lastLogDate = dateHints?.last_log_date ?? null;
+    const valueMap = new Map<string, number | null>();
+    for (const r of rows) {
+      valueMap.set(r.metric_id, r.value);
+    }
 
-  const gapMessage = useMemo(() => {
-    if (!lastLogDate) return null;
-    if (date <= lastLogDate) return null;
-    const gap = daysBetweenISO(lastLogDate, date);
-    if (gap <= 0) return null;
-    return `There ${gap === 1 ? "is" : "are"} ${gap} missing day${gap === 1 ? "" : "s"} between your last recorded day (${lastLogDate}) and this date.`;
-  }, [date, lastLogDate]);
+    const next: Record<string, string> = {};
 
-  // --------- group rendering ---------
-  const groupedMetrics = useMemo(() => groupMetrics(metrics), [metrics]);
+    for (const def of metrics) {
+      const existing = valueMap.get(def.metric_id);
 
-  // --------- UI handlers ---------
+      if (def.type === "checkbox") {
+        if (existing != null) {
+          next[def.metric_id] = existing >= 0.5 ? "on" : "";
+        } else if (def.default_value != null) {
+          next[def.metric_id] =
+            def.default_value >= 0.5 ? "on" : "";
+        } else {
+          next[def.metric_id] = "";
+        }
+      } else if (def.type === "hhmm") {
+        if (existing != null) {
+          next[def.metric_id] = formatHHMM(existing);
+        } else if (def.default_value != null) {
+          next[def.metric_id] = formatHHMM(def.default_value);
+        } else {
+          next[def.metric_id] = "";
+        }
+      } else {
+        if (existing != null) {
+          next[def.metric_id] = String(existing);
+        } else if (def.default_value != null) {
+          next[def.metric_id] = String(def.default_value);
+        } else {
+          next[def.metric_id] = "";
+        }
+      }
+    }
+
+    setVals(next);
+    setFieldErrors({}); // clear per-field errors
+    setDirty(false);
+  }
+
+
   function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newDate = e.target.value;
 
     if (dirty) {
-      const ok = window.confirm("You have unsaved changes.\nDiscard them and switch date?");
+      const ok = window.confirm(
+        "You have unsaved changes.\nDiscard them and switch date?"
+      );
       if (!ok) {
-        e.target.value = date;
+        e.target.value = date; // revert
         return;
       }
     }
 
     setDate(newDate);
-    setShowHeadsUp(false); // user navigated => hide auto-jump heads up
-  }
+    setShowHeadsUp(false); // user navigated -> hide global heads up
+    loadDayValues(newDate); // if/when you want immediate load
+  }  
 
-  function applyPresetValue(metric: ConfigRow, preset: number) {
-    const raw = String(preset);
-    const msg = validateField(metric, raw);
-
-    setVals((prev) => ({ ...prev, [metric.metric_id]: raw }));
-    setFieldErrors((prev) => ({ ...prev, [metric.metric_id]: msg }));
-    setDirty(true);
-  }
-
-  async function refreshSummary() {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch("/api/summary_7d", { headers });
-      const data: unknown = await res.json();
-      if (!res.ok) return;
-      setSummary(data as SummaryRow[]);
-    } catch {
-      // ignore
-    }
-  }
-
-  // ---------------------------
-  // Render
-  // ---------------------------
   if (!authChecked) {
     return (
       <main className="p-6">
@@ -625,148 +949,294 @@ export default function Home() {
           className="border p-2 rounded w-full"
           type="date"
           value={date}
-          max={todayISO}
+          max={todayISO} // prevents from selecting future dates
           onChange={handleDateChange}
         />
-
         {dateHints && dateHints.required_days_possible > 0 && (
           <div className="mt-1 text-xs text-gray-600">
             Required days completed:{" "}
             <span className="font-mono">
               {dateHints.required_days_completed} / {dateHints.required_days_possible}
             </span>{" "}
-            ({Math.round((dateHints.required_days_completed / dateHints.required_days_possible) * 100)}%)
+            (
+            {Math.round(
+              (dateHints.required_days_completed / dateHints.required_days_possible) *
+                100
+            )}
+            %)
             {dateHints.last_required_complete_date && (
               <>
                 {" "}
-                since <span className="font-mono">{dateHints.last_required_complete_date}</span>
+                since{" "}
+                <span className="font-mono">
+                  {dateHints.last_required_complete_date}
+                </span>
               </>
             )}
           </div>
         )}
 
         {gapMessage && (
-          <div className="mt-1 inline-block rounded border border-yellow-400 bg-yellow-100 px-2 py-1 text-xs text-yellow-900">
+          <div
+            style={{
+              marginTop: 4,
+              display: "inline-block",
+              padding: "2px 6px",
+              fontSize: "0.75rem",
+              borderRadius: 4,
+              backgroundColor: "#FEF9C3",
+              border: "1px solid #FACC15",
+              color: "#78350F",
+            }}
+          >
             {gapMessage}
           </div>
         )}
+
       </div>
 
-      {dateHints && dateHints.missing_required_days > 0 && showHeadsUp && (
-        <div className="rounded border border-yellow-400 bg-yellow-100 px-3 py-2 text-sm text-yellow-900">
-          <strong>Heads up</strong>
-          <div className="mt-1">
-            Required metrics were last fully completed on{" "}
-            <span className="font-mono">{dateHints.last_required_complete_date}</span>. There may be{" "}
-            {dateHints.missing_required_days} missing day{dateHints.missing_required_days === 1 ? "" : "s"} between then and today.
-            {dateHints.suggested_date && (
-              <>
-                {" "}
-                We’ve jumped you to <span className="font-mono">{dateHints.suggested_date}</span>.
-              </>
-            )}
+      {dateHints &&
+        dateHints.missing_required_days > 0 &&
+        showHeadsUp && (
+          <div
+            style={{
+              marginTop: 8,
+              padding: "6px 8px",
+              fontSize: "0.8rem",
+              borderRadius: 4,
+              backgroundColor: "#FEF9C3",
+              border: "1px solid #FACC15",
+              color: "#78350F",
+              maxWidth: 520,
+            }}
+          >
+            <strong>Heads up</strong>
+            <div style={{ marginTop: 2 }}>
+              Required metrics were last fully completed on{" "}
+              {dateHints.last_required_complete_date}. There may be{" "}
+              {dateHints.missing_required_days} missing day
+              {dateHints.missing_required_days === 1 ? "" : "s"} between then and
+              today. We’ve jumped you to {dateHints.suggested_date}.
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {error && <div className="text-sm text-red-600">Error: {error}</div>}
-
-      {/* Metrics */}
       {metrics.length === 0 ? (
-        <div>Loading metrics…</div>
+        <div>{error ? `Error: ${error}` : "Loading metrics…"}</div>
       ) : (
         <div>
           {groupedMetrics.map((group) => {
             const isCollapsed = collapsedGroups[group.groupName] ?? false;
 
             return (
-              <section key={group.groupName} className="mt-4 overflow-hidden rounded border border-gray-200">
+              <section
+                key={group.groupName}
+                style={{
+                  marginTop: 16,
+                  borderRadius: 4,
+                  border: "1px solid #e5e7eb",        // light gray border
+                  padding: 0,
+                  overflow: "hidden",
+                  maxWidth: 480,                       // match your input width-ish
+                }}
+              >
+                {/* Group header bar */}
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.groupName)}
-                  className="flex w-full items-center justify-between bg-yellow-100 px-3 py-2 text-left text-sm font-semibold"
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "6px 8px",
+                    backgroundColor: "#FEF9C3",        // soft yellow
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    fontSize: "0.85rem",
+                    fontWeight: 600,
+                  }}
                 >
                   <span>{group.groupName}</span>
-                  <span className="text-xs">{isCollapsed ? "▸" : "▾"}</span>
+                  <span style={{ fontSize: "0.8rem" }}>
+                    {isCollapsed ? "▸" : "▾"}
+                  </span>
                 </button>
 
+                {/* Group body */}
                 {!isCollapsed && (
-                  <div className="p-3 space-y-4">
+                  <div style={{ padding: "6px 8px" }}>
                     {group.items.map((m) => {
+                      const isCalculated = m.is_calculated;
+
+                      const calcValue = isCalculated ? calculatedValues[m.metric_id] : null;
+
+                      // current raw value + error for this metric
                       const raw = vals[m.metric_id] ?? "";
                       const err = fieldErrors[m.metric_id] ?? null;
 
-                      const isCalc = !!m.is_calculated;
-                      const calcVal = calculatedValues[m.metric_id];
-
-                      const presets = parsePresets(m);
+                      let calcDisplay: string | null = null;
+                      if (isCalculated) {
+                        if (calcValue == null) {
+                          calcDisplay = "—"; // waiting for inputs / invalid
+                        } else {
+                          calcDisplay = String(calcValue);
+                        }
+                      }
 
                       return (
-                        <div key={m.metric_id} className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <label className="font-medium">{m.metric_name}</label>
-                            {m.required && <span className="text-xs text-gray-500">*required</span>}
-                            {isCalc && <span className="text-xs text-gray-500">(calculated)</span>}
-                          </div>
+                        <div key={m.metric_id} style={{ marginBottom: 8 }}>
+                          {/* LABEL */}
+                          <label style={{ display: "block", fontWeight: 500 }}>
+                            {m.metric_name}
+                            {m.required && !isCalculated && (
+                              <span style={{ marginLeft: 4, fontSize: "0.7rem" }}>*required</span>
+                            )}
+                            {isCalculated && (
+                              <span
+                                style={{
+                                  marginLeft: 4,
+                                  fontSize: "0.7rem",
+                                  opacity: 0.7,
+                                }}
+                              >
+                                calc
+                              </span>
+                            )}
+                          </label>
 
-                          {/* Input */}
-                          {m.type === "checkbox" ? (
-                            <input
-                              type="checkbox"
-                              checked={raw === "on"}
-                              disabled={isCalc}
-                              onChange={(e) => {
-                                if (isCalc) return;
-                                setVals((prev) => ({ ...prev, [m.metric_id]: e.target.checked ? "on" : "" }));
-                                setDirty(true);
+                          {isCalculated ? (
+                            <div
+                              style={{
+                                marginTop: 2,
+                                padding: "2px 4px",
+                                border: "1px solid #ddd",
+                                background: "#f5f5f5",
+                                minHeight: 22,
+                                width: 280,
+                                padding: "4px 6px",
+                                display: "flex",
+                                alignItems: "center",
                               }}
-                            />
+                            >
+                              {calcDisplay}
+                            </div>
+                          ) : m.type === "checkbox" ? (
+                            <>
+                              <input
+                                type="checkbox"
+                                checked={raw === "on"}
+                                onChange={(e) => {
+                                  const v = e.target.checked ? "on" : "";
+                                  setVal(m.metric_id, v);
+                                  setDirty(true);
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    [m.metric_id]: null,
+                                  }));
+                                }}
+                              />
+                              {err && <div style={errorBoxStyle}>{err}</div>}
+                            </>
                           ) : (
-                            <input
-                              className={`border p-2 rounded w-full ${isCalc ? "bg-gray-100" : ""} ${err ? "border-red-500" : ""}`}
-                              value={isCalc ? (calcVal == null ? "" : m.type === "hhmm" ? formatHHMM(calcVal) : String(calcVal)) : raw}
-                              disabled={isCalc}
-                              onChange={(e) => {
-                                if (isCalc) return;
-                                const v = e.target.value;
-                                const msg = validateField(m, v);
-                                setVals((prev) => ({ ...prev, [m.metric_id]: v }));
-                                setFieldErrors((prev) => ({ ...prev, [m.metric_id]: msg }));
-                                setDirty(true);
-                              }}
-                            />
-                          )}
+                            <div>
+                              <input
+                                value={raw}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setVal(m.metric_id, v);
+                                  setDirty(true);
+                                  const msg = validateField(m, v);
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    [m.metric_id]: msg,
+                                  }));
+                                }}
+                                onBlur={(e) => {
+                                  const v = e.target.value;
+                                  const msg = validateField(m, v);
+                                  setFieldErrors((prev) => ({
+                                    ...prev,
+                                    [m.metric_id]: msg,
+                                  }));
+                                }}
+                                style={{ ...baseInputStyle, ...(err ? errorInputStyle : {}) }}
+                              />
 
-                          {/* Error chip */}
-                          {err && <div className="inline-block rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">{err}</div>}
-
-                          {/* Presets */}
-                          {!isCalc && presets.length > 0 && m.type !== "checkbox" && (
-                            <div className="flex gap-2 flex-wrap">
-                              {presets.map((p) => (
-                                <button
-                                  key={p}
-                                  type="button"
-                                  className="rounded border px-2 py-0.5 text-xs"
-                                  onClick={() => applyPresetValue(m, p)}
+                              {parsePresets(m).length > 0 && (
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: 4,
+                                  }}
                                 >
-                                  {p}
-                                </button>
-                              ))}
+                                  {parsePresets(m).map((p) => (
+                                    <button
+                                      key={p}
+                                      type="button"
+                                      onClick={() => applyPresetValue(m, p)}
+                                      style={{
+                                        padding: "2px 6px",
+                                        borderRadius: 4,
+                                        border: "1px solid #ccc",
+                                        fontSize: "0.75rem",
+                                        cursor: "pointer",
+                                        background:
+                                          String(p) === String(raw) ? "#FFE9A3" : "#f9fafb",
+                                      }}
+                                    >
+                                      {p}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {err && <div style={errorBoxStyle}>{err}</div>}
                             </div>
                           )}
                         </div>
                       );
                     })}
+
                   </div>
                 )}
               </section>
             );
           })}
+
         </div>
       )}
 
-      {/* Summary */}
+
+      
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving || metrics.length === 0}
+          className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save Day"}
+        </button>
+
+        <button
+          onClick={loadSummary}
+          className="px-4 py-2 rounded border"
+        >
+          Refresh 7-day Summary
+        </button>
+
+        {dirty && (
+          <span className="text-xs text-red-600">
+            Unsaved changes
+          </span>
+        )}
+      </div>
+
+      {error && <div className="text-red-600 text-sm">Error: {error}</div>}
+
       <div className="border rounded p-3">
         <div className="font-medium mb-2">7-day Summary</div>
         {!summary ? (
@@ -786,7 +1256,7 @@ export default function Home() {
               </tr>
             </thead>
             <tbody>
-              {summary.map((row) => (
+              {summary.map((row: any) => (
                 <tr key={row.metric_id} className="border-b">
                   <td className="py-1 pr-2">{row.metric_id}</td>
                   <td className="py-1 pr-2">{row.type}</td>
@@ -799,12 +1269,6 @@ export default function Home() {
             </tbody>
           </table>
         )}
-
-        <div className="mt-2 flex gap-2">
-          <button className="border rounded px-2 py-1 text-sm" onClick={refreshSummary}>
-            Refresh 7-day Summary
-          </button>
-        </div>
       </div>
     </main>
   );
