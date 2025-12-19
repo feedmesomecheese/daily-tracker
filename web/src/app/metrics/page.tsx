@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import React from "react";
 
@@ -205,7 +205,7 @@ export default function MetricsPage() {
     count: number;       // metrics in this group
   };
 
-  const groups = useMemo<GroupInfo[]>(() => {
+  const groups = React.useMemo<GroupInfo[]>(() => {
     const map = new Map<string, GroupInfo>();
 
     metrics.forEach((m) => {
@@ -241,51 +241,96 @@ export default function MetricsPage() {
     return arr;
   }, [metrics]);
 
+  function sortMetrics(list: Metric[]): Metric[] {
+    // Build a group -> group_order map (using the smallest value per group)
+    const groupOrderMap = new Map<string, number>();
+
+    for (const m of list) {
+      const key = m.group || ""; // Ungrouped becomes ""
+      const existing = groupOrderMap.get(key);
+      const candidate = m.group_order ?? 0;
+
+      if (existing === undefined || candidate < existing) {
+        groupOrderMap.set(key, candidate);
+      }
+    }
+  
+    return [...list].sort((a, b) => {
+      const ga = a.group || "";
+      const gb = b.group || "";
+
+      const goa = groupOrderMap.get(ga) ?? 0;
+      const gob = groupOrderMap.get(gb) ?? 0;
+
+      // 1) group_order (at the *group* level)
+      if (goa !== gob) return goa - gob;
+
+      // 2) group name as a tie-breaker
+      if (ga !== gb) return ga.localeCompare(gb);
+
+      // 3) metric_order within the group
+      const oa = a.metric_order ?? 0;
+      const ob = b.metric_order ?? 0;
+      if (oa !== ob) return oa - ob;
+
+      // 4) stable fallback by ID
+      return a.metric_id.localeCompare(b.metric_id);
+    });
+  }
+
+
+  const loadMetrics = useCallback(async () => {
+    try {
+      setError(null);
+
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/config", { headers });
+      const data: unknown = await res.json();
+
+      if (!res.ok) {
+        const msg =
+          typeof data === "object" && data !== null && "error" in data
+            ? String((data as { error?: unknown }).error)
+            : "Failed to load metrics";
+        setError(msg);
+        return;
+      }
+
+      const arr = Array.isArray(data) ? (data as any[]) : [];
+
+      const normalized: Metric[] = arr.map((r) => ({
+        metric_id: String(r.metric_id),
+        metric_name: (r.metric_name ?? r.metric_id) as string,
+        type: r.type as MetricType,
+        private: !!r.private,
+        active: !!r.active,
+        show_ma: !!r.show_ma,
+        ma_periods_csv: (r.ma_periods_csv ?? null) as string | null,
+        start_date: (r.start_date ?? null) as string | null,
+        default_value: (r.default_value ?? null) as number | null,
+        min_value: (r.min_value ?? null) as number | null,
+        max_value: (r.max_value ?? null) as number | null,
+        disallowed_values: (r.disallowed_values ?? null) as string | null,
+        required: !!r.required,
+        required_since: (r.required_since ?? null) as string | null,
+        group: (r.group ?? null) as string | null,
+        metric_order: typeof r.metric_order === "number" ? r.metric_order : null,
+        group_order: typeof r.group_order === "number" ? r.group_order : null,
+        is_calculated: !!r.is_calculated,
+        calc_expr: (r.calc_expr ?? null) as string | null,
+      }));
+
+      setMetrics(sortMetrics(normalized));
+    } catch (e) {
+      setError(String((e as any)?.message ?? e));
+    }
+  }, [getAuthHeaders]);
 
 
   useEffect(() => {
     loadMetrics();
-  }, []);
+  }, [loadMetrics]);
 
-  async function loadMetrics() {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch("/api/config", { headers });
-      const rows = await res.json();
-      if (!res.ok) {
-        setError(rows?.error || "Failed to load metrics");
-        return;
-      }
-
-      const normalized: Metric[] = rows.map((r: any) => ({
-        metric_id: r.metric_id,
-        metric_name: r.metric_name ?? r.metric_id,
-        type: r.type,
-        private: !!r.private,
-        active: !!r.active,
-        show_ma: !!r.show_ma,
-        ma_periods_csv: r.ma_periods_csv ?? "",
-        start_date: r.start_date ?? null,
-        default_value: r.default_value ?? null,
-        min_value: r.min_value ?? null,
-        max_value: r.max_value ?? null,
-        disallowed_values: r.disallowed_values ?? null,
-        required: !!r.required,
-        required_since: r.required_since ?? null,
-        group: r.group ?? null,
-        metric_order:
-          typeof r.metric_order === "number" ? r.metric_order : null,
-        group_order:
-          typeof r.group_order === "number" ? r.group_order : null,
-        is_calculated: !!r.is_calculated,
-        calc_expr: r.calc_expr ?? null,
-      }));
-
-      setMetrics(sortMetrics(normalized));
-    } catch (e: any) {
-      setError(String(e?.message || e));
-    }
-  }
 
   // --- edit existing metric ---
 
@@ -324,42 +369,7 @@ export default function MetricsPage() {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
-  function sortMetrics(list: Metric[]): Metric[] {
-    // Build a group -> group_order map (using the smallest value per group)
-    const groupOrderMap = new Map<string, number>();
-
-    for (const m of list) {
-      const key = m.group || ""; // Ungrouped becomes ""
-      const existing = groupOrderMap.get(key);
-      const candidate = m.group_order ?? 0;
-
-      if (existing === undefined || candidate < existing) {
-        groupOrderMap.set(key, candidate);
-      }
-    }
-
-    return [...list].sort((a, b) => {
-      const ga = a.group || "";
-      const gb = b.group || "";
-
-      const goa = groupOrderMap.get(ga) ?? 0;
-      const gob = groupOrderMap.get(gb) ?? 0;
-
-      // 1) group_order (at the *group* level)
-      if (goa !== gob) return goa - gob;
-
-      // 2) group name as a tie-breaker
-      if (ga !== gb) return ga.localeCompare(gb);
-
-      // 3) metric_order within the group
-      const oa = a.metric_order ?? 0;
-      const ob = b.metric_order ?? 0;
-      if (oa !== ob) return oa - ob;
-
-      // 4) stable fallback by ID
-      return a.metric_id.localeCompare(b.metric_id);
-    });
-  }
+  
 
 
 
@@ -426,13 +436,11 @@ export default function MetricsPage() {
     setError(null);
 
     // Make sure Metric has `group` and `metric_order` fields in its type
-    const groupKey = (m as any).group ?? "";
-    const currentOrder = (m as any).metric_order ?? 0;
+    const groupKey = m.group ?? "";
+    const currentOrder = m.metric_order ?? 0;
 
     // All metrics in the same group
-    const groupMetrics = (metrics as any[]).filter(
-      (x) => ((x.group ?? "") === groupKey)
-    );
+    const groupMetrics = metrics.filter((x) => (x.group ?? "") === groupKey);
 
     if (groupMetrics.length <= 1) return;
 
@@ -613,7 +621,6 @@ export default function MetricsPage() {
     };
 
     setNewMetric(draftCopy);
-    await loadMetrics();
   }
 
   // type ToggleFlag = "active" | "private" | "required";
@@ -1095,7 +1102,7 @@ export default function MetricsPage() {
               // should never happen, but keeps TS happy
               return null;
             }
-            const d = draft!;// && isEditing ? draft : null;
+            const d = isEditing ? draft : null;
 
             return (
               <tr
@@ -1156,7 +1163,7 @@ export default function MetricsPage() {
 
                 {/* NEW: Calculated column */}
                 <td style={{ textAlign: "center" }}>
-                  {isEditing ? (
+                  {isEditing && d ? (
                     <input
                       type="checkbox"
                       checked={d.is_calculated}
@@ -1178,7 +1185,7 @@ export default function MetricsPage() {
 
                 {/* NEW: Formula column */}
                 <td style={{ textAlign: "center" }}>
-                  {isEditing ? (
+                  {isEditing && d ? (
                     <input
                       value={d.calc_expr}
                       onChange={(e) =>
