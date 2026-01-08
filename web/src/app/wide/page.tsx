@@ -107,7 +107,46 @@ export default function WideViewPage() {
 
   return (
     <main className="p-6 max-w-full mx-auto space-y-4">
-      <h1 className="text-2xl font-semibold">Wide View (All Metrics)</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">Wide View (All Metrics)</h1>
+
+        <button
+          className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
+          onClick={async () => {
+            try {
+              const headers = await getAuthHeaders();
+
+              const res = await fetch("/api/export/wide.csv", { headers });
+              if (!res.ok) {
+                // try to read JSON error
+                let msg = `Export failed (${res.status})`;
+                try {
+                  const j = await res.json();
+                  msg = j?.error || msg;
+                } catch {}
+                throw new Error(msg);
+              }
+
+              const blob = await res.blob();
+              const url = window.URL.createObjectURL(blob);
+
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "daily-tracker-wide.csv";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+
+              window.URL.revokeObjectURL(url);
+            } catch (e: any) {
+              alert(e?.message || String(e));
+            }
+          }}
+        >
+          Download CSV
+        </button>
+
+      </div>
       <div className="text-xs text-gray-600">
         Scroll horizontally to see all metrics. This is a read-only inspection view for now.
       </div>

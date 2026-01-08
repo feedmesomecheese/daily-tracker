@@ -8,7 +8,7 @@ import React from "react";
 type ConfigRow = {
   metric_id: string;
   metric_name: string;
-  type: "checkbox" | "number" | "time" | "hhmm";
+  type: "checkbox" | "number" | "time" | "hhmm" | "text";
   group?: string | null;
   default_value: number | null;
   min_value: number | null;
@@ -136,7 +136,7 @@ export default function Home() {
 
   const hasRequired = metrics.some((m) => m.required);
 
-  const [showHeadsUp, setShowHeadsUp] = useState(false);
+  //const [showHeadsUp, setShowHeadsUp] = useState(false);
   const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -284,13 +284,13 @@ export default function Home() {
     if (nextDate) setDate(nextDate);
 
     // Decide Heads Up exactly once, at initial auto-jump
-    if (!hasShownHeadsUp && dateHints.missing_required_days > 0) {
-      setShowHeadsUp(true);
-      setHasShownHeadsUp(true);
-    } else {
-      setShowHeadsUp(false);
-      setHasShownHeadsUp(true); // lock it off so it never reappears this page load
-    }
+    // if (!hasShownHeadsUp && dateHints.missing_required_days > 0) {
+    //   setShowHeadsUp(true);
+    //   setHasShownHeadsUp(true);
+    // } else {
+    //   setShowHeadsUp(false);
+    //   setHasShownHeadsUp(true); // lock it off so it never reappears this page load
+    // }
 
     setDateInitializedFromHints(true);
   }, [authChecked, dateHints, dateInitializedFromHints, hasShownHeadsUp]);
@@ -310,23 +310,42 @@ export default function Home() {
     setDirty(true);
   };
 
-  function buildEntries(): { metric_id: string; value: number | null }[] {
-    const entries: { metric_id: string; value: number | null }[] = [];
+  const [prevNumericContext, setPrevNumericContext] =
+  useState<Record<string, number | null>>({});
+
+  const metricsById = React.useMemo<Record<string, ConfigRow>>(() => {
+    const m: Record<string, ConfigRow> = {};
+    for (const metric of metrics) {
+      m[metric.metric_id] = metric;
+    }
+    return m;
+  }, [metrics]);
+
+  type SaveEntry = {
+    metric_id: string;
+    value: number | null;
+    value_text?: string | null;
+  };
+
+  function buildEntries(): SaveEntry[] {
+    const entries: SaveEntry[] = [];
 
     for (const m of metrics) {
       // Calculated metrics → use calculatedValues
       if (m.is_calculated) {
         const v = calculatedValues[m.metric_id];
-        const num =
-          v != null && Number.isFinite(v) ? (v as number) : null;
+        const num = v != null && Number.isFinite(v) ? (v as number) : null;
 
-        entries.push({
-          metric_id: m.metric_id,
-          value: num,
-        });
+        // If it's a checkbox metric, enforce row/no-row semantics
+        const coerced =
+          m.type === "checkbox"
+            ? (num != null && num >= 0.5 ? 1 : null)
+            : num;
 
+        entries.push({ metric_id: m.metric_id, value: coerced });
         continue;
       }
+
 
       // Non-calculated metrics → use user input
       const raw = vals[m.metric_id];
@@ -334,9 +353,20 @@ export default function Home() {
 
       let value: number | null = null;
 
+      if (m.type === "text") {
+        // raw multi-line allowed; blank => delete row
+        const t = raw ?? "";
+        entries.push({
+          metric_id: m.metric_id,
+          value: null,
+          value_text: t.trim() === "" ? null : t, // keep raw text, only trim to decide empty vs not
+        });
+        continue;
+      }
+
       if (m.type === "checkbox") {
-        // checkbox: presence → 1, else 0
-        value = trimmed ? 1 : 0;
+        // checkbox: checked => 1, unchecked => null (delete row)
+        value = trimmed ? 1 : null;
       } else if (m.type === "hhmm") {
         if (trimmed !== "") {
           const mins = parseHHMM(trimmed);
@@ -387,9 +417,21 @@ export default function Home() {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
 
+  function formatDurationHHMM(totalMinutes: number | null): string {
+    if (totalMinutes == null || !Number.isFinite(totalMinutes)) return "";
+    const minutes = Math.max(0, Math.round(totalMinutes));
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+
   function validateField(m: ConfigRow, raw: string): string | null {
     // Checkboxes: no numeric validation
     if (m.type === "checkbox") return null;
+    
+    // Text: always valid here (required-on-past-days handled elsewhere)
+    if (m.type === "text") return null;
 
     // Empty → treat as delete, no error
     if (raw === "" || raw == null) return null;
@@ -483,6 +525,66 @@ export default function Home() {
     }
     return ctx;
   }
+
+  function buildNumericContextFromLogRows(
+    metrics: ConfigRow[],
+    rows: { metric_id: string; value: number | null }[]
+  ): Record<string, number | null> {
+    const map = new Map(rows.map((r) => [r.metric_id, r.value]));
+
+    const ctx: Record<string, number | null> = {};
+    for (const m of metrics) {
+      const v = map.get(m.metric_id);
+      if (v == null) {
+        ctx[m.metric_id] = null;
+        continue;
+      }
+      if (m.type === "checkbox") {
+        ctx[m.metric_id] = v >= 0.5 ? 1 : 0;
+      } else {
+        // number/time/hhmm are already stored as numbers (minutes for hhmm)
+        ctx[m.metric_id] = Number.isFinite(v) ? v : null;
+      }
+    }
+    return ctx;
+  }
+
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!date) return;
+    if (metrics.length === 0) return;
+
+    const needsPrev = metrics.some(
+      (m) => m.is_calculated && (m.calc_expr ?? "").includes("prev(")
+    );
+
+    if (!needsPrev) {
+      setPrevNumericContext({});
+      return;
+    }
+
+    (async () => {
+      try {
+        const dt = new Date(date + "T00:00:00");
+        dt.setDate(dt.getDate() - 1);
+        const y = dt.toISOString().slice(0, 10);
+
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/log?date=${encodeURIComponent(y)}`, { headers });
+        const rows = (await res.json()) as { metric_id: string; value: number | null }[];
+
+        if (!res.ok) {
+          // don’t hard-fail calcs; just clear prev ctx
+          setPrevNumericContext({});
+          return;
+        }
+
+        setPrevNumericContext(buildNumericContextFromLogRows(metrics, rows));
+      } catch {
+        setPrevNumericContext({});
+      }
+    })();
+  }, [authChecked, date, metrics]);
 
   type Token =
     | { kind: "number"; value: number }
@@ -594,7 +696,16 @@ export default function Home() {
       if (t.kind === "number") {
         stack.push(t.value);
       } else if (t.kind === "ident") {
+        const metric = metricsById[t.name]; // ConfigRow | undefined
         const v = ctx[t.name];
+
+        // Treat missing checkbox as 0 for arithmetic
+        if (metric?.type === "checkbox") {
+          stack.push(v ?? 0);
+          continue;
+        }
+
+        // For all other types, missing propagates to null
         if (v == null) return null;
         stack.push(v);
       } else if (t.kind === "op") {
@@ -625,11 +736,16 @@ export default function Home() {
       }
     }
 
+
     if (stack.length !== 1) return null;
     return stack[0];
   }
 
-  function evalCalcExpr(expr: string, ctx: NumericContext): number | null {
+  function evalCalcExpr(
+    expr: string,
+    ctx: Record<string, number | null>,
+    metricsById: Record<string, ConfigRow>
+  ): number | null{
     const trimmed = expr.trim();
     if (!trimmed) return null;
 
@@ -642,6 +758,76 @@ export default function Home() {
     return evalRpn(rpn, ctx);
   }
 
+  function splitTopLevelArgs(s: string): string[] {
+    // splits "a, b, prev(x)" at commas, respecting parentheses depth
+    const out: string[] = [];
+    let depth = 0;
+    let start = 0;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (ch === "(") depth++;
+      else if (ch === ")") depth--;
+      else if (ch === "," && depth === 0) {
+        out.push(s.slice(start, i).trim());
+        start = i + 1;
+      }
+    }
+    out.push(s.slice(start).trim());
+    return out.filter(Boolean);
+  }
+
+  function diffMinutes(a: number, b: number): number {
+    // wraparound: minutes from b to a
+    const d = a - b;
+    return d >= 0 ? d : d + 1440;
+  }
+
+  function evalCalcExprV1(
+    expr: string,
+    ctxToday: Record<string, number | null>,
+    ctxPrev: Record<string, number | null>
+  ): number | null {
+    const s = expr.trim();
+    if (!s) return null;
+
+    // prev(x)
+    const prevMatch = /^prev\(\s*([a-zA-Z0-9_]+)\s*\)$/.exec(s);
+    if (prevMatch) {
+      const id = prevMatch[1];
+      return ctxPrev[id] ?? null;
+    }
+
+    // or(a,b,c...)
+    const orMatch = /^or\((.*)\)$/.exec(s);
+    if (orMatch) {
+      const args = splitTopLevelArgs(orMatch[1]);
+      for (const a of args) {
+        const v = evalCalcExprV1(a, ctxToday, ctxPrev);
+        // treat null as 0 for OR (your preference)
+        if ((v ?? 0) !== 0) return 1;
+      }
+      return 0;
+    }
+
+    // diff(a,b)
+    const diffMatch = /^diff\((.*)\)$/.exec(s);
+    if (diffMatch) {
+      const args = splitTopLevelArgs(diffMatch[1]);
+      if (args.length !== 2) return null;
+      const a = evalCalcExprV1(args[0], ctxToday, ctxPrev);
+      const b = evalCalcExprV1(args[1], ctxToday, ctxPrev);
+      if (a == null || b == null) return null;
+      return diffMinutes(a, b);
+    }
+
+    // identifier
+    if (/^[a-zA-Z0-9_]+$/.test(s)) {
+      return ctxToday[s] ?? null;
+    }
+
+    // fallback: arithmetic via your existing RPN path
+    return evalCalcExpr(s, ctxToday, metricsById);
+  }
 
 
   const numericContext = React.useMemo(
@@ -656,12 +842,10 @@ export default function Home() {
         result[m.metric_id] = null;
         continue;
       }
-
-      const v = evalCalcExpr(m.calc_expr, numericContext);
-      result[m.metric_id] = v;
+      result[m.metric_id] = evalCalcExprV1(m.calc_expr, numericContext, prevNumericContext);
     }
     return result;
-  }, [metrics, numericContext]);
+  }, [metrics, numericContext, prevNumericContext]);
 
   function parsePresets(metric: ConfigRow): number[] {
     const raw = (metric as any).preset_values_csv as string | null | undefined;
@@ -811,12 +995,18 @@ export default function Home() {
       }
 
       // -----------------------------
+      // -----------------------------
       // 3) Build entries + POST
       // -----------------------------
       const entries = buildEntries();
 
-
       const headers = await getAuthHeaders();
+      console.log("CLIENT save payload:", {
+        date,
+        metricsCount: metrics.length,
+        entriesCount: entries.length,
+        sample: entries.slice(0, 5),
+      });
 
       const res = await fetch("/api/save-log", {
         method: "POST",
@@ -827,10 +1017,15 @@ export default function Home() {
         body: JSON.stringify({ date, entries }),
       });
 
-      const j = await res.json().catch(() => null);
+
       if (!res.ok) {
-        throw new Error(j?.error || "Save failed");
+        const text = await res.text();
+        console.error("save-log failed:", res.status, text);
+        alert(`Save failed (${res.status}). Check console/network for details.`);
+        return;
       }
+      
+      await loadDayValues(date);
 
       await loadSummary();
       setDirty(false);
@@ -863,16 +1058,20 @@ export default function Home() {
       headers,
     });
 
-    const rows: { metric_id: string; value: number | null }[] = await res.json();
+    const rows: { metric_id: string; value: number | null; value_text?: string | null }[] = await res.json();
     if (!res.ok) {
       setError((rows as any)?.error || "Failed to load day");
       return;
     }
 
     const valueMap = new Map<string, number | null>();
+    const textMap = new Map<string, string | null>();
+
     for (const r of rows) {
       valueMap.set(r.metric_id, r.value);
+      textMap.set(r.metric_id, r.value_text ?? null);
     }
+
 
     const next: Record<string, string> = {};
 
@@ -888,6 +1087,9 @@ export default function Home() {
         } else {
           next[def.metric_id] = "";
         }
+      } else if (def.type === "text") {
+        const existingText = textMap.get(def.metric_id);
+        next[def.metric_id] = existingText ?? "";
       } else if (def.type === "hhmm") {
         if (existing != null) {
           next[def.metric_id] = formatHHMM(existing);
@@ -927,7 +1129,7 @@ export default function Home() {
     }
 
     setDate(newDate);
-    setShowHeadsUp(false); // user navigated -> hide global heads up
+    //setShowHeadsUp(false); // user navigated -> hide global heads up
     loadDayValues(newDate); // if/when you want immediate load
   }  
 
@@ -994,7 +1196,7 @@ export default function Home() {
         )}
 
       </div>
-
+    {/*
       {dateHints &&
         dateHints.missing_required_days > 0 &&
         showHeadsUp && (
@@ -1017,9 +1219,9 @@ export default function Home() {
               {dateHints.missing_required_days} missing day
               {dateHints.missing_required_days === 1 ? "" : "s"} between then and
               today. We’ve jumped you to {dateHints.suggested_date}.
-            </div>
+            </div> 
           </div>
-        )}
+        )}*/}
 
       {metrics.length === 0 ? (
         <div>{error ? `Error: ${error}` : "Loading metrics…"}</div>
@@ -1079,7 +1281,11 @@ export default function Home() {
                       let calcDisplay: string | null = null;
                       if (isCalculated) {
                         if (calcValue == null) {
-                          calcDisplay = "—"; // waiting for inputs / invalid
+                          calcDisplay = "—";
+                        } else if (m.type === "hhmm") {
+                          calcDisplay = formatDurationHHMM(calcValue);
+                        // } else if (m.type === "checkbox") {
+                        //   calcDisplay = calcValue >= 0.5 ? "✓" : "";
                         } else {
                           calcDisplay = String(calcValue);
                         }
@@ -1107,21 +1313,38 @@ export default function Home() {
                           </label>
 
                           {isCalculated ? (
-                            <div
-                              style={{
-                                marginTop: 2,
-                                padding: "2px 4px",
-                                border: "1px solid #ddd",
-                                background: "#f5f5f5",
-                                minHeight: 22,
-                                width: 280,
-                                padding: "4px 6px",
-                                display: "flex",
-                                alignItems: "center",
-                              }}
-                            >
-                              {calcDisplay}
-                            </div>
+                            m.type === "checkbox" ? (
+                              <>
+                                <input
+                                  type="checkbox"
+                                  checked={(calcValue ?? 0) >= 0.5}
+                                  disabled
+                                  style={{
+                                    opacity: 0.6,
+                                    cursor: "not-allowed",
+                                  }}
+                                />
+                                {/* optional: show a small calc tag */}
+                                <span style={{ marginLeft: 6, fontSize: "0.75rem", opacity: 0.7 }}>
+                                  (calculated)
+                                </span>
+                              </>
+                            ) : (
+                              <div
+                                style={{
+                                  marginTop: 2,
+                                  border: "1px solid #ddd",
+                                  background: "#f5f5f5",
+                                  minHeight: 22,
+                                  width: 280,
+                                  padding: "4px 6px",
+                                  display: "flex",
+                                  alignItems: "center",
+                                }}
+                              >
+                                {calcDisplay}
+                              </div>
+                            )
                           ) : m.type === "checkbox" ? (
                             <>
                               <input
@@ -1139,6 +1362,27 @@ export default function Home() {
                               />
                               {err && <div style={errorBoxStyle}>{err}</div>}
                             </>
+                          ) : m.type === "text" ? (
+                            <div>
+                              <textarea
+                                value={raw}
+                                rows={4}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setVal(m.metric_id, v);
+                                  setDirty(true);
+                                  // Optional: you can validate required-on-past-days only, so no per-field error here
+                                  setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
+                                }}
+                                style={{
+                                  ...baseInputStyle,
+                                  height: "auto",
+                                  width: 280,
+                                  ...(err ? errorInputStyle : {}),
+                                }}
+                              />
+                              {err && <div style={errorBoxStyle}>{err}</div>}
+                            </div>
                           ) : (
                             <div>
                               <input
@@ -1197,6 +1441,7 @@ export default function Home() {
                               {err && <div style={errorBoxStyle}>{err}</div>}
                             </div>
                           )}
+
                         </div>
                       );
                     })}

@@ -3,7 +3,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import React from "react";
 
-type MetricType = "checkbox" | "number" | "time" | "hhmm";
+type MetricType = "checkbox" | "number" | "time" | "hhmm" | "text";
 
 type Metric = {
   metric_id: string;
@@ -952,6 +952,7 @@ export default function MetricsPage() {
                   <option value="number">number</option>
                   <option value="time">time</option>
                   <option value="hhmm">HH:MM (time of day)</option>
+                  <option value="text">text</option>
                 </select>
               </td>
 
@@ -1173,7 +1174,6 @@ export default function MetricsPage() {
 
                         if (checked) {
                           // force numeric + not-required when making it calculated
-                          updateExisting("type", "number" as any);
                           updateExisting("required", false as any);
                         }
                       }}

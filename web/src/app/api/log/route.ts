@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
   let q = supabase
     .from("log")
-    .select("date,metric_id,value")
+    .select("date,metric_id,value,value_text")
     .eq("owner_id", user.id)
     .order("date", { ascending: true })
     .order("metric_id", { ascending: true });

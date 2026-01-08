@@ -8,7 +8,7 @@ const BaseSchema = z.object({
     .min(1)
     .regex(/^[a-z0-9_]+$/i, "Use letters, numbers, and underscores only"),
   metric_name: z.string().min(1),
-  type: z.enum(["checkbox", "number", "time", "hhmm"]),
+  type: z.enum(["checkbox", "number", "time", "hhmm", "text"]),
   private: z.boolean().optional().default(false),
   active: z.boolean().optional().default(true),
   show_ma: z.boolean().optional().default(false),
@@ -28,16 +28,41 @@ const BaseSchema = z.object({
   metric_order: z.number().int().nullable().optional(),
   group_order: z.number().int().nullable().optional(),
 
-  // calculated metrics
-  is_calculated: z.boolean().default(false),
-  calc_expr: z.string().nullable().default(null),
+  // calculated metrics (defaults ONLY for create)
+  is_calculated: z.boolean().optional().default(false),
+  calc_expr: z.string().nullable().optional().default(null),
 });
 
-
+// CREATE uses defaults; PATCH must NOT apply defaults for fields the client didn't send.
 const CreateSchema = BaseSchema;
-const UpdateSchema = BaseSchema.partial().extend({
+
+const UpdateSchema = z.object({
   // metric_id is still required for updates
   metric_id: z.string().min(1),
+
+  // everything else optional, NO defaults (prevents accidental overwrites during reorder)
+  metric_name: z.string().min(1).optional(),
+  type: z.enum(["checkbox", "number", "time", "hhmm", "text"]).optional(),
+  private: z.boolean().optional(),
+  active: z.boolean().optional(),
+  show_ma: z.boolean().optional(),
+  ma_periods_csv: z.string().nullable().optional(),
+  start_date: z.string().nullable().optional(),
+
+  default_value: z.number().nullable().optional(),
+  min_value: z.number().nullable().optional(),
+  max_value: z.number().nullable().optional(),
+  disallowed_values: z.string().nullable().optional(),
+
+  required: z.boolean().optional(),
+  required_since: z.string().nullable().optional(),
+
+  group: z.string().nullable().optional(),
+  metric_order: z.number().int().nullable().optional(),
+  group_order: z.number().int().nullable().optional(),
+
+  is_calculated: z.boolean().optional(),
+  calc_expr: z.string().nullable().optional(),  
 });
 
 function formatZodError(error: z.ZodError): string {
@@ -141,6 +166,7 @@ export async function PATCH(req: Request) {
   if (!supabase || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+  const todayISO = new Date().toISOString().slice(0, 10);
 
   let json: unknown;
   try {
@@ -180,12 +206,7 @@ export async function PATCH(req: Request) {
   if (body.disallowed_values !== undefined)
     updates.disallowed_values = body.disallowed_values ?? null;
   if (body.required !== undefined) updates.required = body.required;
-  if (body.required_since !== undefined) {
-    updates.required_since =
-      body.required ? body.required_since ?? new Date().toISOString().slice(0, 10)
-                    : null;
-  }
-
+  
   if (body.is_calculated !== undefined) updates.is_calculated = body.is_calculated;
   if (body.calc_expr !== undefined) updates.calc_expr = body.calc_expr;
   
@@ -199,6 +220,17 @@ export async function PATCH(req: Request) {
     updates.group_order =
       body.group_order != null ? body.group_order : 0;
   }
+  
+  // Required_since policy:
+  // - If required is being turned ON and caller didn't provide required_since, set it today
+  // - If required is being turned OFF, clear required_since
+  if (body.required === true && body.required_since === undefined) {
+    updates.required_since = todayISO;
+  }
+  if (body.required === false) {
+    updates.required_since = null;
+  }
+
 
 
 
@@ -212,6 +244,7 @@ export async function PATCH(req: Request) {
     const { data, error } = await supabase
       .from("config")
       .update(updates)
+      .eq("owner_id", user.id)
       .eq("metric_id", metric_id)
       .select("metric_id");
 

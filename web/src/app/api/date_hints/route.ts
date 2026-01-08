@@ -1,175 +1,235 @@
 import { NextResponse } from "next/server";
-import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { supabaseServerFromRequest } from "@/lib/supabaseServer"; // adjust if your path differs
+
+type DateHints = {
+  today: string;
+  last_log_date: string | null;
+  last_required_complete_date: string | null;
+  suggested_date: string | null;
+  missing_required_days: number;
+  required_days_completed: number;
+  required_days_possible: number;
+};
+
+function todayISO(): string {
+  // timezone-agnostic YYYY-MM-DD (UTC)
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDays(iso: string, deltaDays: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + deltaDays);
+  return d.toISOString().slice(0, 10);
+}
+
+function compareISO(a: string, b: string): number {
+  // ISO YYYY-MM-DD lexical compare works
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function isNonEmptyText(v: any): boolean {
+  if (v == null) return false;
+  return String(v).trim() !== "";
+}
 
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
+
+  // Auth
   const {
     data: { user },
-    error: userError,
+    error: authError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) {
+  if (authError || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const today = todayISO();
 
-  const daysBetween = (d1: string, d2: string) => {
-    const t1 = Date.parse(d1);
-    const t2 = Date.parse(d2);
-    if (!Number.isFinite(t1) || !Number.isFinite(t2)) return 0;
-    return Math.floor((t2 - t1) / 86400000);
-  };
-
-  // 1) last_log_date
-  const { data: bounds, error: boundsError } = await supabase
+  // 1) last_log_date (fast + uncapped)
+  const { data: lastLogRow, error: lastLogErr } = await supabase
     .from("log")
     .select("date")
-    .eq("owner_id", user.id);
-
-  if (boundsError) {
-    return NextResponse.json({ error: boundsError.message }, { status: 500 });
-  }
-
-  let last_log_date: string | null = null;
-  if (bounds && bounds.length > 0) {
-    last_log_date = bounds
-      .map((r) => r.date as string)
-      .sort()
-      .at(-1)!;
-  }
-
-  // 2) required metrics
-  const { data: reqMetrics, error: reqError } = await supabase
-    .from("config")
-    .select("metric_id, required, required_since, start_date, active")
     .eq("owner_id", user.id)
-    .eq("active", true)
+    .order("date", { ascending: false })
+    .limit(1);
+
+  if (lastLogErr) {
+    return NextResponse.json({ error: lastLogErr.message }, { status: 500 });
+  }
+
+  const last_log_date: string | null = lastLogRow?.[0]?.date ?? null;
+
+  // 2) Load required metrics (include required_since + type for validity rules)
+  const { data: reqMetrics, error: reqCfgErr } = await supabase
+    .from("config")
+    .select("metric_id,type,required,required_since,active")
+    .eq("owner_id", user.id)
     .eq("required", true);
 
-  if (reqError) {
-    return NextResponse.json({ error: reqError.message }, { status: 500 });
+  if (reqCfgErr) {
+    return NextResponse.json({ error: reqCfgErr.message }, { status: 500 });
   }
 
-  const required = reqMetrics ?? [];
-  const requiredCount = required.length;
+  const requiredList =
+    (reqMetrics ?? [])
+      .filter((m: any) => m.required === true && (m.active ?? true) === true)
+      .map((m: any) => ({
+        metric_id: String(m.metric_id),
+        type: String(m.type),
+        // normalize null required_since => treat as "always required"
+        required_since: (m.required_since ? String(m.required_since) : null) as string | null,
+      }));
 
-  // If nothing is required, keep it simple
-  if (requiredCount === 0) {
-    return NextResponse.json({
-      today: todayISO,
+  // If nothing required, suggest today and trivial stats
+  if (requiredList.length === 0) {
+    const out: DateHints = {
+      today,
       last_log_date,
-      last_required_complete_date: null,
-      suggested_date: last_log_date || todayISO,
+      last_required_complete_date: last_log_date, // doesn't really matter when none required
+      suggested_date: today,
       missing_required_days: 0,
       required_days_completed: 0,
       required_days_possible: 0,
-    });
+    };
+    return NextResponse.json(out);
   }
+
+  // 3) Determine the earliest date we should consider for required completeness
+  // Use min(required_since) among required metrics; if all null, use last_log_date or today.
+  let minRequiredSince: string | null = null;
+  for (const m of requiredList) {
+    if (m.required_since) {
+      if (!minRequiredSince || compareISO(m.required_since, minRequiredSince) < 0) {
+        minRequiredSince = m.required_since;
+      }
+    }
+  }
+  if (!minRequiredSince) {
+    // "always required" metrics but no required_since set
+    minRequiredSince = last_log_date ?? today;
+  }
+
+  // Guard: if minRequiredSince is after today, clamp
+  if (compareISO(minRequiredSince, today) > 0) {
+    minRequiredSince = today;
+  }
+
+  // 4) Fetch ONLY log rows for required metrics in range [minRequiredSince..today]
+  // This stays small even with huge datasets.
+  const reqMetricIds = requiredList.map((m) => m.metric_id);
+
+  const rows: any[] = [];
+  const pageSize = 1000;
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from("log")
+      .select("date,metric_id,value,value_text")
+      .eq("owner_id", user.id)
+      .gte("date", minRequiredSince)
+      .lte("date", today)
+      .in("metric_id", reqMetricIds)
+      .order("date", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) {
+      return NextResponse.json(
+        { error: "Failed to load required log rows", details: error.message },
+        { status: 500 }
+      );
+    }
+
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < pageSize) break;
+    from += pageSize;
+  }
+
+  // 5) Build map: date -> set(metric_id present & valid)
+  // For required completeness, "present" means:
+  // - checkbox: any row counts
+  // - text: value_text non-empty
+  // - others: value is not null
+  const typeById = new Map<string, string>();
+  const requiredSinceById = new Map<string, string | null>();
+  for (const m of requiredList) {
+    typeById.set(m.metric_id, m.type);
+    requiredSinceById.set(m.metric_id, m.required_since);
+  }
+
+  const presentByDate = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const d = String(r.date);
+    const mid = String(r.metric_id);
+    const t = typeById.get(mid) ?? "number";
+
+    let ok = false;
+    if (t === "checkbox") {
+      ok = true; // row/no-row semantics
+    } else if (t === "text") {
+      ok = isNonEmptyText(r.value_text);
+    } else {
+      ok = r.value != null;
+    }
+
+    if (!ok) continue;
+
+    if (!presentByDate.has(d)) presentByDate.set(d, new Set<string>());
+    presentByDate.get(d)!.add(mid);
+  }
+
+  // 6) Iterate all days from minRequiredSince..today and compute completeness day-by-day
+  // This is O(days * requiredMetrics) which is fine for a few thousand days.
+  const possibleDays: string[] = [];
+  for (let d = minRequiredSince; compareISO(d, today) <= 0; d = addDays(d, 1)) {
+    possibleDays.push(d);
+  }
+
+  const required_days_possible = possibleDays.length;
+  let required_days_completed = 0;
 
   let last_required_complete_date: string | null = null;
-  let missing_required_days = 0;
-  let suggested_date = todayISO;
-  let required_days_completed = 0;
-  let required_days_possible = 0;
+  let last_incomplete_required_date: string | null = null;
 
-  // earliest date when any required metric becomes required
-  const effectiveStarts = required
-    .map(
-      (m) => (m.required_since as string) || (m.start_date as string)
-    )
-    .filter(Boolean) as string[];
-
-  if (effectiveStarts.length > 0) {
-    const minEffective = effectiveStarts.sort()[0];
-
-    const { data: rows, error: logError } = await supabase
-      .from("log")
-      .select("date, metric_id")
-      .eq("owner_id", user.id)
-      .gte("date", minEffective)
-      .in(
-        "metric_id",
-        required.map((m) => m.metric_id)
-      );
-
-    if (logError) {
-      return NextResponse.json({ error: logError.message }, { status: 500 });
+  for (const d of possibleDays) {
+    // Determine which metrics are required on this date (required_since <= d, or null => always)
+    const needed: string[] = [];
+    for (const m of requiredList) {
+      const rs = m.required_since;
+      if (!rs || compareISO(rs, d) <= 0) needed.push(m.metric_id);
     }
 
-    // date -> set of metric_ids with rows
-    const byDate: Record<string, Set<string>> = {};
-    for (const row of rows ?? []) {
-      const d = row.date as string;
-      const mid = row.metric_id as string;
-      if (!byDate[d]) byDate[d] = new Set();
-      byDate[d].add(mid);
-    }
+    const present = presentByDate.get(d) ?? new Set<string>();
 
-    const dates = Object.keys(byDate).sort();
+    const complete = needed.every((mid) => present.has(mid));
 
-    // last date where all required metrics are present
-    for (const d of dates) {
-      const set = byDate[d];
-      if (set.size === requiredCount) {
-        last_required_complete_date = d;
-      }
-    }
-
-    // ---- coverage stats (all-time required coverage) ----
-    let requiredStart: string | null = null;
-    for (const m of reqMetrics ?? []) {
-      if (!m.required_since) continue;
-      if (!requiredStart || m.required_since < requiredStart) {
-        requiredStart = m.required_since;
-      }
-    }
-
-    if (requiredStart && requiredCount > 0) {
-      // inclusive possible days from requiredStart to today
-      required_days_possible = daysBetween(requiredStart, todayISO) + 1;
-
-      for (const d of dates) {
-        if (d < requiredStart) continue;
-        const set = byDate[d];
-        if (set && set.size === requiredCount) {
-          required_days_completed += 1;
-        }
-      }
+    if (complete) {
+      required_days_completed++;
+      last_required_complete_date = d;
+    } else {
+      last_incomplete_required_date = d; // keep updating; ends as latest incomplete
     }
   }
 
-  // ---- gap + suggested date logic ----
-  if (last_required_complete_date) {
-    // how many days strictly between last complete day and today?
-    // example: last=2025-12-03, today=2025-12-04 -> diff=1 -> missing=0
-    const diff = daysBetween(last_required_complete_date, todayISO);
-    const missing = Math.max(0, diff - 1);
+  const missing_required_days = required_days_possible - required_days_completed;
 
-    missing_required_days = missing;
+  // 7) suggested_date policy per your intention:
+  // - If any incomplete required date exists, jump to the most recent incomplete date
+  // - Otherwise jump to today
+  const suggested_date = last_incomplete_required_date ?? today;
 
-    // candidate next date is always "day after last complete required day",
-    // clamped to today
-    const d = new Date(last_required_complete_date + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() + 1);
-    const candidate = d.toISOString().slice(0, 10);
-    suggested_date = candidate > todayISO ? todayISO : candidate;
-  } else if (last_log_date) {
-    // no fully complete required day yet
-    const candidate = last_log_date > todayISO ? todayISO : last_log_date;
-    suggested_date = candidate;
-  } else {
-    // no logs at all
-    suggested_date = todayISO;
-  }
-
-  return NextResponse.json({
-    today: todayISO,
+  const out: DateHints = {
+    today,
     last_log_date,
     last_required_complete_date,
     suggested_date,
     missing_required_days,
     required_days_completed,
     required_days_possible,
-  });
+  };
+
+  return NextResponse.json(out);
 }
