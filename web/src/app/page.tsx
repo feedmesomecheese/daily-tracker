@@ -3,7 +3,7 @@ import { useEffect, useState, useMemo } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import React from "react";
-
+import { evaluateCalculatedMetricsV2 } from "@/lib/calc";
 
 type ConfigRow = {
   metric_id: string;
@@ -136,7 +136,7 @@ export default function Home() {
 
   const hasRequired = metrics.some((m) => m.required);
 
-  //const [showHeadsUp, setShowHeadsUp] = useState(false);
+  const [showCalcDebug, setShowCalcDebug] = useState(false);
   const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -310,8 +310,7 @@ export default function Home() {
     setDirty(true);
   };
 
-  const [prevNumericContext, setPrevNumericContext] =
-  useState<Record<string, number | null>>({});
+  const [prevByN, setPrevByN] = useState<Record<number, Record<string, number | null>>>({});
 
   const metricsById = React.useMemo<Record<string, ConfigRow>>(() => {
     const m: Record<string, ConfigRow> = {};
@@ -326,6 +325,24 @@ export default function Home() {
     value: number | null;
     value_text?: string | null;
   };
+
+  function getMaxPrevDays(metrics: ConfigRow[]): number {
+    let maxN = 1;
+    const re = /prev\(\s*[a-zA-Z0-9_]+\s*(?:,\s*(\d+)\s*)?\)/g;
+
+    for (const m of metrics) {
+      if (!m.is_calculated || !m.calc_expr) continue;
+      let match: RegExpExecArray | null;
+      re.lastIndex = 0;
+      while ((match = re.exec(m.calc_expr)) !== null) {
+        const n = match[1] ? Number(match[1]) : 1;
+        if (Number.isFinite(n) && n > maxN) maxN = n;
+      }
+    }
+
+    return Math.max(1, Math.min(365, Math.floor(maxN))); // clamp to keep sane
+  }
+
 
   function buildEntries(): SaveEntry[] {
     const entries: SaveEntry[] = [];
@@ -346,6 +363,11 @@ export default function Home() {
         continue;
       }
 
+      // console.log("calc sample", {
+      //   date,
+      //   total_sleep: calculatedValues["total_sleep"],
+      //   fasting_window: calculatedValues["fasting_window"],
+      // });
 
       // Non-calculated metrics → use user input
       const raw = vals[m.metric_id];
@@ -490,13 +512,20 @@ export default function Home() {
         // checkbox stored as "on" or "" in vals
         return raw === "on" || raw === "1" ? 1 : 0;
       }
-      case "time":
+      case "time": {
+        // time = minutes (plain number)
+        const n = Number(raw);
+        return Number.isFinite(n) ? n : null;
+      }
+
       case "hhmm": {
-        // expect HH:MM → convert to minutes since midnight
+        // hhmm = clock time "HH:MM" -> minutes since midnight
         const match = raw.trim().match(/^(\d{1,2}):(\d{2})$/);
         if (!match) return null;
+
         const hours = Number(match[1]);
         const minutes = Number(match[2]);
+
         if (
           !Number.isFinite(hours) ||
           !Number.isFinite(minutes) ||
@@ -507,8 +536,10 @@ export default function Home() {
         ) {
           return null;
         }
+
         return hours * 60 + minutes;
       }
+
       default:
         return null;
     }
@@ -528,306 +559,345 @@ export default function Home() {
 
   function buildNumericContextFromLogRows(
     metrics: ConfigRow[],
-    rows: { metric_id: string; value: number | null }[]
+    rows: { metric_id: string; value: any }[]
   ): Record<string, number | null> {
     const map = new Map(rows.map((r) => [r.metric_id, r.value]));
-
     const ctx: Record<string, number | null> = {};
+    console.log("DEBUG buildNumericContextFromLogRows called", rows.length);
+
     for (const m of metrics) {
       const v = map.get(m.metric_id);
+
       if (v == null) {
         ctx[m.metric_id] = null;
         continue;
       }
+
       if (m.type === "checkbox") {
-        ctx[m.metric_id] = v >= 0.5 ? 1 : 0;
+        const num = typeof v === "number" ? v : Number(v);
+        ctx[m.metric_id] = Number.isFinite(num) && num >= 0.5 ? 1 : 0;
       } else {
-        // number/time/hhmm are already stored as numbers (minutes for hhmm)
-        ctx[m.metric_id] = Number.isFinite(v) ? v : null;
+        const num = typeof v === "number" ? v : Number(v);
+        ctx[m.metric_id] = Number.isFinite(num) ? num : null;
       }
     }
+    console.log(
+      "DEBUG lazy_time row",
+      rows.find(r => r.metric_id === "lazy_time")
+    );
+
     return ctx;
   }
+
 
   useEffect(() => {
     if (!authChecked) return;
     if (!date) return;
     if (metrics.length === 0) return;
 
+    const maxN = getMaxPrevDays(metrics);
+
+    // If no calculated metrics use prev(), keep empty
     const needsPrev = metrics.some(
       (m) => m.is_calculated && (m.calc_expr ?? "").includes("prev(")
     );
-
     if (!needsPrev) {
-      setPrevNumericContext({});
+      setPrevByN({});
       return;
     }
 
     (async () => {
       try {
-        const dt = new Date(date + "T00:00:00");
-        dt.setDate(dt.getDate() - 1);
-        const y = dt.toISOString().slice(0, 10);
+        // Build [start, end] = [date - maxN, date - 1]
+        const dtEnd = new Date(date + "T00:00:00");
+        dtEnd.setDate(dtEnd.getDate() - 1);
+        const end = dtEnd.toISOString().slice(0, 10);
+
+        const dtStart = new Date(date + "T00:00:00");
+        dtStart.setDate(dtStart.getDate() - maxN);
+        const start = dtStart.toISOString().slice(0, 10);
 
         const headers = await getAuthHeaders();
-        const res = await fetch(`/api/log?date=${encodeURIComponent(y)}`, { headers });
-        const rows = (await res.json()) as { metric_id: string; value: number | null }[];
+        const res = await fetch(
+          `/api/log?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+          { headers }
+        );
 
+        const rows = (await res.json()) as { date: string; metric_id: string; value: any }[];
         if (!res.ok) {
-          // don’t hard-fail calcs; just clear prev ctx
-          setPrevNumericContext({});
+          setPrevByN({});
           return;
         }
 
-        setPrevNumericContext(buildNumericContextFromLogRows(metrics, rows));
+        // Group rows by date
+        const rowsByDate = new Map<string, { metric_id: string; value: any }[]>();
+        for (const r of rows) {
+          if (!rowsByDate.has(r.date)) rowsByDate.set(r.date, []);
+          rowsByDate.get(r.date)!.push({ metric_id: r.metric_id, value: r.value });
+        }
+
+        // Build prevByN contexts for 1..maxN
+        const out: Record<number, Record<string, number | null>> = {};
+
+        for (let n = 1; n <= maxN; n++) {
+          const dt = new Date(date + "T00:00:00");
+          dt.setDate(dt.getDate() - n);
+          const d = dt.toISOString().slice(0, 10);
+
+          const dayRows = rowsByDate.get(d) ?? [];
+          out[n] = buildNumericContextFromLogRows(metrics, dayRows);
+        }
+
+        setPrevByN(out);
       } catch {
-        setPrevNumericContext({});
+        setPrevByN({});
       }
     })();
   }, [authChecked, date, metrics]);
 
-  type Token =
-    | { kind: "number"; value: number }
-    | { kind: "ident"; name: string }
-    | { kind: "op"; op: "+" | "-" | "*" | "/" }
-    | { kind: "paren"; value: "(" | ")" };
 
-  function tokenizeExpr(expr: string): Token[] | null {
-    const tokens: Token[] = [];
-    let i = 0;
+  // type Token =
+  //   | { kind: "number"; value: number }
+  //   | { kind: "ident"; name: string }
+  //   | { kind: "op"; op: "+" | "-" | "*" | "/" }
+  //   | { kind: "paren"; value: "(" | ")" };
 
-    while (i < expr.length) {
-      const ch = expr[i];
+  // function tokenizeExpr(expr: string): Token[] | null {
+  //   const tokens: Token[] = [];
+  //   let i = 0;
 
-      if (ch === " " || ch === "\t") {
-        i++;
-        continue;
-      }
+  //   while (i < expr.length) {
+  //     const ch = expr[i];
 
-      if (/[0-9.]/.test(ch)) {
-        let j = i;
-        while (j < expr.length && /[0-9.]/.test(expr[j])) j++;
-        const numStr = expr.slice(i, j);
-        const n = Number(numStr);
-        if (!Number.isFinite(n)) return null;
-        tokens.push({ kind: "number", value: n });
-        i = j;
-        continue;
-      }
+  //     if (ch === " " || ch === "\t") {
+  //       i++;
+  //       continue;
+  //     }
 
-      if (/[a-zA-Z_]/.test(ch)) {
-        let j = i;
-        while (j < expr.length && /[a-zA-Z0-9_]/.test(expr[j])) j++;
-        const name = expr.slice(i, j);
-        tokens.push({ kind: "ident", name });
-        i = j;
-        continue;
-      }
+  //     if (/[0-9.]/.test(ch)) {
+  //       let j = i;
+  //       while (j < expr.length && /[0-9.]/.test(expr[j])) j++;
+  //       const numStr = expr.slice(i, j);
+  //       const n = Number(numStr);
+  //       if (!Number.isFinite(n)) return null;
+  //       tokens.push({ kind: "number", value: n });
+  //       i = j;
+  //       continue;
+  //     }
 
-      if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
-        tokens.push({ kind: "op", op: ch });
-        i++;
-        continue;
-      }
+  //     if (/[a-zA-Z_]/.test(ch)) {
+  //       let j = i;
+  //       while (j < expr.length && /[a-zA-Z0-9_]/.test(expr[j])) j++;
+  //       const name = expr.slice(i, j);
+  //       tokens.push({ kind: "ident", name });
+  //       i = j;
+  //       continue;
+  //     }
 
-      if (ch === "(" || ch === ")") {
-        tokens.push({ kind: "paren", value: ch });
-        i++;
-        continue;
-      }
+  //     if (ch === "+" || ch === "-" || ch === "*" || ch === "/") {
+  //       tokens.push({ kind: "op", op: ch });
+  //       i++;
+  //       continue;
+  //     }
 
-      // unsupported character
-      return null;
-    }
+  //     if (ch === "(" || ch === ")") {
+  //       tokens.push({ kind: "paren", value: ch });
+  //       i++;
+  //       continue;
+  //     }
 
-    return tokens;
-  }
+  //     // unsupported character
+  //     return null;
+  //   }
 
-  function toRpn(tokens: Token[]): (Token & { kind: "number" | "ident" | "op" })[] | null {
-    const output: (Token & { kind: "number" | "ident" | "op" })[] = [];
-    const ops: ("+" | "-" | "*" | "/" | "(")[] = [];
+  //   return tokens;
+  // }
 
-    const precedence: Record<string, number> = { "+": 1, "-": 1, "*": 2, "/": 2 };
+  // function toRpn(tokens: Token[]): (Token & { kind: "number" | "ident" | "op" })[] | null {
+  //   const output: (Token & { kind: "number" | "ident" | "op" })[] = [];
+  //   const ops: ("+" | "-" | "*" | "/" | "(")[] = [];
 
-    for (const t of tokens) {
-      if (t.kind === "number" || t.kind === "ident") {
-        output.push(t as any);
-      } else if (t.kind === "op") {
-        while (ops.length > 0) {
-          const top = ops[ops.length - 1];
-          if (top === "(") break;
-          if (precedence[top] >= precedence[t.op]) {
-            output.push({ kind: "op", op: ops.pop()! } as any);
-          } else break;
-        }
-        ops.push(t.op);
-      } else if (t.kind === "paren" && t.value === "(") {
-        ops.push("(");
-      } else if (t.kind === "paren" && t.value === ")") {
-        let found = false;
-        while (ops.length > 0) {
-          const top = ops.pop()!;
-          if (top === "(") {
-            found = true;
-            break;
-          }
-          output.push({ kind: "op", op: top } as any);
-        }
-        if (!found) return null; // mismatched parens
-      }
-    }
+  //   const precedence: Record<string, number> = { "+": 1, "-": 1, "*": 2, "/": 2 };
 
-    while (ops.length > 0) {
-      const top = ops.pop()!;
-      if (top === "(") return null;
-      output.push({ kind: "op", op: top } as any);
-    }
+  //   for (const t of tokens) {
+  //     if (t.kind === "number" || t.kind === "ident") {
+  //       output.push(t as any);
+  //     } else if (t.kind === "op") {
+  //       while (ops.length > 0) {
+  //         const top = ops[ops.length - 1];
+  //         if (top === "(") break;
+  //         if (precedence[top] >= precedence[t.op]) {
+  //           output.push({ kind: "op", op: ops.pop()! } as any);
+  //         } else break;
+  //       }
+  //       ops.push(t.op);
+  //     } else if (t.kind === "paren" && t.value === "(") {
+  //       ops.push("(");
+  //     } else if (t.kind === "paren" && t.value === ")") {
+  //       let found = false;
+  //       while (ops.length > 0) {
+  //         const top = ops.pop()!;
+  //         if (top === "(") {
+  //           found = true;
+  //           break;
+  //         }
+  //         output.push({ kind: "op", op: top } as any);
+  //       }
+  //       if (!found) return null; // mismatched parens
+  //     }
+  //   }
 
-    return output;
-  }
+  //   while (ops.length > 0) {
+  //     const top = ops.pop()!;
+  //     if (top === "(") return null;
+  //     output.push({ kind: "op", op: top } as any);
+  //   }
 
-  function evalRpn(
-    rpn: (Token & { kind: "number" | "ident" | "op" })[],
-    ctx: NumericContext
-  ): number | null {
-    const stack: number[] = [];
+  //   return output;
+  // }
 
-    for (const t of rpn) {
-      if (t.kind === "number") {
-        stack.push(t.value);
-      } else if (t.kind === "ident") {
-        const metric = metricsById[t.name]; // ConfigRow | undefined
-        const v = ctx[t.name];
+  // function evalRpn(
+  //   rpn: (Token & { kind: "number" | "ident" | "op" })[],
+  //   ctx: NumericContext
+  // ): number | null {
+  //   const stack: number[] = [];
 
-        // Treat missing checkbox as 0 for arithmetic
-        if (metric?.type === "checkbox") {
-          stack.push(v ?? 0);
-          continue;
-        }
+  //   for (const t of rpn) {
+  //     if (t.kind === "number") {
+  //       stack.push(t.value);
+  //     } else if (t.kind === "ident") {
+  //       const metric = metricsById[t.name]; // ConfigRow | undefined
+  //       const v = ctx[t.name];
 
-        // For all other types, missing propagates to null
-        if (v == null) return null;
-        stack.push(v);
-      } else if (t.kind === "op") {
-        if (stack.length < 2) return null;
-        const b = stack.pop()!;
-        const a = stack.pop()!;
-        if (a == null || b == null) return null;
-        let res: number;
-        switch (t.op) {
-          case "+":
-            res = a + b;
-            break;
-          case "-":
-            res = a - b;
-            break;
-          case "*":
-            res = a * b;
-            break;
-          case "/":
-            if (b === 0) return null;
-            res = a / b;
-            break;
-          default:
-            return null;
-        }
-        if (!Number.isFinite(res)) return null;
-        stack.push(res);
-      }
-    }
+  //       // Treat missing checkbox as 0 for arithmetic
+  //       if (metric?.type === "checkbox") {
+  //         stack.push(v ?? 0);
+  //         continue;
+  //       }
+
+  //       // For all other types, missing propagates to null
+  //       if (v == null) return null;
+  //       stack.push(v);
+  //     } else if (t.kind === "op") {
+  //       if (stack.length < 2) return null;
+  //       const b = stack.pop()!;
+  //       const a = stack.pop()!;
+  //       if (a == null || b == null) return null;
+  //       let res: number;
+  //       switch (t.op) {
+  //         case "+":
+  //           res = a + b;
+  //           break;
+  //         case "-":
+  //           res = a - b;
+  //           break;
+  //         case "*":
+  //           res = a * b;
+  //           break;
+  //         case "/":
+  //           if (b === 0) return null;
+  //           res = a / b;
+  //           break;
+  //         default:
+  //           return null;
+  //       }
+  //       if (!Number.isFinite(res)) return null;
+  //       stack.push(res);
+  //     }
+  //   }
 
 
-    if (stack.length !== 1) return null;
-    return stack[0];
-  }
+  //   if (stack.length !== 1) return null;
+  //   return stack[0];
+  // }
 
-  function evalCalcExpr(
-    expr: string,
-    ctx: Record<string, number | null>,
-    metricsById: Record<string, ConfigRow>
-  ): number | null{
-    const trimmed = expr.trim();
-    if (!trimmed) return null;
+  // function evalCalcExpr(
+  //   expr: string,
+  //   ctx: Record<string, number | null>,
+  //   metricsById: Record<string, ConfigRow>
+  // ): number | null{
+  //   const trimmed = expr.trim();
+  //   if (!trimmed) return null;
 
-    const tokens = tokenizeExpr(trimmed);
-    if (!tokens) return null;
+  //   const tokens = tokenizeExpr(trimmed);
+  //   if (!tokens) return null;
 
-    const rpn = toRpn(tokens);
-    if (!rpn) return null;
+  //   const rpn = toRpn(tokens);
+  //   if (!rpn) return null;
 
-    return evalRpn(rpn, ctx);
-  }
+  //   return evalRpn(rpn, ctx);
+  // }
 
-  function splitTopLevelArgs(s: string): string[] {
-    // splits "a, b, prev(x)" at commas, respecting parentheses depth
-    const out: string[] = [];
-    let depth = 0;
-    let start = 0;
-    for (let i = 0; i < s.length; i++) {
-      const ch = s[i];
-      if (ch === "(") depth++;
-      else if (ch === ")") depth--;
-      else if (ch === "," && depth === 0) {
-        out.push(s.slice(start, i).trim());
-        start = i + 1;
-      }
-    }
-    out.push(s.slice(start).trim());
-    return out.filter(Boolean);
-  }
+  // function splitTopLevelArgs(s: string): string[] {
+  //   // splits "a, b, prev(x)" at commas, respecting parentheses depth
+  //   const out: string[] = [];
+  //   let depth = 0;
+  //   let start = 0;
+  //   for (let i = 0; i < s.length; i++) {
+  //     const ch = s[i];
+  //     if (ch === "(") depth++;
+  //     else if (ch === ")") depth--;
+  //     else if (ch === "," && depth === 0) {
+  //       out.push(s.slice(start, i).trim());
+  //       start = i + 1;
+  //     }
+  //   }
+  //   out.push(s.slice(start).trim());
+  //   return out.filter(Boolean);
+  // }
 
-  function diffMinutes(a: number, b: number): number {
-    // wraparound: minutes from b to a
-    const d = a - b;
-    return d >= 0 ? d : d + 1440;
-  }
+  // function diffMinutes(a: number, b: number): number {
+  //   // wraparound: minutes from b to a
+  //   const d = a - b;
+  //   return d >= 0 ? d : d + 1440;
+  // }
 
-  function evalCalcExprV1(
-    expr: string,
-    ctxToday: Record<string, number | null>,
-    ctxPrev: Record<string, number | null>
-  ): number | null {
-    const s = expr.trim();
-    if (!s) return null;
+  // function evalCalcExprV1(
+  //   expr: string,
+  //   ctxToday: Record<string, number | null>,
+  //   ctxPrev: Record<string, number | null>
+  // ): number | null {
+  //   const s = expr.trim();
+  //   if (!s) return null;
 
-    // prev(x)
-    const prevMatch = /^prev\(\s*([a-zA-Z0-9_]+)\s*\)$/.exec(s);
-    if (prevMatch) {
-      const id = prevMatch[1];
-      return ctxPrev[id] ?? null;
-    }
+  //   // prev(x)
+  //   const prevMatch = /^prev\(\s*([a-zA-Z0-9_]+)\s*\)$/.exec(s);
+  //   if (prevMatch) {
+  //     const id = prevMatch[1];
+  //     return ctxPrev[id] ?? null;
+  //   }
 
-    // or(a,b,c...)
-    const orMatch = /^or\((.*)\)$/.exec(s);
-    if (orMatch) {
-      const args = splitTopLevelArgs(orMatch[1]);
-      for (const a of args) {
-        const v = evalCalcExprV1(a, ctxToday, ctxPrev);
-        // treat null as 0 for OR (your preference)
-        if ((v ?? 0) !== 0) return 1;
-      }
-      return 0;
-    }
+  //   // or(a,b,c...)
+  //   const orMatch = /^or\((.*)\)$/.exec(s);
+  //   if (orMatch) {
+  //     const args = splitTopLevelArgs(orMatch[1]);
+  //     for (const a of args) {
+  //       const v = evalCalcExprV1(a, ctxToday, ctxPrev);
+  //       // treat null as 0 for OR (your preference)
+  //       if ((v ?? 0) !== 0) return 1;
+  //     }
+  //     return 0;
+  //   }
 
-    // diff(a,b)
-    const diffMatch = /^diff\((.*)\)$/.exec(s);
-    if (diffMatch) {
-      const args = splitTopLevelArgs(diffMatch[1]);
-      if (args.length !== 2) return null;
-      const a = evalCalcExprV1(args[0], ctxToday, ctxPrev);
-      const b = evalCalcExprV1(args[1], ctxToday, ctxPrev);
-      if (a == null || b == null) return null;
-      return diffMinutes(a, b);
-    }
+  //   // diff(a,b)
+  //   const diffMatch = /^diff\((.*)\)$/.exec(s);
+  //   if (diffMatch) {
+  //     const args = splitTopLevelArgs(diffMatch[1]);
+  //     if (args.length !== 2) return null;
+  //     const a = evalCalcExprV1(args[0], ctxToday, ctxPrev);
+  //     const b = evalCalcExprV1(args[1], ctxToday, ctxPrev);
+  //     if (a == null || b == null) return null;
+  //     return diffMinutes(a, b);
+  //   }
 
-    // identifier
-    if (/^[a-zA-Z0-9_]+$/.test(s)) {
-      return ctxToday[s] ?? null;
-    }
+  //   // identifier
+  //   if (/^[a-zA-Z0-9_]+$/.test(s)) {
+  //     return ctxToday[s] ?? null;
+  //   }
 
-    // fallback: arithmetic via your existing RPN path
-    return evalCalcExpr(s, ctxToday, metricsById);
-  }
+  //   // fallback: arithmetic via your existing RPN path
+  //   return evalCalcExpr(s, ctxToday, metricsById);
+  // }
 
 
   const numericContext = React.useMemo(
@@ -835,17 +905,27 @@ export default function Home() {
     [metrics, vals]
   );
 
-  const calculatedValues = React.useMemo<Record<string, number | null>>(() => {
-    const result: Record<string, number | null> = {};
-    for (const m of metrics) {
-      if (!m.is_calculated || !m.calc_expr) {
-        result[m.metric_id] = null;
-        continue;
-      }
-      result[m.metric_id] = evalCalcExprV1(m.calc_expr, numericContext, prevNumericContext);
-    }
-    return result;
-  }, [metrics, numericContext, prevNumericContext]);
+  const { values: calculatedValues, errors: calcErrors, missing: calcMissing } = React.useMemo(() => {
+    return evaluateCalculatedMetricsV2(
+      metrics.map((m) => ({
+        metric_id: m.metric_id,
+        type: m.type,
+        is_calculated: m.is_calculated,
+        calc_expr: m.calc_expr,
+      })),
+      numericContext,
+      prevByN
+    );
+  }, [metrics, numericContext, prevByN]);
+
+
+  // Optional: debugging (remove later)
+  useEffect(() => {
+    const anyErr = Object.entries(calcErrors).filter(([, v]) => v);
+    if (anyErr.length) console.warn("Calc errors:", anyErr);
+  }, [calcErrors]);
+
+
 
   function parsePresets(metric: ConfigRow): number[] {
     const raw = (metric as any).preset_values_csv as string | null | undefined;
@@ -1024,7 +1104,7 @@ export default function Home() {
         alert(`Save failed (${res.status}). Check console/network for details.`);
         return;
       }
-      
+
       await loadDayValues(date);
 
       await loadSummary();
@@ -1195,6 +1275,15 @@ export default function Home() {
           </div>
         )}
 
+        <label style={{ display: "inline-flex", gap: 8, alignItems: "center", marginLeft: 12 }}>
+          <input
+            type="checkbox"
+            checked={showCalcDebug}
+            onChange={(e) => setShowCalcDebug(e.target.checked)}
+          />
+          <span>Show calc debug</span>
+        </label>
+
       </div>
     {/*
       {dateHints &&
@@ -1314,37 +1403,79 @@ export default function Home() {
 
                           {isCalculated ? (
                             m.type === "checkbox" ? (
-                              <>
-                                <input
-                                  type="checkbox"
-                                  checked={(calcValue ?? 0) >= 0.5}
-                                  disabled
-                                  style={{
-                                    opacity: 0.6,
-                                    cursor: "not-allowed",
-                                  }}
-                                />
-                                {/* optional: show a small calc tag */}
-                                <span style={{ marginLeft: 6, fontSize: "0.75rem", opacity: 0.7 }}>
-                                  (calculated)
-                                </span>
-                              </>
+                              <div style={{ marginTop: 2 }}>
+                                <div>
+                                  <input
+                                    type="checkbox"
+                                    checked={(calcValue ?? 0) >= 0.5}
+                                    disabled
+                                    style={{ opacity: 0.6, cursor: "not-allowed" }}
+                                  />
+                                  <span style={{ marginLeft: 6, fontSize: "0.75rem", opacity: 0.7 }}>
+                                    (calculated)
+                                  </span>
+                                </div>
+
+                                {showCalcDebug && (
+                                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, width: 280 }}>
+                                    <div style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                                      {m.calc_expr || "(no expr)"}
+                                    </div>
+                                    {calcErrors?.[m.metric_id] ? (
+                                      <div style={{ marginTop: 2 }}>⚠️ {calcErrors[m.metric_id]}</div>
+                                    ) : (
+                                      <div style={{ marginTop: 2 }}>
+                                        {calcValue == null ? "Value is null" : "Value computed"}
+                                        {calcMissing?.[m.metric_id]?.length ? (
+                                          <div style={{ marginTop: 2 }}>
+                                            Missing: {calcMissing[m.metric_id].join(", ")}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             ) : (
-                              <div
-                                style={{
-                                  marginTop: 2,
-                                  border: "1px solid #ddd",
-                                  background: "#f5f5f5",
-                                  minHeight: 22,
-                                  width: 280,
-                                  padding: "4px 6px",
-                                  display: "flex",
-                                  alignItems: "center",
-                                }}
-                              >
-                                {calcDisplay}
+
+                              <div>
+                                <div
+                                  style={{
+                                    marginTop: 2,
+                                    border: "1px solid #ddd",
+                                    background: "#f5f5f5",
+                                    minHeight: 22,
+                                    width: 280,
+                                    padding: "4px 6px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  {calcDisplay}
+                                </div>
+
+                                {showCalcDebug && (
+                                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, width: 280 }}>
+                                    <div style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                                      {m.calc_expr || "(no expr)"}
+                                    </div>
+                                    {calcErrors?.[m.metric_id] ? (
+                                      <div style={{ marginTop: 2 }}>⚠️ {calcErrors[m.metric_id]}</div>
+                                    ) : (
+                                      <div style={{ marginTop: 2 }}>
+                                        {calcValue == null ? "Value is null" : "Value computed"}
+                                      </div>
+                                    )}
+                                    {calcMissing?.[m.metric_id]?.length ? (
+                                      <div style={{ marginTop: 2 }}>
+                                        Missing: {calcMissing[m.metric_id].join(", ")}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                )}
                               </div>
                             )
+
                           ) : m.type === "checkbox" ? (
                             <>
                               <input
@@ -1382,6 +1513,7 @@ export default function Home() {
                                 }}
                               />
                               {err && <div style={errorBoxStyle}>{err}</div>}
+
                             </div>
                           ) : (
                             <div>
@@ -1407,7 +1539,7 @@ export default function Home() {
                                 }}
                                 style={{ ...baseInputStyle, ...(err ? errorInputStyle : {}) }}
                               />
-
+                              
                               {parsePresets(m).length > 0 && (
                                 <div
                                   style={{

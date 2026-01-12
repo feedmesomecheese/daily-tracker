@@ -3,6 +3,63 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import React from "react";
 
+// Info for the formula help tool
+const FORMULA_HELP = [
+  {
+    name: "prev(id, n?)",
+    sig: "prev(metric_id) | prev(metric_id, n)",
+    desc: "Previous-day (or n-days-back) value. Returns null if missing.",
+    ex: ["prev(sleep_time)", "prev(daily_score, 7)"],
+  },
+  {
+    name: "coalesce(a, b, ...)",
+    sig: "coalesce(a, b, c...)",
+    desc: "Returns the first non-null value. Great for fallbacks when you miss logging.",
+    ex: [
+      "coalesce(lazy_time, 0)",
+      "coalesce(prev(daily_score, 7), prev(daily_score, 14), 0)",
+      "coalesce(prev(sleep_time), sleep_time)",
+    ],
+  },
+  {
+    name: "diff(a, b)",
+    sig: "diff(a, b) -> minutes",
+    desc: "Clock-time subtraction with wraparound (non-negative). Useful for sleep/fasting windows.",
+    ex: ["diff(wake_up, prev(sleep_time))", "diff(eat_finish, eat_start)"],
+  },
+  {
+    name: "if(cond, a, b)",
+    sig: "if(cond, a, b)",
+    desc: "Conditional. cond is truthy if non-zero. If cond is null, treated as false (b).",
+    ex: ["if(gt(daily_score, 6), 1, 0)"],
+  },
+  {
+    name: "and(...)", sig: "and(a,b,...)", desc: "All must be true (non-zero).", ex: ["and(exercise, protein_goal)"]
+  },
+  {
+    name: "or(...)", sig: "or(a,b,...)", desc: "Any true (non-zero) => 1.", ex: ["or(lift, hiit, tennis)"]
+  },
+  {
+    name: "not(x)", sig: "not(x)", desc: "Invert boolean 1/0.", ex: ["not(sick)"]
+  },
+  {
+    name: "gt/gte/lt/lte/eq/ne",
+    sig: "gt(a,b) gte(a,b) lt(a,b) lte(a,b) eq(a,b) ne(a,b)",
+    desc: "Comparisons return 1/0. Return null if any input is null.",
+    ex: ["gte(steps, 8000)", "lt(alcohol, 1)"],
+  },
+  {
+    name: "abs(x)", sig: "abs(x)", desc: "Absolute value.", ex: ["abs(lazy_time - 10)"]
+  },
+  {
+    name: "Arithmetic",
+    sig: "+  -  *  /  ( )",
+    desc: "Standard arithmetic. If any operand is null, result becomes null.",
+    ex: ["daily_score + 1", "(protein - 150) / 10"],
+  },
+];
+
+
 type MetricType = "checkbox" | "number" | "time" | "hhmm" | "text";
 
 type Metric = {
@@ -141,6 +198,76 @@ function normalizeDraft(d: MetricDraft): {
     calc_expr: d.calc_expr.trim() || null,
   };
 }
+
+// Formul help tool info
+
+
+function FormulaHelpPanel({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        right: 16,
+        bottom: 16,
+        width: 420,
+        maxHeight: "70vh",
+        overflow: "auto",
+        border: "1px solid #ddd",
+        background: "white",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+        borderRadius: 10,
+        padding: 12,
+        zIndex: 9999,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
+        <div style={{ fontWeight: 700 }}>Formula help</div>
+        <button onClick={onClose}>Close</button>
+      </div>
+
+      <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85 }}>
+        Notes:
+        <ul style={{ marginTop: 6 }}>
+          <li><b>time</b> and <b>hhmm</b> are both stored as minutes in the DB.</li>
+          <li>Most functions return <b>null</b> if any required input is null.</li>
+          <li>Use <code>prev(x)</code> / <code>prev(x, n)</code> for lookbacks.</li>
+        </ul>
+      </div>
+
+      <hr style={{ margin: "10px 0" }} />
+
+      {FORMULA_HELP.map((f) => (
+        <details key={f.name} style={{ marginBottom: 10 }}>
+          <summary style={{ cursor: "pointer" }}>
+            <b>{f.name}</b> <span style={{ opacity: 0.7 }}>— {f.sig}</span>
+          </summary>
+          <div style={{ marginTop: 6, fontSize: 13 }}>
+            <div style={{ marginBottom: 6 }}>{f.desc}</div>
+            {f.ex?.length ? (
+              <div>
+                Examples:
+                <ul style={{ marginTop: 4 }}>
+                  {f.ex.map((e) => (
+                    <li key={e}><code>{e}</code></li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
 
 
 // hooks
@@ -369,7 +496,9 @@ export default function MetricsPage() {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
-  
+  // Formula help tool
+  const [showFormulaHelp, setShowFormulaHelp] = useState(false);
+
 
 
 
@@ -755,6 +884,10 @@ export default function MetricsPage() {
         >
           {showAdvanced ? "Hide advanced fields" : "Show advanced fields"}
         </button>
+        <button onClick={() => setShowFormulaHelp(true)} style={{ marginLeft: 8 }}>
+          Formula help
+        </button>
+
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1393,6 +1526,9 @@ export default function MetricsPage() {
           })}
         </tbody>
       </table>
+      <FormulaHelpPanel open={showFormulaHelp} onClose={() => setShowFormulaHelp(false)} />
+
     </div>
+    
   );
 }

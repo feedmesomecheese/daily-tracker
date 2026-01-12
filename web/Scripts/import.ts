@@ -29,6 +29,25 @@ function hhmmToMinutes(v: any): number | null {
   return h * 60 + mm;
 }
 
+// Accept either "HH:MM" OR integer minutes (0..1439)
+function parseHHMMorMinutes(v: any): number | null {
+  const s = String(v ?? "").trim();
+  if (!s) return null;
+
+  // HH:MM text
+  if (s.includes(":")) {
+    return hhmmToMinutes(s);
+  }
+
+  // Minutes
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  if (!Number.isInteger(n)) return null;
+  if (n < 0 || n > 1439) return null;
+  return n;
+}
+
+
 function toNumberOrNull(v: any): number | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
@@ -199,11 +218,12 @@ Examples:
         continue;
       }
 
-      if (t === "hhmm") {
-        const mins = hhmmToMinutes(rawVal);
-        if (mins != null) inserts.push({ owner_id: ownerId, date, metric_id: mid, value: mins });
-        continue;
-      }
+        if (t === "hhmm") {
+            const mins = parseHHMMorMinutes(rawVal);
+            if (mins != null) inserts.push({ owner_id: ownerId, date, metric_id: mid, value: mins });
+            continue;
+        }
+
 
       if (t === "text") {
         const s = String(rawVal ?? "");
