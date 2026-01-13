@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { getLocalDateString } from "@/lib/dateUtils";
 
 type SummaryRow = {
   metric_id: string;
@@ -22,19 +23,13 @@ type StatsResponse = {
   checkbox_streaks: CheckboxStreakRow[];
 };
 
-function localTodayISO(): string {
-  const now = new Date();
-  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 10); // YYYY-MM-DD, local
-}
-
 export default function DashboardPage() {
   const [summary, setSummary] = useState<SummaryRow[] | null>(null);
   const [streaks, setStreaks] = useState<CheckboxStreakRow[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const today = localTodayISO();
+  const today = getLocalDateString();
 
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -48,7 +43,7 @@ export default function DashboardPage() {
         setError(null);
 
         const headers = await getAuthHeaders();
-        const today = localTodayISO();
+        const today = getLocalDateString();
 
         const [sumRes, statsRes] = await Promise.all([
           fetch(`/api/summary_7d?date=${encodeURIComponent(today)}`, { headers }),

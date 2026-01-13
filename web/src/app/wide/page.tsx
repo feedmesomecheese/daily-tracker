@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 
 
 type LogRow = { date: string; metric_id: string; value: number | null };
@@ -50,9 +53,9 @@ export default function WideViewPage() {
   }, []);
 
 
-  // Derive distinct dates and metric ids
+  // Derive distinct dates (most recent first) and metric ids
   const dates = useMemo(
-    () => Array.from(new Set(logRows.map(r => r.date))).sort(),
+    () => Array.from(new Set(logRows.map(r => r.date))).sort().reverse(),
     [logRows]
   );
   const metricIds = useMemo(
@@ -108,17 +111,21 @@ export default function WideViewPage() {
   return (
     <main className="p-6 max-w-full mx-auto space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">Wide View (All Metrics)</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">Wide View</h1>
+          <Badge variant="secondary">{dates.length} days</Badge>
+          <Badge variant="outline">{metricIds.length} metrics</Badge>
+        </div>
 
-        <button
-          className="px-3 py-1.5 text-sm border rounded hover:bg-gray-50"
+        <Button
+          variant="outline"
+          size="sm"
           onClick={async () => {
             try {
               const headers = await getAuthHeaders();
 
               const res = await fetch("/api/export/wide.csv", { headers });
               if (!res.ok) {
-                // try to read JSON error
                 let msg = `Export failed (${res.status})`;
                 try {
                   const j = await res.json();
@@ -144,42 +151,52 @@ export default function WideViewPage() {
           }}
         >
           Download CSV
-        </button>
+        </Button>
+      </div>
 
-      </div>
-      <div className="text-xs text-gray-600">
-        Scroll horizontally to see all metrics. This is a read-only inspection view for now.
-      </div>
-      <div className="overflow-auto border rounded">
-        <table className="text-xs border-collapse min-w-full">
-          <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="sticky left-0 bg-gray-50 p-1 text-left">date</th>
-              {metricIds.map(mid => (
-                <th key={mid} className="p-1 text-left border-l">
-                  {nameMap.get(mid) ?? mid}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {dates.map(d => (
-              <tr key={d} className="border-b">
-                <td className="sticky left-0 bg-white p-1 border-r font-medium">{d}</td>
-                {metricIds.map(mid => {
-                  const key = `${d}|${mid}`;
-                  const v = cellMap.get(key);
-                  return (
-                    <td key={mid} className="p-1 border-l text-right">
-                      {v == null ? "" : v}
+      <Card>
+        <CardHeader className="py-3 px-4 border-b">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Scroll horizontally to see all metrics. Most recent dates shown first.
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-auto max-h-[70vh]">
+            <table className="text-xs border-collapse min-w-full">
+              <thead className="sticky top-0 z-10">
+                <tr className="bg-gray-100 border-b">
+                  <th className="sticky left-0 z-20 bg-gray-100 p-2 text-left font-semibold border-r shadow-sm">
+                    Date
+                  </th>
+                  {metricIds.map(mid => (
+                    <th key={mid} className="p-2 text-left font-semibold border-l whitespace-nowrap">
+                      {nameMap.get(mid) ?? mid}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dates.map((d, idx) => (
+                  <tr key={d} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="sticky left-0 z-10 bg-inherit p-2 border-r font-medium shadow-sm">
+                      {d}
                     </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                    {metricIds.map(mid => {
+                      const key = `${d}|${mid}`;
+                      const v = cellMap.get(key);
+                      return (
+                        <td key={mid} className="p-2 border-l text-right tabular-nums">
+                          {v == null ? <span className="text-gray-300">—</span> : v}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </main>
   );
 }

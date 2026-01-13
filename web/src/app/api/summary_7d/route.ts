@@ -1,6 +1,7 @@
 // web/src/app/api/summary_7d/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { getLocalDateString, addDays } from "@/lib/dateUtils";
 
 type SummaryRow = {
   metric_id: string;
@@ -10,16 +11,6 @@ type SummaryRow = {
   count_true_7d: number | null;
   avg_7d: number | null;
 };
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(iso: string, delta: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
 
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
@@ -37,7 +28,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const dateParam = url.searchParams.get("date");
 
-  const today = todayISO();
+  const today = getLocalDateString();
   const endDate = dateParam && dateParam < today ? dateParam : today;
   const startDate = addDays(endDate, -6); // 7-day window
 

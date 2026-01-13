@@ -82,6 +82,8 @@ type Metric = {
   group_order: number | null;
   is_calculated: boolean;
   calc_expr: string | null;
+  parent_metric_id: string | null;
+  preset_values_csv: string | null;
 };
 
 type MetricDraft = {
@@ -100,10 +102,12 @@ type MetricDraft = {
   start_date: string;
   required: boolean;
   required_since: string;
-  group: string;              // empty string means “no group”
+  group: string;              // empty string means "no group"
   metric_order: string;       // text input
   is_calculated: boolean;
   calc_expr: string;
+  parent_metric_id: string;   // empty string means no parent
+  preset_values_csv: string;  // comma-separated preset values
 };
 
 type NewMetric = MetricDraft;
@@ -121,12 +125,14 @@ const emptyDraft: MetricDraft = {
   max_value: "",
   disallowed_values: "",
   start_date: "",
-  required: false, 
+  required: false,
   required_since: "",
   group: "",
   metric_order: "",
   is_calculated: false,
   calc_expr: "",
+  parent_metric_id: "",
+  preset_values_csv: "",
 };
 
 function slugFromName(name: string): string {
@@ -154,9 +160,11 @@ function normalizeDraft(d: MetricDraft): {
   required: boolean;
   required_since: string | null;
   group: string | null;
-  metric_order: number;   // ✅ keep as number
+  metric_order: number;
   is_calculated: boolean;
   calc_expr: string | null;
+  parent_metric_id: string | null;
+  preset_values_csv: string | null;
 } {
   const toNum = (s: string): number | null => {
     if (!s.trim()) return null;
@@ -191,11 +199,11 @@ function normalizeDraft(d: MetricDraft): {
       ? d.required_since.trim() || new Date().toISOString().slice(0, 10)
       : null,
     group: d.group.trim() || null,
-
-    // ✅ always a number
     metric_order: metricOrder,
     is_calculated: d.is_calculated,
     calc_expr: d.calc_expr.trim() || null,
+    parent_metric_id: d.parent_metric_id.trim() || null,
+    preset_values_csv: d.preset_values_csv.trim() || null,
   };
 }
 
@@ -445,6 +453,8 @@ export default function MetricsPage() {
         group_order: typeof r.group_order === "number" ? r.group_order : null,
         is_calculated: !!r.is_calculated,
         calc_expr: (r.calc_expr ?? null) as string | null,
+        parent_metric_id: (r.parent_metric_id ?? null) as string | null,
+        preset_values_csv: (r.preset_values_csv ?? null) as string | null,
       }));
 
       setMetrics(sortMetrics(normalized));
@@ -484,6 +494,8 @@ export default function MetricsPage() {
         m.metric_order != null ? String(m.metric_order) : "",
       is_calculated: m.is_calculated,
       calc_expr: m.calc_expr ?? "",
+      parent_metric_id: m.parent_metric_id ?? "",
+      preset_values_csv: m.preset_values_csv ?? "",
     });
   }
 
@@ -747,6 +759,8 @@ export default function MetricsPage() {
         source.metric_order != null ? String(source.metric_order) : "",
       is_calculated: !!source.is_calculated,
       calc_expr: source.calc_expr ?? "",
+      parent_metric_id: source.parent_metric_id ?? "",
+      preset_values_csv: source.preset_values_csv ?? "",
     };
 
     setNewMetric(draftCopy);
@@ -1007,6 +1021,8 @@ export default function MetricsPage() {
                 <th title="Include this metric in moving-average charts.">Show MA</th>
                 <th title="Window sizes for MA charts, e.g., 7,30,90">MA Periods</th>
                 <th title="Metric becomes visible starting from this date.">Start Date</th>
+                <th title="Parent metric - this metric only shows when parent has a value.">Parent</th>
+                <th title="Comma-separated preset values (e.g., 5,6,8 or text values)">Presets</th>
               </>
             )}
             <th className="p-2">Actions</th>
@@ -1206,6 +1222,30 @@ export default function MetricsPage() {
                       onChange={(e) =>
                         updateNew("start_date", e.target.value)
                       }
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={newMetric.parent_metric_id}
+                      onChange={(e) => updateNew("parent_metric_id", e.target.value)}
+                      style={{ width: 120 }}
+                    >
+                      <option value="">(none)</option>
+                      {metrics
+                        .filter((pm) => pm.metric_id !== newMetric.metric_id)
+                        .map((pm) => (
+                          <option key={pm.metric_id} value={pm.metric_id}>
+                            {pm.metric_name}
+                          </option>
+                        ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      value={newMetric.preset_values_csv}
+                      onChange={(e) => updateNew("preset_values_csv", e.target.value)}
+                      placeholder="5,6,8 or val1,val2"
+                      style={{ width: 100 }}
                     />
                   </td>
                 </>
@@ -1472,6 +1512,46 @@ export default function MetricsPage() {
                         />
                       ) : (
                         m.start_date || ""
+                      )}
+                    </td>
+
+                    {/* Parent metric */}
+                    <td>
+                      {isEditing && d ? (
+                        <select
+                          value={d.parent_metric_id}
+                          onChange={(e) =>
+                            updateExisting("parent_metric_id", e.target.value)
+                          }
+                          style={{ width: 120 }}
+                        >
+                          <option value="">(none)</option>
+                          {metrics
+                            .filter((pm) => pm.metric_id !== m.metric_id)
+                            .map((pm) => (
+                              <option key={pm.metric_id} value={pm.metric_id}>
+                                {pm.metric_name}
+                              </option>
+                            ))}
+                        </select>
+                      ) : (
+                        m.parent_metric_id || ""
+                      )}
+                    </td>
+
+                    {/* Presets */}
+                    <td>
+                      {isEditing && d ? (
+                        <input
+                          value={d.preset_values_csv}
+                          onChange={(e) =>
+                            updateExisting("preset_values_csv", e.target.value)
+                          }
+                          placeholder="5,6,8 or val1,val2"
+                          style={{ width: 100 }}
+                        />
+                      ) : (
+                        m.preset_values_csv || ""
                       )}
                     </td>
                   </>

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { getLocalDateString, addDays } from "@/lib/dateUtils";
 
 type CheckboxStreakRow = {
   metric_id: string;
@@ -10,16 +11,6 @@ type CheckboxStreakRow = {
 type StatsResponse = {
   checkbox_streaks: CheckboxStreakRow[];
 };
-
-function addDays(iso: string, delta: number): string {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
@@ -80,7 +71,7 @@ export async function GET(req: Request) {
     byMetric.get(row.metric_id)!.push(row);
   }
 
-  const today = todayISO();
+  const today = getLocalDateString();
   const results: CheckboxStreakRow[] = [];
 
   for (const m of checkboxMetrics) {

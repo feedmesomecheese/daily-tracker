@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { supabaseServerFromRequest } from "@/lib/supabaseServer"; // adjust if your path differs
+import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { getLocalDateString, addDays, compareDates } from "@/lib/dateUtils";
 
 type DateHints = {
   today: string;
@@ -10,22 +11,6 @@ type DateHints = {
   required_days_completed: number;
   required_days_possible: number;
 };
-
-function todayISO(): string {
-  // timezone-agnostic YYYY-MM-DD (UTC)
-  return new Date().toISOString().slice(0, 10);
-}
-
-function addDays(iso: string, deltaDays: number): string {
-  const d = new Date(`${iso}T00:00:00.000Z`);
-  d.setUTCDate(d.getUTCDate() + deltaDays);
-  return d.toISOString().slice(0, 10);
-}
-
-function compareISO(a: string, b: string): number {
-  // ISO YYYY-MM-DD lexical compare works
-  return a < b ? -1 : a > b ? 1 : 0;
-}
 
 function isNonEmptyText(v: any): boolean {
   if (v == null) return false;
@@ -45,7 +30,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const today = todayISO();
+  const today = getLocalDateString();
 
   // 1) last_log_date (fast + uncapped)
   const { data: lastLogRow, error: lastLogErr } = await supabase
@@ -101,7 +86,7 @@ export async function GET(req: Request) {
   let minRequiredSince: string | null = null;
   for (const m of requiredList) {
     if (m.required_since) {
-      if (!minRequiredSince || compareISO(m.required_since, minRequiredSince) < 0) {
+      if (!minRequiredSince || compareDates(m.required_since, minRequiredSince) < 0) {
         minRequiredSince = m.required_since;
       }
     }
@@ -112,7 +97,7 @@ export async function GET(req: Request) {
   }
 
   // Guard: if minRequiredSince is after today, clamp
-  if (compareISO(minRequiredSince, today) > 0) {
+  if (compareDates(minRequiredSince, today) > 0) {
     minRequiredSince = today;
   }
 
@@ -184,7 +169,7 @@ export async function GET(req: Request) {
   // 6) Iterate all days from minRequiredSince..today and compute completeness day-by-day
   // This is O(days * requiredMetrics) which is fine for a few thousand days.
   const possibleDays: string[] = [];
-  for (let d = minRequiredSince; compareISO(d, today) <= 0; d = addDays(d, 1)) {
+  for (let d = minRequiredSince; compareDates(d, today) <= 0; d = addDays(d, 1)) {
     possibleDays.push(d);
   }
 
@@ -199,7 +184,7 @@ export async function GET(req: Request) {
     const needed: string[] = [];
     for (const m of requiredList) {
       const rs = m.required_since;
-      if (!rs || compareISO(rs, d) <= 0) needed.push(m.metric_id);
+      if (!rs || compareDates(rs, d) <= 0) needed.push(m.metric_id);
     }
 
     const present = presentByDate.get(d) ?? new Set<string>();

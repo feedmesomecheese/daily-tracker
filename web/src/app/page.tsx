@@ -1,9 +1,16 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import React from "react";
 import { evaluateCalculatedMetricsV2 } from "@/lib/calc";
+import { getLocalDateString } from "@/lib/dateUtils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 
 type ConfigRow = {
   metric_id: string;
@@ -25,32 +32,10 @@ type ConfigRow = {
   preset_values_csv?: string | null;
   is_calculated: boolean;
   calc_expr: string | null;
-
+  parent_metric_id: string | null;
 };
 
-const errorInputStyle: React.CSSProperties = {
-  backgroundColor: "#fecaca", // Tailwind-ish red-200
-  borderColor: "#dc2626",     // red-600
-  borderWidth: 1,
-};
-
-const baseInputStyle: React.CSSProperties = {
-  width: 280,
-  padding: "4px 6px",
-  borderWidth: 1,
-  borderColor: "#d1d5db", // gray-300
-  borderRadius: 4,
-};
-
-const errorBoxStyle: React.CSSProperties = {
-  marginTop: 4,
-  backgroundColor: "#dc2626",
-  color: "white",
-  fontSize: "0.75rem",
-  padding: "4px 8px",      // a bit of side padding
-  borderRadius: 4,
-  display: "inline-block", // 🔹 only as wide as content
-};
+// Inline styles removed - using Tailwind classes instead
 
 type DateHints = {
   today: string;
@@ -110,18 +95,8 @@ function sortMetricsForForm(list: ConfigRow[]): ConfigRow[] {
 
 export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
-  const todayISO = new Date().toISOString().slice(0, 10);
-  // const [date, setDate] = useState<string>(() => {
-  //   const now = new Date();
-  //   // Shift by timezone offset to get local date in ISO format
-  //   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-  //   return local.toISOString().slice(0, 10); // "YYYY-MM-DD" in local time
-  // });
-  const [date, setDate] = useState<string>(() => {
-    const now = new Date();
-    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
-    return local.toISOString().slice(0, 10);
-  });
+  const todayISO = getLocalDateString();
+  const [date, setDate] = useState<string>(() => getLocalDateString());
   const [initialDateLoaded, setInitialDateLoaded] = useState(false);
   const [metrics, setMetrics] = useState<ConfigRow[]>([]);
   const [vals, setVals] = useState<Record<string, string>>({});
@@ -130,6 +105,11 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | null>>({});
+
+  // Track which metrics have default values auto-populated (not from saved data)
+  const [defaultPopulated, setDefaultPopulated] = useState<Set<string>>(new Set());
+  // Track which metrics have been "touched" (focused or edited)
+  const [touchedMetrics, setTouchedMetrics] = useState<Set<string>>(new Set());
 
   const [dateHints, setDateHints] = useState<DateHints | null>(null);
   const [dateInitializedFromHints, setDateInitializedFromHints] = useState(false);
@@ -150,6 +130,14 @@ export default function Home() {
 
   console.log("metrics for form", metrics);
 
+  // Check if a metric is visible based on parent's value
+  const isMetricVisible = React.useCallback((metric: ConfigRow): boolean => {
+    if (!metric.parent_metric_id) return true;
+    const parentValue = vals[metric.parent_metric_id];
+    // Parent must have a non-empty value for child to be visible
+    return parentValue != null && parentValue.trim() !== "";
+  }, [vals]);
+
   const groupedMetrics = React.useMemo<
     { groupName: string; items: ConfigRow[] }[]
   >(() => {
@@ -158,6 +146,9 @@ export default function Home() {
     const map = new Map<string, ConfigRow[]>();
 
     for (const m of metrics) {
+      // Skip metrics whose parent is empty
+      if (!isMetricVisible(m)) continue;
+
       const groupName = m.group || "Other";
       if (!map.has(groupName)) map.set(groupName, []);
       map.get(groupName)!.push(m);
@@ -167,7 +158,7 @@ export default function Home() {
       groupName,
       items,
     }));
-  }, [metrics]);
+  }, [metrics, isMetricVisible, vals]);
 
   const daysBetween = (d1: string, d2: string) => {
     const t1 = Date.parse(d1);
@@ -203,6 +194,9 @@ export default function Home() {
   console.log("DateHints for gap check:", dateHints, "current date:", date);
 
   
+  // Ref to hold current save function for keyboard shortcut
+  const saveRef = useRef<() => void>(() => {});
+
   // auth check effect
   useEffect(() => {
     (async () => {
@@ -217,6 +211,21 @@ export default function Home() {
       setAuthChecked(true);
     })();
   }, []);
+
+  // Ctrl+Enter keyboard shortcut to save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (!saving && metrics.length > 0) {
+          saveRef.current();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [saving, metrics.length]);
 
   // Load metrics from /api/config
   useEffect(() => {
@@ -252,6 +261,7 @@ export default function Home() {
           preset_values_csv: r.preset_values_csv ?? null,
           is_calculated: !!r.is_calculated,
           calc_expr: r.calc_expr ?? null,
+          parent_metric_id: r.parent_metric_id ?? null,
         }));
 
         const visible = normalized.filter(
@@ -310,6 +320,43 @@ export default function Home() {
     setDirty(true);
   };
 
+  // Mark a metric as "touched" (user interacted with it)
+  const markAsTouched = (id: string) => {
+    setTouchedMetrics(prev => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  };
+
+  // Clear child values when parent becomes empty
+  React.useEffect(() => {
+    const childrenToClear: string[] = [];
+
+    for (const m of metrics) {
+      if (!m.parent_metric_id) continue;
+
+      const parentValue = vals[m.parent_metric_id];
+      const parentIsEmpty = parentValue == null || parentValue.trim() === "";
+      const childHasValue = vals[m.metric_id] && vals[m.metric_id].trim() !== "";
+
+      if (parentIsEmpty && childHasValue) {
+        childrenToClear.push(m.metric_id);
+      }
+    }
+
+    if (childrenToClear.length > 0) {
+      setVals(prev => {
+        const next = { ...prev };
+        for (const id of childrenToClear) {
+          next[id] = "";
+        }
+        return next;
+      });
+    }
+  }, [vals, metrics]);
+
   const [prevByN, setPrevByN] = useState<Record<number, Record<string, number | null>>>({});
 
   const metricsById = React.useMemo<Record<string, ConfigRow>>(() => {
@@ -348,6 +395,11 @@ export default function Home() {
     const entries: SaveEntry[] = [];
 
     for (const m of metrics) {
+      // Skip untouched default-populated fields (don't save them)
+      if (defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id)) {
+        continue;
+      }
+
       // Calculated metrics → use calculatedValues
       if (m.is_calculated) {
         const v = calculatedValues[m.metric_id];
@@ -927,27 +979,80 @@ export default function Home() {
 
 
 
-  function parsePresets(metric: ConfigRow): number[] {
-    const raw = (metric as any).preset_values_csv as string | null | undefined;
-    if (!raw) return [];
+  type PresetValue = { raw: string; display: string };
 
-    return raw
+  function parsePresets(metric: ConfigRow): PresetValue[] {
+    const csv = metric.preset_values_csv;
+    if (!csv) return [];
+
+    const values = csv
       .split(",")
       .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .map((s) => Number(s))
-      .filter((n) => Number.isFinite(n));
+      .filter((s) => s.length > 0);
+
+    if (metric.type === "text") {
+      // Text type: pass through as-is
+      return values.map((v) => ({ raw: v, display: v }));
+    }
+
+    if (metric.type === "hhmm") {
+      // HH:MM format - validate and pass through
+      return values
+        .map((s) => {
+          // Accept HH:MM format
+          const match = s.match(/^(\d{1,2}):(\d{2})$/);
+          if (!match) return null;
+          const h = parseInt(match[1], 10);
+          const m = parseInt(match[2], 10);
+          if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+          // Normalize display to HH:MM
+          const display = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+          return { raw: display, display };
+        })
+        .filter((v): v is PresetValue => v !== null);
+    }
+
+    if (metric.type === "time") {
+      // Time in minutes - can be entered as minutes or HH:MM
+      return values
+        .map((s) => {
+          // Try HH:MM format first
+          const match = s.match(/^(\d{1,2}):(\d{2})$/);
+          if (match) {
+            const h = parseInt(match[1], 10);
+            const m = parseInt(match[2], 10);
+            const totalMinutes = h * 60 + m;
+            return { raw: String(totalMinutes), display: `${h}:${String(m).padStart(2, "0")}` };
+          }
+          // Otherwise treat as minutes
+          const n = Number(s);
+          if (!Number.isFinite(n) || n < 0) return null;
+          const hours = Math.floor(n / 60);
+          const mins = n % 60;
+          return { raw: String(n), display: hours > 0 ? `${hours}:${String(mins).padStart(2, "0")}` : `${mins}m` };
+        })
+        .filter((v): v is PresetValue => v !== null);
+    }
+
+    // Numeric types (number): parse as numbers, filter invalid
+    return values
+      .map((s) => {
+        const n = Number(s);
+        if (!Number.isFinite(n)) return null;
+        return { raw: String(n), display: String(n) };
+      })
+      .filter((v): v is PresetValue => v !== null);
   }
 
-  function applyPresetValue(metric: ConfigRow, preset: number) {
-    const raw = String(preset);
+  function applyPresetValue(metric: ConfigRow, preset: PresetValue) {
+    markAsTouched(metric.metric_id);
 
-    // reuse your existing validation
-    const msg = validateField(metric, raw);
+    // reuse existing validation
+    const msg = validateField(metric, preset.raw);
 
     setVals((prev) => ({
       ...prev,
-      [metric.metric_id]: raw,
+      [metric.metric_id]: preset.raw,
     }));
 
     setFieldErrors((prev) => ({
@@ -1117,6 +1222,8 @@ export default function Home() {
     }
   }
 
+  // Update ref so keyboard shortcut always has current save function
+  saveRef.current = save;
 
   async function loadSummary() {
     setError(null);
@@ -1132,6 +1239,8 @@ export default function Home() {
 
   async function loadDayValues(d: string) {
     setError(null);
+    // Reset touched state when loading a new day
+    setTouchedMetrics(new Set());
 
     const headers = await getAuthHeaders();
     const res = await fetch(`/api/log?date=${encodeURIComponent(d)}`, {
@@ -1152,37 +1261,43 @@ export default function Home() {
       textMap.set(r.metric_id, r.value_text ?? null);
     }
 
-
     const next: Record<string, string> = {};
+    const newDefaultPopulated = new Set<string>();
 
     for (const def of metrics) {
       const existing = valueMap.get(def.metric_id);
+      const hasExistingValue = existing != null;
+      const hasExistingText = textMap.get(def.metric_id) != null;
 
       if (def.type === "checkbox") {
-        if (existing != null) {
+        if (hasExistingValue) {
           next[def.metric_id] = existing >= 0.5 ? "on" : "";
         } else if (def.default_value != null) {
-          next[def.metric_id] =
-            def.default_value >= 0.5 ? "on" : "";
+          next[def.metric_id] = def.default_value >= 0.5 ? "on" : "";
+          newDefaultPopulated.add(def.metric_id);
         } else {
           next[def.metric_id] = "";
         }
       } else if (def.type === "text") {
         const existingText = textMap.get(def.metric_id);
         next[def.metric_id] = existingText ?? "";
+        // Text type doesn't use default_value
       } else if (def.type === "hhmm") {
-        if (existing != null) {
+        if (hasExistingValue) {
           next[def.metric_id] = formatHHMM(existing);
         } else if (def.default_value != null) {
           next[def.metric_id] = formatHHMM(def.default_value);
+          newDefaultPopulated.add(def.metric_id);
         } else {
           next[def.metric_id] = "";
         }
       } else {
-        if (existing != null) {
+        // number, time
+        if (hasExistingValue) {
           next[def.metric_id] = String(existing);
         } else if (def.default_value != null) {
           next[def.metric_id] = String(def.default_value);
+          newDefaultPopulated.add(def.metric_id);
         } else {
           next[def.metric_id] = "";
         }
@@ -1190,6 +1305,7 @@ export default function Home() {
     }
 
     setVals(next);
+    setDefaultPopulated(newDefaultPopulated);
     setFieldErrors({}); // clear per-field errors
     setDirty(false);
   }
@@ -1222,69 +1338,90 @@ export default function Home() {
   }
 
   return (
-    <main className="p-6 max-w-3xl mx-auto space-y-6">
-      <h1 className="text-2xl font-semibold">Daily Tracker v2</h1>
-
-      <div className="space-y-2">
-        <label className="block text-sm">Date</label>
-        <input
-          className="border p-2 rounded w-full"
-          type="date"
-          value={date}
-          max={todayISO} // prevents from selecting future dates
-          onChange={handleDateChange}
-        />
-        {dateHints && dateHints.required_days_possible > 0 && (
-          <div className="mt-1 text-xs text-gray-600">
-            Required days completed:{" "}
-            <span className="font-mono">
-              {dateHints.required_days_completed} / {dateHints.required_days_possible}
-            </span>{" "}
-            (
-            {Math.round(
-              (dateHints.required_days_completed / dateHints.required_days_possible) *
-                100
+    <div className="min-h-screen flex flex-col">
+      {/* Sticky Header with Date & Save */}
+      <header className="sticky top-0 z-40 bg-white border-b shadow-sm">
+        <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <input
+              type="date"
+              value={date}
+              max={todayISO}
+              onChange={handleDateChange}
+              className="border rounded px-3 py-1.5 text-sm"
+            />
+            {dirty && (
+              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                Unsaved changes
+              </span>
             )}
-            %)
-            {dateHints.last_required_complete_date && (
-              <>
-                {" "}
-                since{" "}
-                <span className="font-mono">
-                  {dateHints.last_required_complete_date}
-                </span>
-              </>
+            {dateHints && dateHints.required_days_possible > 0 && (
+              <span className="text-xs text-gray-500">
+                {dateHints.required_days_completed}/{dateHints.required_days_possible} days
+              </span>
             )}
           </div>
-        )}
-
-        {gapMessage && (
-          <div
-            style={{
-              marginTop: 4,
-              display: "inline-block",
-              padding: "2px 6px",
-              fontSize: "0.75rem",
-              borderRadius: 4,
-              backgroundColor: "#FEF9C3",
-              border: "1px solid #FACC15",
-              color: "#78350F",
-            }}
-          >
-            {gapMessage}
+          <div className="flex items-center gap-2">
+            {/* Show Accept All Defaults button if there are untouched defaults */}
+            {defaultPopulated.size > 0 && (() => {
+              const untouchedCount = Array.from(defaultPopulated).filter(id => !touchedMetrics.has(id)).length;
+              return untouchedCount > 0 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setTouchedMetrics(prev => {
+                      const next = new Set(prev);
+                      defaultPopulated.forEach(id => next.add(id));
+                      return next;
+                    });
+                  }}
+                >
+                  Accept Defaults ({untouchedCount})
+                </Button>
+              ) : null;
+            })()}
+            <Button
+              onClick={save}
+              disabled={saving || metrics.length === 0}
+            >
+              {saving ? "Saving..." : "Save Day"}
+            </Button>
+            <span className="text-xs text-muted-foreground">Ctrl+Enter</span>
           </div>
-        )}
+        </div>
+      </header>
 
-        <label style={{ display: "inline-flex", gap: 8, alignItems: "center", marginLeft: 12 }}>
-          <input
-            type="checkbox"
-            checked={showCalcDebug}
-            onChange={(e) => setShowCalcDebug(e.target.checked)}
-          />
-          <span>Show calc debug</span>
-        </label>
+      {/* Main Content */}
+      <main className="flex-1 p-6 max-w-3xl mx-auto w-full space-y-6">
+        <h1 className="text-2xl font-semibold">Daily Tracker</h1>
 
-      </div>
+        <div className="space-y-2">
+          {gapMessage && (
+            <div
+              style={{
+                display: "inline-block",
+                padding: "2px 6px",
+                fontSize: "0.75rem",
+                borderRadius: 4,
+                backgroundColor: "#FEF9C3",
+                border: "1px solid #FACC15",
+                color: "#78350F",
+              }}
+            >
+              {gapMessage}
+            </div>
+          )}
+
+          <label style={{ display: "inline-flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={showCalcDebug}
+              onChange={(e) => setShowCalcDebug(e.target.checked)}
+            />
+            <span className="text-sm">Show calc debug</span>
+          </label>
+        </div>
     {/*
       {dateHints &&
         dateHints.missing_required_days > 0 &&
@@ -1320,44 +1457,30 @@ export default function Home() {
             const isCollapsed = collapsedGroups[group.groupName] ?? false;
 
             return (
-              <section
-                key={group.groupName}
-                style={{
-                  marginTop: 16,
-                  borderRadius: 4,
-                  border: "1px solid #e5e7eb",        // light gray border
-                  padding: 0,
-                  overflow: "hidden",
-                  maxWidth: 480,                       // match your input width-ish
-                }}
-              >
+              <Card key={group.groupName} className="mt-4 max-w-md overflow-hidden">
                 {/* Group header bar */}
-                <button
-                  type="button"
+                <CardHeader
+                  className="bg-amber-50 py-2 px-3 cursor-pointer border-b"
                   onClick={() => toggleGroup(group.groupName)}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "6px 8px",
-                    backgroundColor: "#FEF9C3",        // soft yellow
-                    border: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    cursor: "pointer",
-                    fontSize: "0.85rem",
-                    fontWeight: 600,
-                  }}
                 >
-                  <span>{group.groupName}</span>
-                  <span style={{ fontSize: "0.8rem" }}>
-                    {isCollapsed ? "▸" : "▾"}
-                  </span>
-                </button>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-semibold">
+                      {group.groupName}
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">
+                        {group.items.length}
+                      </Badge>
+                      <span className="text-sm text-muted-foreground">
+                        {isCollapsed ? "▸" : "▾"}
+                      </span>
+                    </div>
+                  </div>
+                </CardHeader>
 
                 {/* Group body */}
                 {!isCollapsed && (
-                  <div style={{ padding: "6px 8px" }}>
+                  <CardContent className="p-4">
                     {group.items.map((m) => {
                       const isCalculated = m.is_calculated;
 
@@ -1381,53 +1504,49 @@ export default function Home() {
                       }
 
                       return (
-                        <div key={m.metric_id} style={{ marginBottom: 8 }}>
+                        <div key={m.metric_id} className="mb-3">
                           {/* LABEL */}
-                          <label style={{ display: "block", fontWeight: 500 }}>
+                          <label className="flex items-center gap-2 font-medium mb-1">
                             {m.metric_name}
                             {m.required && !isCalculated && (
-                              <span style={{ marginLeft: 4, fontSize: "0.7rem" }}>*required</span>
+                              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                                required
+                              </Badge>
                             )}
                             {isCalculated && (
-                              <span
-                                style={{
-                                  marginLeft: 4,
-                                  fontSize: "0.7rem",
-                                  opacity: 0.7,
-                                }}
-                              >
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                                 calc
-                              </span>
+                              </Badge>
                             )}
                           </label>
 
                           {isCalculated ? (
                             m.type === "checkbox" ? (
-                              <div style={{ marginTop: 2 }}>
-                                <div>
+                              <div className="mt-0.5">
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={(calcValue ?? 0) >= 0.5}
                                     disabled
-                                    style={{ opacity: 0.6, cursor: "not-allowed" }}
+                                    className="h-5 w-5 opacity-60 cursor-not-allowed"
                                   />
-                                  <span style={{ marginLeft: 6, fontSize: "0.75rem", opacity: 0.7 }}>
+                                  <span className="text-xs text-muted-foreground">
                                     (calculated)
                                   </span>
                                 </div>
 
                                 {showCalcDebug && (
-                                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, width: 280 }}>
-                                    <div style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                                  <div className="mt-1 text-xs text-muted-foreground w-72">
+                                    <div className="font-mono whitespace-pre-wrap">
                                       {m.calc_expr || "(no expr)"}
                                     </div>
                                     {calcErrors?.[m.metric_id] ? (
-                                      <div style={{ marginTop: 2 }}>⚠️ {calcErrors[m.metric_id]}</div>
+                                      <div className="mt-0.5 text-destructive">⚠️ {calcErrors[m.metric_id]}</div>
                                     ) : (
-                                      <div style={{ marginTop: 2 }}>
+                                      <div className="mt-0.5">
                                         {calcValue == null ? "Value is null" : "Value computed"}
                                         {calcMissing?.[m.metric_id]?.length ? (
-                                          <div style={{ marginTop: 2 }}>
+                                          <div className="mt-0.5">
                                             Missing: {calcMissing[m.metric_id].join(", ")}
                                           </div>
                                         ) : null}
@@ -1437,37 +1556,25 @@ export default function Home() {
                                 )}
                               </div>
                             ) : (
-
                               <div>
-                                <div
-                                  style={{
-                                    marginTop: 2,
-                                    border: "1px solid #ddd",
-                                    background: "#f5f5f5",
-                                    minHeight: 22,
-                                    width: 280,
-                                    padding: "4px 6px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                  }}
-                                >
+                                <div className="mt-0.5 border border-gray-200 bg-gray-50 min-h-[22px] w-72 px-2 py-1 flex items-center rounded-md text-sm">
                                   {calcDisplay}
                                 </div>
 
                                 {showCalcDebug && (
-                                  <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, width: 280 }}>
-                                    <div style={{ fontFamily: "monospace", whiteSpace: "pre-wrap" }}>
+                                  <div className="mt-1 text-xs text-muted-foreground w-72">
+                                    <div className="font-mono whitespace-pre-wrap">
                                       {m.calc_expr || "(no expr)"}
                                     </div>
                                     {calcErrors?.[m.metric_id] ? (
-                                      <div style={{ marginTop: 2 }}>⚠️ {calcErrors[m.metric_id]}</div>
+                                      <div className="mt-0.5 text-destructive">⚠️ {calcErrors[m.metric_id]}</div>
                                     ) : (
-                                      <div style={{ marginTop: 2 }}>
+                                      <div className="mt-0.5">
                                         {calcValue == null ? "Value is null" : "Value computed"}
                                       </div>
                                     )}
                                     {calcMissing?.[m.metric_id]?.length ? (
-                                      <div style={{ marginTop: 2 }}>
+                                      <div className="mt-0.5">
                                         Missing: {calcMissing[m.metric_id].join(", ")}
                                       </div>
                                     ) : null}
@@ -1478,48 +1585,88 @@ export default function Home() {
 
                           ) : m.type === "checkbox" ? (
                             <>
-                              <input
-                                type="checkbox"
-                                checked={raw === "on"}
-                                onChange={(e) => {
-                                  const v = e.target.checked ? "on" : "";
-                                  setVal(m.metric_id, v);
-                                  setDirty(true);
-                                  setFieldErrors((prev) => ({
-                                    ...prev,
-                                    [m.metric_id]: null,
-                                  }));
-                                }}
-                              />
-                              {err && <div style={errorBoxStyle}>{err}</div>}
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={raw === "on"}
+                                  onFocus={() => markAsTouched(m.metric_id)}
+                                  onChange={(e) => {
+                                    markAsTouched(m.metric_id);
+                                    const v = e.target.checked ? "on" : "";
+                                    setVal(m.metric_id, v);
+                                    setDirty(true);
+                                    setFieldErrors((prev) => ({
+                                      ...prev,
+                                      [m.metric_id]: null,
+                                    }));
+                                  }}
+                                  className={cn(
+                                    "h-5 w-5 rounded border-gray-300",
+                                    defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && "accent-amber-500"
+                                  )}
+                                />
+                                {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
+                                  <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                                    default
+                                  </Badge>
+                                )}
+                              </div>
+                              {err && <p className="text-xs text-destructive mt-1">{err}</p>}
                             </>
                           ) : m.type === "text" ? (
                             <div>
-                              <textarea
+                              <Textarea
                                 value={raw}
                                 rows={4}
+                                onFocus={() => markAsTouched(m.metric_id)}
                                 onChange={(e) => {
+                                  markAsTouched(m.metric_id);
                                   const v = e.target.value;
                                   setVal(m.metric_id, v);
                                   setDirty(true);
-                                  // Optional: you can validate required-on-past-days only, so no per-field error here
                                   setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
                                 }}
-                                style={{
-                                  ...baseInputStyle,
-                                  height: "auto",
-                                  width: 280,
-                                  ...(err ? errorInputStyle : {}),
-                                }}
+                                className={cn(
+                                  "w-72",
+                                  err && "border-destructive bg-destructive/10"
+                                )}
                               />
-                              {err && <div style={errorBoxStyle}>{err}</div>}
 
+                              {parsePresets(m).length > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {parsePresets(m).map((p) => (
+                                    <Button
+                                      key={p.raw}
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => applyPresetValue(m, p)}
+                                      title={p.display}
+                                      className={cn(
+                                        "h-7 px-2 text-xs max-w-[150px] truncate",
+                                        p.raw === raw && "bg-amber-100 border-amber-300"
+                                      )}
+                                    >
+                                      {p.display}
+                                    </Button>
+                                  ))}
+                                </div>
+                              )}
+
+                              {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
                           ) : (
                             <div>
-                              <input
+                              {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
+                                <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 mb-1">
+                                  default
+                                </Badge>
+                              )}
+                              <Input
                                 value={raw}
+                                onFocus={() => markAsTouched(m.metric_id)}
                                 onChange={(e) => {
+                                  markAsTouched(m.metric_id);
                                   const v = e.target.value;
                                   setVal(m.metric_id, v);
                                   setDirty(true);
@@ -1537,50 +1684,44 @@ export default function Home() {
                                     [m.metric_id]: msg,
                                   }));
                                 }}
-                                style={{ ...baseInputStyle, ...(err ? errorInputStyle : {}) }}
+                                className={cn(
+                                  "w-72",
+                                  err && "border-destructive bg-destructive/10",
+                                  defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && "border-amber-500 bg-amber-50"
+                                )}
                               />
-                              
+
                               {parsePresets(m).length > 0 && (
-                                <div
-                                  style={{
-                                    marginTop: 4,
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: 4,
-                                  }}
-                                >
+                                <div className="mt-1 flex flex-wrap gap-1">
                                   {parsePresets(m).map((p) => (
-                                    <button
-                                      key={p}
+                                    <Button
+                                      key={p.raw}
                                       type="button"
+                                      variant="outline"
+                                      size="sm"
                                       onClick={() => applyPresetValue(m, p)}
-                                      style={{
-                                        padding: "2px 6px",
-                                        borderRadius: 4,
-                                        border: "1px solid #ccc",
-                                        fontSize: "0.75rem",
-                                        cursor: "pointer",
-                                        background:
-                                          String(p) === String(raw) ? "#FFE9A3" : "#f9fafb",
-                                      }}
+                                      title={p.display}
+                                      className={cn(
+                                        "h-7 px-2 text-xs max-w-[100px] truncate",
+                                        p.raw === raw && "bg-amber-100 border-amber-300"
+                                      )}
                                     >
-                                      {p}
-                                    </button>
+                                      {p.display}
+                                    </Button>
                                   ))}
                                 </div>
                               )}
 
-                              {err && <div style={errorBoxStyle}>{err}</div>}
+                              {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
                           )}
 
                         </div>
                       );
                     })}
-
-                  </div>
+                  </CardContent>
                 )}
-              </section>
+              </Card>
             );
           })}
 
@@ -1589,35 +1730,17 @@ export default function Home() {
 
 
       
-      <div className="flex items-center gap-3">
-        <button
-          onClick={save}
-          disabled={saving || metrics.length === 0}
-          className="px-4 py-2 rounded bg-black text-white disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Day"}
-        </button>
-
-        <button
-          onClick={loadSummary}
-          className="px-4 py-2 rounded border"
-        >
-          Refresh 7-day Summary
-        </button>
-
-        {dirty && (
-          <span className="text-xs text-red-600">
-            Unsaved changes
-          </span>
-        )}
-      </div>
-
       {error && <div className="text-red-600 text-sm">Error: {error}</div>}
 
       <div className="border rounded p-3">
-        <div className="font-medium mb-2">7-day Summary</div>
+        <div className="flex items-center justify-between mb-2">
+          <span className="font-medium">7-day Summary</span>
+          <Button variant="outline" size="sm" onClick={loadSummary}>
+            Refresh
+          </Button>
+        </div>
         {!summary ? (
-          <div className="text-sm text-gray-600">Click “Refresh 7-day Summary”.</div>
+          <div className="text-sm text-gray-600">Click "Refresh" to load summary.</div>
         ) : summary.length === 0 ? (
           <div className="text-sm text-gray-600">No data yet.</div>
         ) : (
@@ -1647,6 +1770,7 @@ export default function Home() {
           </table>
         )}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

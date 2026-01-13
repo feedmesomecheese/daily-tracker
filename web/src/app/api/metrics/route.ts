@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { getLocalDateString } from "@/lib/dateUtils";
 
 const BaseSchema = z.object({
   metric_id: z
@@ -31,6 +32,12 @@ const BaseSchema = z.object({
   // calculated metrics (defaults ONLY for create)
   is_calculated: z.boolean().optional().default(false),
   calc_expr: z.string().nullable().optional().default(null),
+
+  // dependent metrics
+  parent_metric_id: z.string().nullable().optional(),
+
+  // presets (comma-separated values)
+  preset_values_csv: z.string().nullable().optional(),
 });
 
 // CREATE uses defaults; PATCH must NOT apply defaults for fields the client didn't send.
@@ -62,7 +69,13 @@ const UpdateSchema = z.object({
   group_order: z.number().int().nullable().optional(),
 
   is_calculated: z.boolean().optional(),
-  calc_expr: z.string().nullable().optional(),  
+  calc_expr: z.string().nullable().optional(),
+
+  // dependent metrics
+  parent_metric_id: z.string().nullable().optional(),
+
+  // presets
+  preset_values_csv: z.string().nullable().optional(),
 });
 
 function formatZodError(error: z.ZodError): string {
@@ -109,7 +122,7 @@ export async function POST(req: Request) {
 
   const body = parsed.data;
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = getLocalDateString();
 
   const { error } = await supabase.from("config").insert({
     owner_id: user.id,
@@ -139,6 +152,8 @@ export async function POST(req: Request) {
     group_order: body.group_order != null ? body.group_order : 0,
     is_calculated: body.is_calculated ?? false,
     calc_expr: body.calc_expr ?? null,
+    parent_metric_id: body.parent_metric_id ?? null,
+    preset_values_csv: body.preset_values_csv ?? null,
   });
 
 
@@ -166,7 +181,7 @@ export async function PATCH(req: Request) {
   if (!supabase || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = getLocalDateString();
 
   let json: unknown;
   try {
@@ -209,7 +224,9 @@ export async function PATCH(req: Request) {
   
   if (body.is_calculated !== undefined) updates.is_calculated = body.is_calculated;
   if (body.calc_expr !== undefined) updates.calc_expr = body.calc_expr;
-  
+  if (body.parent_metric_id !== undefined) updates.parent_metric_id = body.parent_metric_id ?? null;
+  if (body.preset_values_csv !== undefined) updates.preset_values_csv = body.preset_values_csv ?? null;
+
   if (body.group !== undefined) {
     updates.group = body.group ?? null;
   }
