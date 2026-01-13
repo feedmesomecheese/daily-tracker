@@ -27,9 +27,8 @@ export async function GET(req: Request) {
     q = q.eq("date", date);
   } else if (start && end) {
     q = q.gte("date", start).lte("date", end);
-  } else {
-    return NextResponse.json({ error: "Provide ?date=YYYY-MM-DD or ?start=YYYY-MM-DD&end=YYYY-MM-DD" }, { status: 400 });
   }
+  // If no date params provided, return all data (for wide view)
 
   q = q.order("date", { ascending: true });
 
