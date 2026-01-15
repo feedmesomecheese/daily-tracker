@@ -1460,7 +1460,7 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* Sticky Header with Date & Save */}
-      <header className="sticky top-0 z-40 bg-white border-b shadow-sm">
+      <header className="sticky top-0 z-40 bg-background border-b shadow-sm">
         <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <DatePicker

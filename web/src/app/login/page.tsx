@@ -37,8 +37,8 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="bg-white border rounded-xl p-6 w-full max-w-sm space-y-4 shadow-sm">
+    <main className="min-h-screen flex items-center justify-center bg-muted">
+      <div className="bg-card border rounded-xl p-6 w-full max-w-sm space-y-4 shadow-sm">
         <h1 className="text-xl font-semibold text-center">Daily Tracker Login</h1>
 
         <form onSubmit={handleSubmit} className="space-y-3">

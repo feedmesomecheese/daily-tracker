@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   title: "Daily Tracker",
@@ -14,35 +14,37 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body style={{ fontFamily: "system-ui, sans-serif" }}>
-        <header className="border-b bg-white">
-          <nav className="max-w-5xl mx-auto flex items-center gap-4 px-4 py-2 text-sm">
-            <span className="font-semibold mr-4">Daily Tracker</span>
-            <Link href="/" className="hover:underline">
-              Today 
-            </Link>
-            <Link href="/metrics" className="hover:underline">
-              Metrics 
-            </Link>
-            <Link href="/wide" className="hover:underline">
-              Wide 
-            </Link>
-            <Link href="/ma" className="hover:underline">
-              Moving Avg 
-            </Link>
-            <Link href="/stats" className="hover:underline">
-              Stats 
-            </Link>
-            <Link href="/dashboard" className="px-2 text-sm hover:underline">
-              Dashboard
-            </Link>
-            <Link href="/settings" className="hover:underline">
-              Settings
-            </Link>
-          </nav>
-        </header>
-        <main className="max-w-5xl mx-auto px-4 py-4">{children}</main>
+        <ThemeProvider>
+          <header className="border-b bg-background">
+            <nav className="max-w-5xl mx-auto flex items-center gap-4 px-4 py-2 text-sm">
+              <span className="font-semibold mr-4">Daily Tracker</span>
+              <Link href="/" className="hover:underline">
+                Today
+              </Link>
+              <Link href="/metrics" className="hover:underline">
+                Metrics
+              </Link>
+              <Link href="/wide" className="hover:underline">
+                Wide
+              </Link>
+              <Link href="/ma" className="hover:underline">
+                Moving Avg
+              </Link>
+              <Link href="/stats" className="hover:underline">
+                Stats
+              </Link>
+              <Link href="/dashboard" className="px-2 text-sm hover:underline">
+                Dashboard
+              </Link>
+              <Link href="/settings" className="hover:underline">
+                Settings
+              </Link>
+            </nav>
+          </header>
+          <main className="max-w-5xl mx-auto px-4 py-4">{children}</main>
+        </ThemeProvider>
       </body>
     </html>
   );

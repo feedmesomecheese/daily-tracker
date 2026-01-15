@@ -308,7 +308,7 @@ export default function WideViewPage() {
               </thead>
               <tbody>
                 {paginatedDates.map((d, idx) => (
-                  <tr key={d} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                  <tr key={d} className={idx % 2 === 0 ? "bg-background" : "bg-muted/50"}>
                     <td className="sticky left-0 z-10 bg-inherit p-2 border-r font-medium shadow-sm">
                       {d}
                     </td>

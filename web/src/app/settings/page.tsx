@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTheme } from "@/components/theme-provider";
 
 type MainPageSettings = {
   show_indicators: boolean;
@@ -28,6 +29,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const { theme, setTheme } = useTheme();
 
   // Load settings on mount
   useEffect(() => {
@@ -96,11 +98,55 @@ export default function SettingsPage() {
         {saveStatus && (
           <span className="text-sm text-green-600">{saveStatus}</span>
         )}
-        {saving && <span className="text-sm text-gray-500">Saving...</span>}
+        {saving && <span className="text-sm text-muted-foreground">Saving...</span>}
       </div>
 
-      {loading && <div className="text-sm text-gray-600">Loading...</div>}
+      {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
       {error && <div className="text-sm text-red-600">Error: {error}</div>}
+
+      {/* Theme Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Appearance</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Choose your preferred color theme.
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTheme("light")}
+              className={`px-4 py-2 rounded-md border text-sm ${
+                theme === "light"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
+              }`}
+            >
+              Light
+            </button>
+            <button
+              onClick={() => setTheme("dark")}
+              className={`px-4 py-2 rounded-md border text-sm ${
+                theme === "dark"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
+              }`}
+            >
+              Dark
+            </button>
+            <button
+              onClick={() => setTheme("system")}
+              className={`px-4 py-2 rounded-md border text-sm ${
+                theme === "system"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background hover:bg-muted"
+              }`}
+            >
+              System
+            </button>
+          </div>
+        </CardContent>
+      </Card>
 
       {!loading && (
         <Card>
@@ -108,7 +154,7 @@ export default function SettingsPage() {
             <CardTitle className="text-lg">Main Page Indicators</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Control which indicators appear on the daily input page next to
               your metrics.
             </p>
@@ -124,7 +170,7 @@ export default function SettingsPage() {
                 />
                 <div>
                   <div className="font-medium">Show indicators</div>
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-muted-foreground">
                     Master toggle for all indicator badges on the main page
                   </div>
                 </div>
@@ -145,7 +191,7 @@ export default function SettingsPage() {
                 />
                 <div>
                   <div className="font-medium">Trend arrows</div>
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-muted-foreground">
                     Show trend direction (up/down/flat) for numeric metrics
                     based on 7-day comparison
                   </div>
@@ -167,7 +213,7 @@ export default function SettingsPage() {
                 />
                 <div>
                   <div className="font-medium">Streak badges</div>
-                  <div className="text-sm text-gray-500">
+                  <div className="text-sm text-muted-foreground">
                     Show current streak count for checkbox metrics
                   </div>
                 </div>
@@ -177,7 +223,7 @@ export default function SettingsPage() {
         </Card>
       )}
 
-      <div className="text-xs text-gray-400">
+      <div className="text-xs text-muted-foreground/70">
         Settings are saved automatically when changed.
       </div>
     </main>
