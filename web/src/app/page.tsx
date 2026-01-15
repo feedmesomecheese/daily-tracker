@@ -1481,7 +1481,7 @@ export default function Home() {
               </Button>
             )}
             {dirty && (
-              <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+              <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-200 dark:border-amber-700">
                 Unsaved changes
               </span>
             )}
@@ -1590,7 +1590,7 @@ export default function Home() {
               <Card key={group.groupName} className="mt-4 max-w-md overflow-hidden">
                 {/* Group header bar */}
                 <CardHeader
-                  className="bg-amber-50 py-2 px-3 cursor-pointer border-b"
+                  className="bg-amber-50 dark:bg-amber-900/30 py-2 px-3 cursor-pointer border-b"
                   onClick={() => toggleGroup(group.groupName)}
                 >
                   <div className="flex items-center justify-between">
@@ -1782,7 +1782,7 @@ export default function Home() {
                                   )}
                                 />
                                 {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
-                                  <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50">
+                                  <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30">
                                     default
                                   </Badge>
                                 )}
@@ -1820,7 +1820,7 @@ export default function Home() {
                                       title={p.display}
                                       className={cn(
                                         "h-7 px-2 text-xs max-w-[150px] truncate",
-                                        p.raw === raw && "bg-amber-100 border-amber-300"
+                                        p.raw === raw && "bg-amber-100 dark:bg-amber-800/50 border-amber-300 dark:border-amber-600"
                                       )}
                                     >
                                       {p.display}
@@ -1834,7 +1834,7 @@ export default function Home() {
                           ) : (
                             <div>
                               {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
-                                <Badge variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 mb-1">
+                                <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
                                   default
                                 </Badge>
                               )}
@@ -1863,7 +1863,7 @@ export default function Home() {
                                 className={cn(
                                   "w-72",
                                   err && "border-destructive bg-destructive/10",
-                                  defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && "border-amber-500 bg-amber-50"
+                                  defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && "border-amber-500 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30"
                                 )}
                               />
 
@@ -1879,7 +1879,7 @@ export default function Home() {
                                       title={p.display}
                                       className={cn(
                                         "h-7 px-2 text-xs max-w-[100px] truncate",
-                                        p.raw === raw && "bg-amber-100 border-amber-300"
+                                        p.raw === raw && "bg-amber-100 dark:bg-amber-800/50 border-amber-300 dark:border-amber-600"
                                       )}
                                     >
                                       {p.display}

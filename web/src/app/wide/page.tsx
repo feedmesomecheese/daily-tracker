@@ -295,8 +295,8 @@ export default function WideViewPage() {
           <div className="overflow-auto max-h-[70vh]">
             <table className="text-xs border-collapse min-w-full">
               <thead className="sticky top-0 z-10">
-                <tr className="bg-gray-100 border-b">
-                  <th className="sticky left-0 z-20 bg-gray-100 p-2 text-left font-semibold border-r shadow-sm">
+                <tr className="bg-muted border-b">
+                  <th className="sticky left-0 z-20 bg-muted p-2 text-left font-semibold border-r shadow-sm">
                     Date
                   </th>
                   {metricIds.map(mid => (
