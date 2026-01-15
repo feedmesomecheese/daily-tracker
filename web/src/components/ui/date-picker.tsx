@@ -37,6 +37,10 @@ export function DatePicker({
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Calendar view state (separate from input state - controls what month/year the calendar shows)
+  const [viewMonth, setViewMonth] = useState(parseInt(month) || 1);
+  const [viewYear, setViewYear] = useState(parseInt(year) || new Date().getFullYear());
+
   // Sync local state when value prop changes
   useEffect(() => {
     const [y, m, d] = value.split("-");
@@ -44,6 +48,14 @@ export function DatePicker({
     setLocalMonth(m || "");
     setLocalDay(d || "");
   }, [value]);
+
+  // Sync calendar view when dropdown opens (show the month/year of current value)
+  useEffect(() => {
+    if (showDropdown) {
+      setViewMonth(parseInt(localMonth) || 1);
+      setViewYear(parseInt(localYear) || new Date().getFullYear());
+    }
+  }, [showDropdown, localMonth, localYear]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -127,27 +139,19 @@ export function DatePicker({
     "July", "August", "September", "October", "November", "December"
   ];
 
-  // Handle dropdown month/year selection
-  const handleDropdownSelect = (m: number, y: number) => {
-    const newMonth = String(m).padStart(2, "0");
-    const newYear = String(y);
-    // Keep current day, or adjust if invalid
-    let newDay = localDay || "01";
-    const testDate = buildDate(newMonth, newDay, newYear);
-    if (!testDate) {
-      // Day invalid for this month, use last day of month
-      const lastDay = new Date(y, m, 0).getDate();
-      newDay = String(Math.min(parseInt(newDay) || 1, lastDay)).padStart(2, "0");
-    }
-
-    const dateStr = `${newYear}-${newMonth}-${newDay}`;
+  // Handle selecting a specific day from the calendar grid
+  const handleDaySelect = (day: number) => {
+    const dateStr = `${viewYear}-${String(viewMonth).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     if (!maxDate || dateStr <= maxDate) {
-      setLocalMonth(newMonth);
-      setLocalDay(newDay);
-      setLocalYear(newYear);
+      // Update local input state
+      setLocalMonth(String(viewMonth).padStart(2, "0"));
+      setLocalDay(String(day).padStart(2, "0"));
+      setLocalYear(String(viewYear));
+      // Commit the date
       onChange(dateStr);
+      // Close dropdown
+      setShowDropdown(false);
     }
-    setShowDropdown(false);
   };
 
   // Navigate by day
@@ -234,14 +238,10 @@ export function DatePicker({
         {showDropdown && (
           <div className="absolute top-full left-0 mt-1 bg-background border rounded-md shadow-lg z-50 p-3 min-w-[200px]">
             <div className="flex gap-2 mb-2">
-              {/* Month dropdown */}
+              {/* Month dropdown - only changes view, doesn't commit */}
               <select
-                value={parseInt(localMonth) || 1}
-                onChange={(e) => {
-                  const m = parseInt(e.target.value);
-                  const y = parseInt(localYear) || currentYear;
-                  handleDropdownSelect(m, y);
-                }}
+                value={viewMonth}
+                onChange={(e) => setViewMonth(parseInt(e.target.value))}
                 className="flex-1 h-8 text-sm border rounded px-2 bg-background"
               >
                 {monthNames.map((name, i) => (
@@ -251,14 +251,10 @@ export function DatePicker({
                 ))}
               </select>
 
-              {/* Year dropdown */}
+              {/* Year dropdown - only changes view, doesn't commit */}
               <select
-                value={parseInt(localYear) || currentYear}
-                onChange={(e) => {
-                  const y = parseInt(e.target.value);
-                  const m = parseInt(localMonth) || 1;
-                  handleDropdownSelect(m, y);
-                }}
+                value={viewYear}
+                onChange={(e) => setViewYear(parseInt(e.target.value))}
                 className="w-20 h-8 text-sm border rounded px-2 bg-background"
               >
                 {yearOptions.map((y) => (
@@ -269,7 +265,7 @@ export function DatePicker({
               </select>
             </div>
 
-            {/* Quick day grid for current month */}
+            {/* Day grid for selected month/year */}
             <div className="grid grid-cols-7 gap-1 text-xs">
               {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
                 <div key={d} className="text-center text-muted-foreground font-medium py-1">
@@ -277,10 +273,8 @@ export function DatePicker({
                 </div>
               ))}
               {(() => {
-                const y = parseInt(localYear) || currentYear;
-                const m = parseInt(localMonth) || 1;
-                const firstDay = new Date(y, m - 1, 1).getDay();
-                const daysInMonth = new Date(y, m, 0).getDate();
+                const firstDay = new Date(viewYear, viewMonth - 1, 1).getDay();
+                const daysInMonth = new Date(viewYear, viewMonth, 0).getDate();
                 const days = [];
 
                 // Empty cells for days before first of month
@@ -290,7 +284,7 @@ export function DatePicker({
 
                 // Day buttons
                 for (let d = 1; d <= daysInMonth; d++) {
-                  const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+                  const dateStr = `${viewYear}-${String(viewMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
                   const isSelected = dateStr === value;
                   const isFuture = maxDate && dateStr > maxDate;
 
@@ -299,12 +293,7 @@ export function DatePicker({
                       key={d}
                       type="button"
                       disabled={isFuture}
-                      onClick={() => {
-                        if (!isFuture) {
-                          onChange(dateStr);
-                          setShowDropdown(false);
-                        }
-                      }}
+                      onClick={() => handleDaySelect(d)}
                       className={cn(
                         "h-7 w-7 rounded text-center hover:bg-muted",
                         isSelected && "bg-primary text-primary-foreground hover:bg-primary",
