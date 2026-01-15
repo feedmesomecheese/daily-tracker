@@ -18,25 +18,53 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let q = supabase
-    .from("log")
-    .select("date,metric_id,value,value_text")
-    .eq("owner_id", user.id);
-
+  // Single date query - no pagination needed
   if (date) {
-    q = q.eq("date", date);
-  } else if (start && end) {
-    q = q.gte("date", start).lte("date", end);
+    const { data, error } = await supabase
+      .from("log")
+      .select("date,metric_id,value,value_text")
+      .eq("owner_id", user.id)
+      .eq("date", date)
+      .order("date", { ascending: true });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json(data ?? []);
   }
-  // If no date params provided, return all data (for wide view)
 
-  q = q.order("date", { ascending: true });
+  // For range queries or full data fetch, use pagination to get all rows
+  // (Supabase has a default row limit, typically 1000)
+  const rows: unknown[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  const maxPages = 5000; // safety limit
 
+  for (let page = 0; page < maxPages; page++) {
+    let q = supabase
+      .from("log")
+      .select("date,metric_id,value,value_text")
+      .eq("owner_id", user.id)
+      .order("date", { ascending: true })
+      .range(from, from + pageSize - 1);
 
-  const { data, error } = await q;
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (start) q = q.gte("date", start);
+    if (end) q = q.lte("date", end);
+
+    const { data, error } = await q;
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const batch = data ?? [];
+    rows.push(...batch);
+
+    // If we got fewer than a full page, we're done
+    if (batch.length < pageSize) break;
+
+    from += pageSize;
   }
 
-  return NextResponse.json(data ?? []);
+  return NextResponse.json(rows);
 }

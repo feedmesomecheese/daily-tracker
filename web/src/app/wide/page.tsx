@@ -4,7 +4,7 @@ import { getAuthHeaders } from "@/lib/authHeaders";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
+import { Input } from "@/components/ui/input";
 
 type LogRow = { date: string; metric_id: string; value: number | null };
 type ConfigRow = {
@@ -15,11 +15,21 @@ type ConfigRow = {
   active?: boolean | null;
 };
 
+const PAGE_SIZE_OPTIONS = [7, 14, 30, 90] as const;
+
 export default function WideViewPage() {
   const [config, setConfig] = useState<ConfigRow[]>([]);
   const [logRows, setLogRows] = useState<LogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Pagination state
+  const [pageSize, setPageSize] = useState<number>(30);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Date range filter (optional custom range)
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -44,23 +54,46 @@ export default function WideViewPage() {
         );
         setConfig(cfgVisible);
         setLogRows(logData);
-      } catch (e: any) {
-        setError(String(e?.message || e));
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        setError(message);
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-
-  // Derive distinct dates (most recent first) and metric ids
-  const dates = useMemo(
+  // Derive distinct dates (most recent first)
+  const allDates = useMemo(
     () => Array.from(new Set(logRows.map(r => r.date))).sort().reverse(),
     [logRows]
   );
+
+  // Filter dates by custom range if set
+  const filteredDates = useMemo(() => {
+    if (!startDate && !endDate) return allDates;
+    return allDates.filter(d => {
+      if (startDate && d < startDate) return false;
+      if (endDate && d > endDate) return false;
+      return true;
+    });
+  }, [allDates, startDate, endDate]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredDates.length / pageSize);
+  const paginatedDates = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredDates.slice(start, start + pageSize);
+  }, [filteredDates, currentPage, pageSize]);
+
+  // Reset to page 1 when filters or page size change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [pageSize, startDate, endDate]);
+
+  // Metric ids in config order (no sorting - preserves group/order from API)
   const metricIds = useMemo(
-    () =>
-      config.map(c => c.metric_id).sort(),
+    () => config.map(c => c.metric_id),
     [config]
   );
 
@@ -85,7 +118,7 @@ export default function WideViewPage() {
     return (
       <main className="p-6 max-w-5xl mx-auto">
         <h1 className="text-2xl font-semibold mb-4">Wide View</h1>
-        <div className="text-sm text-gray-600">Loading…</div>
+        <div className="text-sm text-gray-600">Loading...</div>
       </main>
     );
   }
@@ -99,7 +132,7 @@ export default function WideViewPage() {
     );
   }
 
-  if (dates.length === 0 || metricIds.length === 0) {
+  if (allDates.length === 0 || metricIds.length === 0) {
     return (
       <main className="p-6 max-w-5xl mx-auto">
         <h1 className="text-2xl font-semibold mb-4">Wide View</h1>
@@ -110,10 +143,11 @@ export default function WideViewPage() {
 
   return (
     <main className="p-6 max-w-full mx-auto space-y-4">
-      <div className="flex items-center justify-between gap-3">
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">Wide View</h1>
-          <Badge variant="secondary">{dates.length} days</Badge>
+          <Badge variant="secondary">{filteredDates.length} days</Badge>
           <Badge variant="outline">{metricIds.length} metrics</Badge>
         </div>
 
@@ -145,8 +179,9 @@ export default function WideViewPage() {
               a.remove();
 
               window.URL.revokeObjectURL(url);
-            } catch (e: any) {
-              alert(e?.message || String(e));
+            } catch (e: unknown) {
+              const message = e instanceof Error ? e.message : String(e);
+              alert(message);
             }
           }}
         >
@@ -154,10 +189,106 @@ export default function WideViewPage() {
         </Button>
       </div>
 
+      {/* Controls row */}
+      <div className="flex items-center gap-4 flex-wrap">
+        {/* Page size selector */}
+        <div className="flex items-center gap-2">
+          <label htmlFor="pageSize" className="text-sm text-muted-foreground">
+            Days per page:
+          </label>
+          <select
+            id="pageSize"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+            className="h-9 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            {PAGE_SIZE_OPTIONS.map(size => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Date range filter */}
+        <div className="flex items-center gap-2">
+          <label className="text-sm text-muted-foreground">From:</label>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-36 h-9"
+          />
+          <label className="text-sm text-muted-foreground">To:</label>
+          <Input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-36 h-9"
+          />
+          {(startDate || endDate) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setStartDate("");
+                setEndDate("");
+              }}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+
+        {/* Pagination controls */}
+        <div className="flex items-center gap-2 ml-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage(p => p - 1)}
+          >
+            Prev
+          </Button>
+          <span className="text-sm text-muted-foreground tabular-nums flex items-center gap-1">
+            Page
+            <Input
+              type="number"
+              min={1}
+              max={totalPages || 1}
+              value={currentPage}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (val >= 1 && val <= totalPages) {
+                  setCurrentPage(val);
+                }
+              }}
+              onBlur={(e) => {
+                // Clamp value on blur if out of range
+                const val = parseInt(e.target.value, 10);
+                if (isNaN(val) || val < 1) {
+                  setCurrentPage(1);
+                } else if (val > totalPages) {
+                  setCurrentPage(totalPages || 1);
+                }
+              }}
+              className="w-16 h-8 text-center tabular-nums"
+            />
+            of {totalPages || 1}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage >= totalPages}
+            onClick={() => setCurrentPage(p => p + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
+
       <Card>
         <CardHeader className="py-3 px-4 border-b">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Scroll horizontally to see all metrics. Most recent dates shown first.
+            Showing {paginatedDates.length} of {filteredDates.length} days. Metrics ordered by group/position.
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -176,7 +307,7 @@ export default function WideViewPage() {
                 </tr>
               </thead>
               <tbody>
-                {dates.map((d, idx) => (
+                {paginatedDates.map((d, idx) => (
                   <tr key={d} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="sticky left-0 z-10 bg-inherit p-2 border-r font-medium shadow-sm">
                       {d}

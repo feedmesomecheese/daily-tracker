@@ -338,7 +338,7 @@ export default function Home() {
           setUserSettings(data);
         }
       } catch (e) {
-        console.error("Failed to load settings:", e);
+        console.warn("Failed to load settings:", e);
       }
     })();
   }, [authChecked]);
@@ -364,10 +364,11 @@ export default function Home() {
           console.log("User settings:", userSettings);
           setIndicators(data);
         } else {
-          console.error("Indicators API error:", res.status, await res.text());
+          // Log as warning to avoid triggering Next.js error overlay for transient network issues
+          console.warn("Indicators API error:", res.status, await res.text());
         }
       } catch (e) {
-        console.error("Failed to load indicators:", e);
+        console.warn("Failed to load indicators:", e);
       }
     })();
   }, [authChecked, date, userSettings]);

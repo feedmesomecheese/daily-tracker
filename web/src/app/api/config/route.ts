@@ -22,9 +22,9 @@ export async function GET(req: Request) {
     .from("config")
     .select("*")
     .eq("owner_id", user.id)
-    .order("group_order", { ascending: true })                    // 1️⃣ group order
+    .order("group_order", { ascending: true, nullsFirst: false }) // 1️⃣ group order (nulls last)
     .order("group", { ascending: true, nullsFirst: true })        // 2️⃣ group name fallback
-    .order("metric_order", { ascending: true })                   // 3️⃣ metric order
+    .order("metric_order", { ascending: true, nullsFirst: false }) // 3️⃣ metric order (nulls last)
     .order("metric_id", { ascending: true });                     // 4️⃣ stable fallback
 
   if (error) {

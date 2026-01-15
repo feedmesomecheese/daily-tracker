@@ -38,9 +38,9 @@ export async function GET(req: Request) {
     .from("config")
     .select("metric_id, type, private, active, group_order, group, metric_order")
     .eq("owner_id", user.id)
-    .order("group_order", { ascending: true })
+    .order("group_order", { ascending: true, nullsFirst: false })
     .order("group", { ascending: true, nullsFirst: true })
-    .order("metric_order", { ascending: true })
+    .order("metric_order", { ascending: true, nullsFirst: false })
     .order("metric_id", { ascending: true });
 
   if (cfgErr) {
