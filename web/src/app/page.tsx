@@ -13,6 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { TrendBadge } from "@/components/ui/trend-badge";
 import { StreakBadge } from "@/components/ui/streak-badge";
+import { DatePicker } from "@/components/ui/date-picker";
 
 type ConfigRow = {
   metric_id: string;
@@ -160,6 +161,9 @@ export default function Home() {
   // Indicators state
   const [indicators, setIndicators] = useState<IndicatorsResponse | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+
+  // Available years for date picker (years with log data)
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
 
   function toggleGroup(name: string) {
     setCollapsedGroups((prev) => ({
@@ -339,6 +343,37 @@ export default function Home() {
         }
       } catch (e) {
         console.warn("Failed to load settings:", e);
+      }
+    })();
+  }, [authChecked]);
+
+  // Fetch available years for date picker
+  useEffect(() => {
+    if (!authChecked) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        // Get distinct years from log data
+        const res = await fetch("/api/log", { headers });
+        if (res.ok) {
+          const logs = await res.json();
+          const years = new Set<number>();
+          for (const log of logs) {
+            if (log.date) {
+              const year = parseInt(log.date.slice(0, 4));
+              if (!isNaN(year)) years.add(year);
+            }
+          }
+          // Add current year if not present
+          const currentYear = new Date().getFullYear();
+          years.add(currentYear);
+          setAvailableYears(Array.from(years).sort((a, b) => b - a));
+        }
+      } catch (e) {
+        console.warn("Failed to load available years:", e);
+        // Fallback to last 5 years
+        const currentYear = new Date().getFullYear();
+        setAvailableYears(Array.from({ length: 5 }, (_, i) => currentYear - i));
       }
     })();
   }, [authChecked]);
@@ -1405,72 +1440,14 @@ export default function Home() {
   }
 
 
-  // Debounce timer ref for date input
-  const dateDebounceRef = useRef<NodeJS.Timeout | null>(null);
-
-  function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const newDate = e.target.value;
-
-    // Only process valid YYYY-MM-DD format
-    const isCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(newDate);
-    if (!isCompleteDate) return;
-
-    // Clear any pending debounce
-    if (dateDebounceRef.current) {
-      clearTimeout(dateDebounceRef.current);
-    }
-
-    // Debounce: wait 600ms after last change before updating
-    // This lets user finish typing without triggering multiple loads
-    dateDebounceRef.current = setTimeout(() => {
-      // Check for unsaved changes
-      if (dirty) {
-        const ok = window.confirm(
-          "You have unsaved changes.\nDiscard them and switch date?"
-        );
-        if (!ok) {
-          e.target.value = date;
-          return;
-        }
-      }
-      setDate(newDate);
-    }, 600);
-  }
-
-  // Navigation helpers
-  const goToDate = useCallback((newDate: string) => {
+  // Handle date change from custom date picker
+  const handleDateChange = useCallback((newDate: string) => {
     if (dirty) {
       const ok = window.confirm("You have unsaved changes.\nDiscard them and switch date?");
       if (!ok) return;
     }
     setDate(newDate);
-  }, [dirty]);
-
-  const goToPrevDay = useCallback(() => {
-    goToDate(addDays(date, -1));
-  }, [date, goToDate]);
-
-  const goToNextDay = useCallback(() => {
-    const next = addDays(date, 1);
-    if (next <= todayISO) goToDate(next);
-  }, [date, todayISO, goToDate]);
-
-  const goToPrevMonth = useCallback(() => {
-    const d = new Date(date + "T00:00:00");
-    d.setMonth(d.getMonth() - 1);
-    goToDate(d.toISOString().slice(0, 10));
-  }, [date, goToDate]);
-
-  const goToNextMonth = useCallback(() => {
-    const d = new Date(date + "T00:00:00");
-    d.setMonth(d.getMonth() + 1);
-    const next = d.toISOString().slice(0, 10);
-    if (next <= todayISO) goToDate(next);
-  }, [date, todayISO, goToDate]);
-
-  const goToToday = useCallback(() => {
-    goToDate(todayISO);
-  }, [todayISO, goToDate]);  
+  }, [dirty]);  
 
   if (!authChecked) {
     return (
@@ -1485,60 +1462,19 @@ export default function Home() {
       {/* Sticky Header with Date & Save */}
       <header className="sticky top-0 z-40 bg-white border-b shadow-sm">
         <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            {/* Month navigation */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={goToPrevMonth}
-              className="h-8 w-8 p-0 text-muted-foreground"
-              title="Previous month"
-            >
-              ««
-            </Button>
-            {/* Day navigation */}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={goToPrevDay}
-              className="h-8 w-8 p-0 text-muted-foreground"
-              title="Previous day"
-            >
-              ‹
-            </Button>
-            <input
-              type="date"
+          <div className="flex items-center gap-3">
+            <DatePicker
               value={date}
-              max={todayISO}
               onChange={handleDateChange}
-              className="border rounded px-3 py-1.5 text-sm"
+              maxDate={todayISO}
+              availableYears={availableYears}
             />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={goToNextDay}
-              disabled={date >= todayISO}
-              className="h-8 w-8 p-0 text-muted-foreground"
-              title="Next day"
-            >
-              ›
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={goToNextMonth}
-              disabled={addDays(date, 30) > todayISO}
-              className="h-8 w-8 p-0 text-muted-foreground"
-              title="Next month"
-            >
-              »»
-            </Button>
             {/* Today button */}
             {date !== todayISO && (
               <Button
                 variant="outline"
                 size="sm"
-                onClick={goToToday}
+                onClick={() => handleDateChange(todayISO)}
                 className="h-8 px-2 text-xs"
               >
                 Today
