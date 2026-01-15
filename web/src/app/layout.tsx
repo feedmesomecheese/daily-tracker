@@ -37,6 +37,9 @@ export default function RootLayout({
             <Link href="/dashboard" className="px-2 text-sm hover:underline">
               Dashboard
             </Link>
+            <Link href="/settings" className="hover:underline">
+              Settings
+            </Link>
           </nav>
         </header>
         <main className="max-w-5xl mx-auto px-4 py-4">{children}</main>

@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { TrendBadge } from "@/components/ui/trend-badge";
+import { StreakBadge } from "@/components/ui/streak-badge";
 
 type ConfigRow = {
   metric_id: string;
@@ -33,6 +35,40 @@ type ConfigRow = {
   is_calculated: boolean;
   calc_expr: string | null;
   parent_metric_id: string | null;
+  analytics_config?: {
+    hide_trend?: boolean;
+    hide_streak?: boolean; // deprecated
+    show_streak?: boolean; // default: true
+    avoid?: boolean; // if true, negative streaks are good
+    trend_period?: number;
+    higher_is_better?: boolean;
+  } | null;
+};
+
+type IndicatorData = {
+  trend?: {
+    direction: "up" | "down" | "flat";
+    change_pct: number;
+    period_days: number;
+  };
+  streak?: {
+    yesterday: number;
+    logged_today: boolean;
+    current: number;
+    seed: number;
+  };
+};
+
+type IndicatorsResponse = {
+  metrics: Record<string, IndicatorData>;
+};
+
+type UserSettings = {
+  main_page: {
+    show_indicators: boolean;
+    show_trends: boolean;
+    show_streaks: boolean;
+  };
 };
 
 // Inline styles removed - using Tailwind classes instead
@@ -120,6 +156,10 @@ export default function Home() {
   const [hasShownHeadsUp, setHasShownHeadsUp] = useState(false);
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  // Indicators state
+  const [indicators, setIndicators] = useState<IndicatorsResponse | null>(null);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
 
   function toggleGroup(name: string) {
     setCollapsedGroups((prev) => ({
@@ -262,6 +302,7 @@ export default function Home() {
           is_calculated: !!r.is_calculated,
           calc_expr: r.calc_expr ?? null,
           parent_metric_id: r.parent_metric_id ?? null,
+          analytics_config: r.analytics_config ?? null,
         }));
 
         const visible = normalized.filter(
@@ -284,6 +325,52 @@ export default function Home() {
     if (!authChecked) return;
     reloadDateHints();
   }, [authChecked]);
+
+  // Fetch user settings on auth
+  useEffect(() => {
+    if (!authChecked) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch("/api/settings", { headers });
+        if (res.ok) {
+          const data = await res.json();
+          setUserSettings(data);
+        }
+      } catch (e) {
+        console.error("Failed to load settings:", e);
+      }
+    })();
+  }, [authChecked]);
+
+  // Fetch indicators when date changes
+  useEffect(() => {
+    if (!authChecked) return;
+    if (!date) return;
+    // Wait for settings to load before deciding
+    if (userSettings === null) return;
+    // If settings loaded but indicators are disabled, clear them
+    if (!userSettings.main_page?.show_indicators) {
+      setIndicators(null);
+      return;
+    }
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/indicators?date=${encodeURIComponent(date)}`, { headers });
+        if (res.ok) {
+          const data = await res.json();
+          console.log("Indicators loaded:", data);
+          console.log("User settings:", userSettings);
+          setIndicators(data);
+        } else {
+          console.error("Indicators API error:", res.status, await res.text());
+        }
+      } catch (e) {
+        console.error("Failed to load indicators:", e);
+      }
+    })();
+  }, [authChecked, date, userSettings]);
 
   useEffect(() => {
     if (!authChecked) return;
@@ -1518,6 +1605,52 @@ export default function Home() {
                                 calc
                               </Badge>
                             )}
+                            {/* Trend indicator for numeric types (not calculated) */}
+                            {userSettings?.main_page?.show_indicators &&
+                              userSettings?.main_page?.show_trends &&
+                              !m.is_calculated &&
+                              ["number", "time", "hhmm"].includes(m.type) &&
+                              !m.analytics_config?.hide_trend &&
+                              indicators?.metrics[m.metric_id]?.trend && (
+                                <TrendBadge
+                                  direction={indicators.metrics[m.metric_id].trend!.direction}
+                                  changePct={indicators.metrics[m.metric_id].trend!.change_pct}
+                                  periodDays={indicators.metrics[m.metric_id].trend!.period_days}
+                                  higherIsBetter={m.analytics_config?.higher_is_better !== false}
+                                />
+                              )}
+                            {/* Streak indicator for all non-text, non-calculated types */}
+                            {userSettings?.main_page?.show_indicators &&
+                              userSettings?.main_page?.show_streaks &&
+                              !m.is_calculated &&
+                              m.type !== "text" &&
+                              indicators?.metrics[m.metric_id]?.streak && (() => {
+                                // Check if streaks are enabled (backwards compat with hide_streak)
+                                const showStreak = m.analytics_config?.show_streak ??
+                                  (m.analytics_config?.hide_streak === true ? false : true);
+                                if (!showStreak) return null;
+
+                                const streak = indicators.metrics[m.metric_id].streak!;
+
+                                // Determine if form has a value
+                                const rawVal = vals[m.metric_id];
+                                let formHasValue = false;
+                                if (m.type === "checkbox") {
+                                  formHasValue = rawVal === "on";
+                                } else {
+                                  formHasValue = rawVal != null && rawVal.trim() !== "";
+                                }
+
+                                return (
+                                  <StreakBadge
+                                    yesterdayStreak={streak.yesterday}
+                                    loggedTodayInDb={streak.logged_today}
+                                    formHasValue={formHasValue}
+                                    avoid={m.analytics_config?.avoid ?? false}
+                                    seed={streak.seed ?? 0}
+                                  />
+                                );
+                              })()}
                           </label>
 
                           {isCalculated ? (

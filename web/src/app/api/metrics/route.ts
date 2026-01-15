@@ -3,6 +3,19 @@ import { z } from "zod";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 import { getLocalDateString } from "@/lib/dateUtils";
 
+// Analytics config schema
+const AnalyticsConfigSchema = z.object({
+  hide_trend: z.boolean().optional(),
+  hide_streak: z.boolean().optional(), // deprecated, use show_streak
+  show_streak: z.boolean().optional(), // default: true
+  streak_mode: z.enum(['positive', 'days_since', 'none']).optional(), // deprecated
+  avoid: z.boolean().optional(), // if true, negative streaks show flame (avoiding bad thing)
+  lifetime_streak: z.boolean().optional(), // if true, load all-time data for streak calc
+  streak_seed: z.number().int().min(0).optional(), // pre-log days to add to streak display
+  trend_period: z.number().int().positive().optional(),
+  higher_is_better: z.boolean().optional(), // true = up is green, false = down is green
+}).nullable().optional();
+
 const BaseSchema = z.object({
   metric_id: z
     .string()
@@ -38,6 +51,9 @@ const BaseSchema = z.object({
 
   // presets (comma-separated values)
   preset_values_csv: z.string().nullable().optional(),
+
+  // analytics configuration
+  analytics_config: AnalyticsConfigSchema,
 });
 
 // CREATE uses defaults; PATCH must NOT apply defaults for fields the client didn't send.
@@ -76,6 +92,9 @@ const UpdateSchema = z.object({
 
   // presets
   preset_values_csv: z.string().nullable().optional(),
+
+  // analytics configuration
+  analytics_config: AnalyticsConfigSchema,
 });
 
 function formatZodError(error: z.ZodError): string {
@@ -95,6 +114,26 @@ async function getAuthedClient(req: Request) {
     return { supabase: null, user: null };
   }
   return { supabase, user };
+}
+
+// Look up the group_order for a given group name
+// Returns the group_order from any existing metric in that group, or null if not found
+async function getGroupOrderForGroup(
+  supabase: ReturnType<typeof supabaseServerFromRequest>,
+  userId: string,
+  groupName: string | null
+): Promise<number | null> {
+  if (!groupName) return null;
+
+  const { data } = await supabase
+    .from("config")
+    .select("group_order")
+    .eq("owner_id", userId)
+    .eq("group", groupName)
+    .limit(1)
+    .single();
+
+  return data?.group_order ?? null;
 }
 
 // ---------- POST /api/metrics (create) ----------
@@ -124,6 +163,13 @@ export async function POST(req: Request) {
 
   const todayISO = getLocalDateString();
 
+  // Auto-set group_order based on existing metrics in the same group
+  let groupOrder = body.group_order;
+  if (groupOrder == null && body.group) {
+    const existingGroupOrder = await getGroupOrderForGroup(supabase, user.id, body.group);
+    groupOrder = existingGroupOrder ?? 0;
+  }
+
   const { error } = await supabase.from("config").insert({
     owner_id: user.id,
     metric_id: body.metric_id.trim(),
@@ -149,7 +195,7 @@ export async function POST(req: Request) {
 
     group: body.group ?? null,
     metric_order: body.metric_order ?? 0,
-    group_order: body.group_order != null ? body.group_order : 0,
+    group_order: groupOrder ?? 0,
     is_calculated: body.is_calculated ?? false,
     calc_expr: body.calc_expr ?? null,
     parent_metric_id: body.parent_metric_id ?? null,
@@ -226,13 +272,22 @@ export async function PATCH(req: Request) {
   if (body.calc_expr !== undefined) updates.calc_expr = body.calc_expr;
   if (body.parent_metric_id !== undefined) updates.parent_metric_id = body.parent_metric_id ?? null;
   if (body.preset_values_csv !== undefined) updates.preset_values_csv = body.preset_values_csv ?? null;
+  if (body.analytics_config !== undefined) updates.analytics_config = body.analytics_config ?? {};
 
   if (body.group !== undefined) {
     updates.group = body.group ?? null;
+
+    // Auto-update group_order when group changes (unless explicitly provided)
+    if (body.group_order === undefined && body.group) {
+      const existingGroupOrder = await getGroupOrderForGroup(supabase, user.id, body.group);
+      if (existingGroupOrder != null) {
+        updates.group_order = existingGroupOrder;
+      }
+    }
   }
   if (body.metric_order !== undefined) {
     updates.metric_order = body.metric_order;
-  }  
+  }
   if (body.group_order !== undefined) {
     updates.group_order =
       body.group_order != null ? body.group_order : 0;
