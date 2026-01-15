@@ -210,8 +210,8 @@ function SortableMetricRow({
         </button>
       </td>
 
-      {/* ID */}
-      <td className="py-2 px-2 font-mono text-xs text-muted-foreground w-[130px] truncate">
+      {/* ID - sticky */}
+      <td className="py-2 px-2 font-mono text-xs text-muted-foreground w-[130px] truncate sticky left-[40px] z-10 bg-background">
         {metric.metric_id}
       </td>
 
@@ -1108,7 +1108,7 @@ export default function MetricsPage() {
       if (!metric) return;
 
       const confirmed = window.confirm(
-        `Delete "${metric.metric_name}" (${metricId})?\n\nThis cannot be undone.`
+        `Delete "${metric.metric_name}" (${metricId})?\n\nThis will permanently remove the metric configuration.\nHistorical log data will be preserved.`
       );
       if (!confirmed) return;
 
@@ -1119,19 +1119,24 @@ export default function MetricsPage() {
           headers,
         });
 
+        const j = await res.json().catch(() => null);
+
         if (!res.ok) {
-          const j = await res.json().catch(() => null);
           setError(j?.error || "Failed to delete metric");
+          console.error("Delete failed:", res.status, j);
           return;
         }
 
-        // Remove from local state
-        setMetrics((prev) => prev.filter((m) => m.metric_id !== metricId));
+        console.log("Delete succeeded:", metricId, j);
+
+        // Reload from database to confirm deletion
+        await loadMetrics();
       } catch (e) {
         setError(String((e as Error)?.message ?? e));
+        console.error("Delete exception:", e);
       }
     },
-    [metrics]
+    [metrics, loadMetrics]
   );
 
   // Auto-generate metric_id from name
@@ -1312,7 +1317,7 @@ export default function MetricsPage() {
                   <thead className="sticky top-0 z-20 bg-muted">
                     <tr className="text-xs text-muted-foreground">
                       <th className="w-10 sticky left-0 z-20 bg-muted"></th>
-                      <th className="text-left py-2 px-2 min-w-[130px]">ID</th>
+                      <th className="text-left py-2 px-2 min-w-[130px] sticky left-[40px] z-20 bg-muted">ID</th>
                       <th className="text-left py-2 px-2 min-w-[140px]">Name</th>
                       <th className="text-left py-2 px-2 min-w-[120px]">Group</th>
                       <th className="text-center py-2 px-2 min-w-[100px]">Order</th>
@@ -1353,7 +1358,7 @@ export default function MetricsPage() {
                     {showNewMetric && (
                       <tr className="border-b bg-green-50 dark:bg-green-950/30">
                         <td className="py-2 px-1 sticky left-0 z-10 bg-green-50 dark:bg-green-950/30"></td>
-                        <td className="py-2 px-2">
+                        <td className="py-2 px-2 sticky left-[40px] z-10 bg-green-50 dark:bg-green-950/30">
                           <Input
                             value={newMetric.metric_id}
                             onChange={(e) =>

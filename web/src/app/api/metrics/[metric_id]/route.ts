@@ -29,19 +29,31 @@ export async function DELETE(
     return NextResponse.json({ error: "metric_id is required" }, { status: 400 });
   }
 
-  // Delete from config table
-  const { error: configError } = await supabase
+  // Delete from config table - use select to get affected rows
+  const { data: deleted, error: configError } = await supabase
     .from("config")
     .delete()
     .eq("owner_id", user.id)
-    .eq("metric_id", metric_id);
+    .eq("metric_id", metric_id)
+    .select("metric_id");
 
   if (configError) {
+    console.error("Delete error:", configError);
     return NextResponse.json(
       { error: configError.message || "Failed to delete metric" },
       { status: 500 }
     );
   }
+
+  // Check if any rows were actually deleted
+  if (!deleted || deleted.length === 0) {
+    return NextResponse.json(
+      { error: "Metric not found or already deleted" },
+      { status: 404 }
+    );
+  }
+
+  console.log("Deleted metric:", metric_id, "rows:", deleted.length);
 
   // Optionally: also delete associated log entries
   // This is commented out to preserve historical data

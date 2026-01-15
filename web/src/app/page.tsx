@@ -398,6 +398,8 @@ export default function Home() {
     if (!authChecked) return;
     if (!date) return;
     if (metrics.length === 0) return;
+    // Validate date is complete YYYY-MM-DD format (typing fires onChange on each keystroke)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
 
     loadDayValues(date);
   }, [authChecked, date, metrics]);
@@ -1402,7 +1404,10 @@ export default function Home() {
   function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newDate = e.target.value;
 
-    if (dirty) {
+    // Only validate/confirm when date is complete (typing fires onChange on each keystroke)
+    const isCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(newDate);
+
+    if (isCompleteDate && dirty) {
       const ok = window.confirm(
         "You have unsaved changes.\nDiscard them and switch date?"
       );
@@ -1413,8 +1418,7 @@ export default function Home() {
     }
 
     setDate(newDate);
-    //setShowHeadsUp(false); // user navigated -> hide global heads up
-    loadDayValues(newDate); // if/when you want immediate load
+    // useEffect handles loadDayValues when date is valid
   }  
 
   if (!authChecked) {
