@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import React from "react";
 import { evaluateCalculatedMetricsV2 } from "@/lib/calc";
-import { getLocalDateString } from "@/lib/dateUtils";
+import { getLocalDateString, addDays } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -1405,33 +1405,72 @@ export default function Home() {
   }
 
 
+  // Debounce timer ref for date input
+  const dateDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
   function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newDate = e.target.value;
 
-    // Only update state when date is complete YYYY-MM-DD format
-    // Browser date inputs fire onChange with partial/reformatted values while typing
+    // Only process valid YYYY-MM-DD format
     const isCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(newDate);
+    if (!isCompleteDate) return;
 
-    if (!isCompleteDate) {
-      // Don't update React state with invalid dates - just let the browser handle the input
-      return;
+    // Clear any pending debounce
+    if (dateDebounceRef.current) {
+      clearTimeout(dateDebounceRef.current);
     }
 
-    // Valid date - check for unsaved changes
-    if (dirty) {
-      const ok = window.confirm(
-        "You have unsaved changes.\nDiscard them and switch date?"
-      );
-      if (!ok) {
-        // Revert the input to current state
-        e.target.value = date;
-        return;
+    // Debounce: wait 600ms after last change before updating
+    // This lets user finish typing without triggering multiple loads
+    dateDebounceRef.current = setTimeout(() => {
+      // Check for unsaved changes
+      if (dirty) {
+        const ok = window.confirm(
+          "You have unsaved changes.\nDiscard them and switch date?"
+        );
+        if (!ok) {
+          e.target.value = date;
+          return;
+        }
       }
-    }
+      setDate(newDate);
+    }, 600);
+  }
 
+  // Navigation helpers
+  const goToDate = useCallback((newDate: string) => {
+    if (dirty) {
+      const ok = window.confirm("You have unsaved changes.\nDiscard them and switch date?");
+      if (!ok) return;
+    }
     setDate(newDate);
-    // useEffect handles loadDayValues when date changes
-  }  
+  }, [dirty]);
+
+  const goToPrevDay = useCallback(() => {
+    goToDate(addDays(date, -1));
+  }, [date, goToDate]);
+
+  const goToNextDay = useCallback(() => {
+    const next = addDays(date, 1);
+    if (next <= todayISO) goToDate(next);
+  }, [date, todayISO, goToDate]);
+
+  const goToPrevMonth = useCallback(() => {
+    const d = new Date(date + "T00:00:00");
+    d.setMonth(d.getMonth() - 1);
+    goToDate(d.toISOString().slice(0, 10));
+  }, [date, goToDate]);
+
+  const goToNextMonth = useCallback(() => {
+    const d = new Date(date + "T00:00:00");
+    d.setMonth(d.getMonth() + 1);
+    const next = d.toISOString().slice(0, 10);
+    if (next <= todayISO) goToDate(next);
+  }, [date, todayISO, goToDate]);
+
+  const goToToday = useCallback(() => {
+    goToDate(todayISO);
+  }, [todayISO, goToDate]);  
 
   if (!authChecked) {
     return (
@@ -1446,7 +1485,27 @@ export default function Home() {
       {/* Sticky Header with Date & Save */}
       <header className="sticky top-0 z-40 bg-white border-b shadow-sm">
         <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {/* Month navigation */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={goToPrevMonth}
+              className="h-8 w-8 p-0 text-muted-foreground"
+              title="Previous month"
+            >
+              ««
+            </Button>
+            {/* Day navigation */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={goToPrevDay}
+              className="h-8 w-8 p-0 text-muted-foreground"
+              title="Previous day"
+            >
+              ‹
+            </Button>
             <input
               type="date"
               value={date}
@@ -1454,6 +1513,37 @@ export default function Home() {
               onChange={handleDateChange}
               className="border rounded px-3 py-1.5 text-sm"
             />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={goToNextDay}
+              disabled={date >= todayISO}
+              className="h-8 w-8 p-0 text-muted-foreground"
+              title="Next day"
+            >
+              ›
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={goToNextMonth}
+              disabled={addDays(date, 30) > todayISO}
+              className="h-8 w-8 p-0 text-muted-foreground"
+              title="Next month"
+            >
+              »»
+            </Button>
+            {/* Today button */}
+            {date !== todayISO && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={goToToday}
+                className="h-8 px-2 text-xs"
+              >
+                Today
+              </Button>
+            )}
             {dirty && (
               <span className="text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
                 Unsaved changes
