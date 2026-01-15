@@ -29,7 +29,40 @@ export async function DELETE(
     return NextResponse.json({ error: "metric_id is required" }, { status: 400 });
   }
 
-  // Delete from config table - use select to get affected rows
+  // First, verify the metric exists and belongs to this user
+  const { data: existing, error: checkError } = await supabase
+    .from("config")
+    .select("metric_id")
+    .eq("owner_id", user.id)
+    .eq("metric_id", metric_id)
+    .single();
+
+  if (checkError || !existing) {
+    return NextResponse.json(
+      { error: "Metric not found or already deleted" },
+      { status: 404 }
+    );
+  }
+
+  // Delete associated log entries first (required due to foreign key constraint)
+  const { data: deletedLogs, error: logError } = await supabase
+    .from("log")
+    .delete()
+    .eq("owner_id", user.id)
+    .eq("metric_id", metric_id)
+    .select("date");
+
+  if (logError) {
+    console.error("Delete log entries error:", logError);
+    return NextResponse.json(
+      { error: logError.message || "Failed to delete log entries" },
+      { status: 500 }
+    );
+  }
+
+  console.log("Deleted log entries for metric:", metric_id, "count:", deletedLogs?.length ?? 0);
+
+  // Now delete from config table
   const { data: deleted, error: configError } = await supabase
     .from("config")
     .delete()
@@ -38,30 +71,17 @@ export async function DELETE(
     .select("metric_id");
 
   if (configError) {
-    console.error("Delete error:", configError);
+    console.error("Delete config error:", configError);
     return NextResponse.json(
       { error: configError.message || "Failed to delete metric" },
       { status: 500 }
     );
   }
 
-  // Check if any rows were actually deleted
-  if (!deleted || deleted.length === 0) {
-    return NextResponse.json(
-      { error: "Metric not found or already deleted" },
-      { status: 404 }
-    );
-  }
+  console.log("Deleted metric:", metric_id);
 
-  console.log("Deleted metric:", metric_id, "rows:", deleted.length);
-
-  // Optionally: also delete associated log entries
-  // This is commented out to preserve historical data
-  // const { error: logError } = await supabase
-  //   .from("log")
-  //   .delete()
-  //   .eq("owner_id", user.id)
-  //   .eq("metric_id", metric_id);
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({
+    ok: true,
+    deleted_logs: deletedLogs?.length ?? 0
+  });
 }

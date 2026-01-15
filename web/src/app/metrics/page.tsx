@@ -1108,7 +1108,7 @@ export default function MetricsPage() {
       if (!metric) return;
 
       const confirmed = window.confirm(
-        `Delete "${metric.metric_name}" (${metricId})?\n\nThis will permanently remove the metric configuration.\nHistorical log data will be preserved.`
+        `Delete "${metric.metric_name}" (${metricId})?\n\nThis will permanently delete:\n- The metric configuration\n- ALL historical log data for this metric\n\nThis cannot be undone.`
       );
       if (!confirmed) return;
 
