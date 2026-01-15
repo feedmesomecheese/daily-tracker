@@ -347,6 +347,8 @@ export default function Home() {
   useEffect(() => {
     if (!authChecked) return;
     if (!date) return;
+    // Validate date format before fetching
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
     // Wait for settings to load before deciding
     if (userSettings === null) return;
     // If settings loaded but indicators are disabled, clear them
@@ -736,6 +738,8 @@ export default function Home() {
     if (!authChecked) return;
     if (!date) return;
     if (metrics.length === 0) return;
+    // Validate date is complete YYYY-MM-DD format before creating Date objects
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
 
     const maxN = getMaxPrevDays(metrics);
 
@@ -1404,21 +1408,29 @@ export default function Home() {
   function handleDateChange(e: React.ChangeEvent<HTMLInputElement>) {
     const newDate = e.target.value;
 
-    // Only validate/confirm when date is complete (typing fires onChange on each keystroke)
+    // Only update state when date is complete YYYY-MM-DD format
+    // Browser date inputs fire onChange with partial/reformatted values while typing
     const isCompleteDate = /^\d{4}-\d{2}-\d{2}$/.test(newDate);
 
-    if (isCompleteDate && dirty) {
+    if (!isCompleteDate) {
+      // Don't update React state with invalid dates - just let the browser handle the input
+      return;
+    }
+
+    // Valid date - check for unsaved changes
+    if (dirty) {
       const ok = window.confirm(
         "You have unsaved changes.\nDiscard them and switch date?"
       );
       if (!ok) {
-        e.target.value = date; // revert
+        // Revert the input to current state
+        e.target.value = date;
         return;
       }
     }
 
     setDate(newDate);
-    // useEffect handles loadDayValues when date is valid
+    // useEffect handles loadDayValues when date changes
   }  
 
   if (!authChecked) {
