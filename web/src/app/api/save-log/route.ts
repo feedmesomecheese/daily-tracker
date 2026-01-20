@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { recalculateFromDate } from "@/lib/recalculate";
 
 type Entry = {
   metric_id: string;
@@ -122,5 +123,23 @@ export async function POST(req: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true });
+  // Recalculate forward from this date to update any dependent calculated metrics
+  // This handles formulas using prev() that depend on today's saved data
+  const recalcResult = await recalculateFromDate(supabase, owner_id, date);
+
+  if (recalcResult.errors.length > 0) {
+    console.warn("Recalculation warnings:", recalcResult.errors);
+  }
+
+  console.log("SAVE-LOG complete:", {
+    date,
+    upserted: toUpsert.length,
+    deleted: toDelete.length,
+    recalcDays: recalcResult.daysProcessed,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    recalculated: recalcResult.daysProcessed,
+  });
 }
