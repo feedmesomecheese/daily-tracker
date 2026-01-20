@@ -1765,7 +1765,15 @@ export default function Home() {
                                 <input
                                   type="checkbox"
                                   checked={raw === "on"}
-                                  onFocus={() => markAsTouched(m.metric_id)}
+                                  onClick={(e) => {
+                                    // If this is an untouched default, first click just confirms it
+                                    if (defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id)) {
+                                      e.preventDefault();
+                                      markAsTouched(m.metric_id);
+                                      setDirty(true);
+                                      return;
+                                    }
+                                  }}
                                   onChange={(e) => {
                                     markAsTouched(m.metric_id);
                                     const v = e.target.checked ? "on" : "";
