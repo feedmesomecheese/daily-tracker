@@ -1590,7 +1590,7 @@ export default function Home() {
               <Card key={group.groupName} className="mt-4 max-w-md overflow-hidden">
                 {/* Group header bar */}
                 <CardHeader
-                  className="bg-amber-50 dark:bg-amber-900/30 py-2 px-3 cursor-pointer border-b"
+                  className="bg-muted py-2 px-3 cursor-pointer border-b"
                   onClick={() => toggleGroup(group.groupName)}
                 >
                   <div className="flex items-center justify-between">
@@ -1733,7 +1733,7 @@ export default function Home() {
                               </div>
                             ) : (
                               <div>
-                                <div className="mt-0.5 border border-gray-200 bg-gray-50 min-h-[22px] w-72 px-2 py-1 flex items-center rounded-md text-sm">
+                                <div className="mt-0.5 border border-input bg-zinc-100 dark:bg-zinc-700 text-foreground min-h-[22px] w-72 px-2 py-1 flex items-center rounded-md text-sm">
                                   {calcDisplay}
                                 </div>
 
