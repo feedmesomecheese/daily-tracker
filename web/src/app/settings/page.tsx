@@ -36,6 +36,12 @@ export default function SettingsPage() {
   // Backfill state
   const [backfillRunning, setBackfillRunning] = useState(false);
   const [backfillFromDate, setBackfillFromDate] = useState("");
+  const [backfillProgress, setBackfillProgress] = useState<{
+    current: number;
+    total: number;
+    date: string;
+    percent: number;
+  } | null>(null);
   const [backfillResult, setBackfillResult] = useState<{
     success: boolean;
     message: string;
@@ -101,45 +107,62 @@ export default function SettingsPage() {
     saveSettings(newSettings);
   };
 
-  // Backfill handlers
+  // Backfill handlers using Server-Sent Events for progress
   const runBackfill = async (all: boolean) => {
-    try {
-      setBackfillRunning(true);
-      setBackfillResult(null);
-      const headers = await getAuthHeaders();
-      const body = all
-        ? { all: true }
-        : { fromDate: backfillFromDate };
+    setBackfillRunning(true);
+    setBackfillResult(null);
+    setBackfillProgress(null);
 
-      const res = await fetch("/api/backfill", {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(body),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok) {
-        setBackfillResult({
-          success: false,
-          message: json?.error || "Backfill failed",
-        });
-        return;
-      }
-
-      setBackfillResult({
-        success: true,
-        message: `Recalculated ${json.daysProcessed} days`,
-      });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setBackfillResult({ success: false, message: msg });
-    } finally {
-      setBackfillRunning(false);
+    // Build URL with query params
+    const params = new URLSearchParams();
+    if (all) {
+      params.set("all", "true");
+    } else {
+      params.set("fromDate", backfillFromDate);
     }
+
+    const eventSource = new EventSource(`/api/backfill-stream?${params.toString()}`);
+
+    eventSource.addEventListener("progress", (e) => {
+      const data = JSON.parse(e.data);
+      setBackfillProgress(data);
+    });
+
+    eventSource.addEventListener("complete", (e) => {
+      const data = JSON.parse(e.data);
+      setBackfillResult({
+        success: data.success,
+        message: `Recalculated ${data.daysProcessed} days${
+          data.errors?.length ? ` (${data.errors.length} warnings)` : ""
+        }`,
+      });
+      setBackfillProgress(null);
+      setBackfillRunning(false);
+      eventSource.close();
+    });
+
+    eventSource.addEventListener("error", (e) => {
+      // Check if it's a custom error event or connection error
+      if (e instanceof MessageEvent) {
+        const data = JSON.parse(e.data);
+        setBackfillResult({ success: false, message: data.error });
+      } else {
+        setBackfillResult({ success: false, message: "Connection lost" });
+      }
+      setBackfillProgress(null);
+      setBackfillRunning(false);
+      eventSource.close();
+    });
+
+    eventSource.onerror = () => {
+      // Only handle if not already closed by complete/error event
+      if (backfillRunning) {
+        setBackfillResult({ success: false, message: "Connection error" });
+        setBackfillProgress(null);
+        setBackfillRunning(false);
+      }
+      eventSource.close();
+    };
   };
 
   return (
@@ -316,6 +339,22 @@ export default function SettingsPage() {
               {backfillRunning ? "Running..." : "Recalculate from Date"}
             </Button>
           </div>
+
+          {/* Progress bar */}
+          {backfillProgress && (
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span>Processing {backfillProgress.date}</span>
+                <span>{backfillProgress.current} / {backfillProgress.total} days ({backfillProgress.percent}%)</span>
+              </div>
+              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all duration-150"
+                  style={{ width: `${backfillProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Result message */}
           {backfillResult && (

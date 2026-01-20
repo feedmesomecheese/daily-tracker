@@ -108,6 +108,13 @@ function getTodayISO(): string {
   return now.toISOString().slice(0, 10);
 }
 
+export type ProgressCallback = (progress: {
+  current: number;
+  total: number;
+  date: string;
+  percent: number;
+}) => void;
+
 /**
  * Recalculate all calculated metrics from a given date forward to today.
  * This should be called after saving a day's data.
@@ -116,13 +123,15 @@ function getTodayISO(): string {
  * @param ownerId - The user's owner_id
  * @param fromDate - The date that was just saved (recalc starts from fromDate + 1)
  * @param toDate - Optional end date (defaults to today)
+ * @param onProgress - Optional callback for progress updates
  * @returns Object with success status and any errors
  */
 export async function recalculateFromDate(
   supabase: SupabaseClient,
   ownerId: string,
   fromDate: string,
-  toDate?: string
+  toDate?: string,
+  onProgress?: ProgressCallback
 ): Promise<{ success: boolean; daysProcessed: number; errors: string[] }> {
   const errors: string[] = [];
   const today = toDate || getTodayISO();
@@ -270,6 +279,16 @@ export async function recalculateFromDate(
     }
 
     daysProcessed++;
+
+    // Report progress
+    if (onProgress) {
+      onProgress({
+        current: daysProcessed,
+        total: datesToProcess.length,
+        date,
+        percent: Math.round((daysProcessed / datesToProcess.length) * 100),
+      });
+    }
   }
 
   return {
@@ -285,7 +304,8 @@ export async function recalculateFromDate(
  */
 export async function backfillAllCalculations(
   supabase: SupabaseClient,
-  ownerId: string
+  ownerId: string,
+  onProgress?: ProgressCallback
 ): Promise<{ success: boolean; daysProcessed: number; errors: string[] }> {
   // Find the earliest log date
   const { data: earliest, error: earliestError } = await supabase
@@ -307,5 +327,5 @@ export async function backfillAllCalculations(
   // Start from one day before the earliest to ensure we process from the beginning
   const startDate = addDays(earliest.date, -1);
 
-  return recalculateFromDate(supabase, ownerId, startDate);
+  return recalculateFromDate(supabase, ownerId, startDate, undefined, onProgress);
 }
