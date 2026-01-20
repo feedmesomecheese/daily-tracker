@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/theme-provider";
 
 type MainPageSettings = {
@@ -30,6 +32,14 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const { theme, setTheme } = useTheme();
+
+  // Backfill state
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillFromDate, setBackfillFromDate] = useState("");
+  const [backfillResult, setBackfillResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
 
   // Load settings on mount
   useEffect(() => {
@@ -89,6 +99,47 @@ export default function SettingsPage() {
     };
     setSettings(newSettings);
     saveSettings(newSettings);
+  };
+
+  // Backfill handlers
+  const runBackfill = async (all: boolean) => {
+    try {
+      setBackfillRunning(true);
+      setBackfillResult(null);
+      const headers = await getAuthHeaders();
+      const body = all
+        ? { all: true }
+        : { fromDate: backfillFromDate };
+
+      const res = await fetch("/api/backfill", {
+        method: "POST",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        setBackfillResult({
+          success: false,
+          message: json?.error || "Backfill failed",
+        });
+        return;
+      }
+
+      setBackfillResult({
+        success: true,
+        message: `Recalculated ${json.daysProcessed} days`,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setBackfillResult({ success: false, message: msg });
+    } finally {
+      setBackfillRunning(false);
+    }
   };
 
   return (
@@ -222,6 +273,64 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Data Maintenance */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg">Data Maintenance</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Recalculate computed metrics (like those using <code className="bg-muted px-1 rounded">prev()</code> or <code className="bg-muted px-1 rounded">diff()</code>).
+            Use this after changing formulas or if calculated values seem incorrect.
+          </p>
+
+          {/* Full backfill */}
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => runBackfill(true)}
+              disabled={backfillRunning}
+              variant="outline"
+            >
+              {backfillRunning ? "Running..." : "Recalculate All History"}
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              Recalculates all calculated metrics from the beginning
+            </span>
+          </div>
+
+          {/* From date backfill */}
+          <div className="flex items-center gap-3">
+            <Input
+              type="date"
+              value={backfillFromDate}
+              onChange={(e) => setBackfillFromDate(e.target.value)}
+              className="w-40"
+              disabled={backfillRunning}
+            />
+            <Button
+              onClick={() => runBackfill(false)}
+              disabled={backfillRunning || !backfillFromDate}
+              variant="outline"
+            >
+              {backfillRunning ? "Running..." : "Recalculate from Date"}
+            </Button>
+          </div>
+
+          {/* Result message */}
+          {backfillResult && (
+            <div
+              className={`text-sm p-2 rounded ${
+                backfillResult.success
+                  ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                  : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+              }`}
+            >
+              {backfillResult.message}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="text-xs text-muted-foreground/70">
         Settings are saved automatically when changed.
