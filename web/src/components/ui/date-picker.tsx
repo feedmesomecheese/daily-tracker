@@ -286,7 +286,7 @@ export function DatePicker({
                 for (let d = 1; d <= daysInMonth; d++) {
                   const dateStr = `${viewYear}-${String(viewMonth).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
                   const isSelected = dateStr === value;
-                  const isFuture = maxDate && dateStr > maxDate;
+                  const isFuture = Boolean(maxDate && dateStr > maxDate);
 
                   days.push(
                     <button
