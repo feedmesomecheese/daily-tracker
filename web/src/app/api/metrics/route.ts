@@ -16,6 +16,20 @@ const AnalyticsConfigSchema = z.object({
   higher_is_better: z.boolean().optional(), // true = up is green, false = down is green
 }).nullable().optional();
 
+// Notification config schema
+const NotificationConfigSchema = z.object({
+  streak_alerts: z.object({
+    enabled: z.boolean().optional(),
+    // Thresholds to trigger notifications (e.g., [-20, -25, -30] for negative streaks)
+    negative_thresholds: z.array(z.number().int().max(0)).optional(),
+    positive_thresholds: z.array(z.number().int().min(0)).optional(),
+    // Track last notified threshold to avoid duplicate emails
+    last_notified_threshold: z.number().int().nullable().optional(),
+    // Track streak sign to detect when streak resets
+    last_streak_sign: z.enum(['positive', 'negative', 'zero']).nullable().optional(),
+  }).optional(),
+}).nullable().optional();
+
 const BaseSchema = z.object({
   metric_id: z
     .string()
@@ -54,6 +68,9 @@ const BaseSchema = z.object({
 
   // analytics configuration
   analytics_config: AnalyticsConfigSchema,
+
+  // notification configuration
+  notification_config: NotificationConfigSchema,
 });
 
 // CREATE uses defaults; PATCH must NOT apply defaults for fields the client didn't send.
@@ -95,6 +112,9 @@ const UpdateSchema = z.object({
 
   // analytics configuration
   analytics_config: AnalyticsConfigSchema,
+
+  // notification configuration
+  notification_config: NotificationConfigSchema,
 });
 
 function formatZodError(error: z.ZodError): string {
@@ -273,6 +293,7 @@ export async function PATCH(req: Request) {
   if (body.parent_metric_id !== undefined) updates.parent_metric_id = body.parent_metric_id ?? null;
   if (body.preset_values_csv !== undefined) updates.preset_values_csv = body.preset_values_csv ?? null;
   if (body.analytics_config !== undefined) updates.analytics_config = body.analytics_config ?? {};
+  if (body.notification_config !== undefined) updates.notification_config = body.notification_config ?? {};
 
   if (body.group !== undefined) {
     updates.group = body.group ?? null;
