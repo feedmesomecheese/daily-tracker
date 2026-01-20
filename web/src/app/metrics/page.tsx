@@ -94,6 +94,16 @@ type AnalyticsConfig = {
   higher_is_better?: boolean; // true = up is good (green), false = down is good (green)
 };
 
+type NotificationConfig = {
+  streak_alerts?: {
+    enabled?: boolean;
+    negative_thresholds?: number[];
+    positive_thresholds?: number[];
+    last_notified_threshold?: number | null;
+    last_streak_sign?: "positive" | "negative" | "zero" | null;
+  };
+};
+
 type Metric = {
   metric_id: string;
   metric_name: string;
@@ -117,6 +127,7 @@ type Metric = {
   parent_metric_id: string | null;
   preset_values_csv: string | null;
   analytics_config: AnalyticsConfig | null;
+  notification_config: NotificationConfig | null;
 };
 
 type GroupInfo = {
@@ -175,6 +186,7 @@ function SortableMetricRow({
   onFieldChange,
   savingFields,
   onDelete,
+  onNotificationClick,
 }: {
   metric: Metric;
   metrics: Metric[];
@@ -183,6 +195,7 @@ function SortableMetricRow({
   onFieldChange: (metricId: string, field: string, value: unknown) => Promise<void>;
   savingFields: Set<string>;
   onDelete: (metricId: string) => void;
+  onNotificationClick: (metric: Metric) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: metric.metric_id,
@@ -527,6 +540,20 @@ function SortableMetricRow({
           <Button
             variant="ghost"
             size="sm"
+            className={cn(
+              "h-7 w-7 p-0",
+              metric.notification_config?.streak_alerts?.enabled
+                ? "text-amber-500 hover:text-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            )}
+            title="Notification settings"
+            onClick={() => onNotificationClick(metric)}
+          >
+            <Bell className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
             title="Delete metric"
             onClick={() => onDelete(metric.metric_id)}
@@ -712,6 +739,26 @@ function Trash2({ className }: { className?: string }) {
   );
 }
 
+function Bell({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+    </svg>
+  );
+}
+
 // Main page component
 export default function MetricsPage() {
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -723,6 +770,13 @@ export default function MetricsPage() {
   const [showPrivate, setShowPrivate] = useState(true);
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
   const [groupsExpanded, setGroupsExpanded] = useState(false);
+
+  // Notification config sheet state
+  const [notificationMetric, setNotificationMetric] = useState<Metric | null>(null);
+  const [notificationEnabled, setNotificationEnabled] = useState(false);
+  const [negativeThresholds, setNegativeThresholds] = useState("");
+  const [positiveThresholds, setPositiveThresholds] = useState("");
+  const [savingNotification, setSavingNotification] = useState(false);
 
   // Track which fields are currently saving
   const [savingFields, setSavingFields] = useState<Set<string>>(new Set());
@@ -856,6 +910,7 @@ export default function MetricsPage() {
         parent_metric_id: (r.parent_metric_id ?? null) as string | null,
         preset_values_csv: (r.preset_values_csv ?? null) as string | null,
         analytics_config: (r.analytics_config ?? null) as AnalyticsConfig | null,
+        notification_config: (r.notification_config ?? null) as NotificationConfig | null,
       }));
 
       setMetrics(normalized);
@@ -1138,6 +1193,76 @@ export default function MetricsPage() {
     },
     [metrics, loadMetrics]
   );
+
+  // Open notification config sheet
+  const openNotificationConfig = useCallback((metric: Metric) => {
+    setNotificationMetric(metric);
+    const config = metric.notification_config?.streak_alerts;
+    setNotificationEnabled(config?.enabled ?? false);
+    setNegativeThresholds(config?.negative_thresholds?.join(", ") ?? "");
+    setPositiveThresholds(config?.positive_thresholds?.join(", ") ?? "");
+  }, []);
+
+  // Save notification config
+  const saveNotificationConfig = useCallback(async () => {
+    if (!notificationMetric) return;
+
+    setSavingNotification(true);
+    try {
+      // Parse thresholds from comma-separated strings
+      const parseThresholds = (str: string): number[] => {
+        return str
+          .split(",")
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => Number.isFinite(n));
+      };
+
+      const negThresholds = parseThresholds(negativeThresholds).filter((n) => n <= 0);
+      const posThresholds = parseThresholds(positiveThresholds).filter((n) => n >= 0);
+
+      const newConfig: NotificationConfig = {
+        streak_alerts: {
+          enabled: notificationEnabled,
+          negative_thresholds: negThresholds.length > 0 ? negThresholds : undefined,
+          positive_thresholds: posThresholds.length > 0 ? posThresholds : undefined,
+          // Preserve existing tracking fields
+          last_notified_threshold: notificationMetric.notification_config?.streak_alerts?.last_notified_threshold,
+          last_streak_sign: notificationMetric.notification_config?.streak_alerts?.last_streak_sign,
+        },
+      };
+
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/metrics", {
+        method: "PATCH",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({
+          metric_id: notificationMetric.metric_id,
+          notification_config: newConfig,
+        }),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        setError(j?.error || "Failed to save notification config");
+        return;
+      }
+
+      // Update local state
+      setMetrics((prev) =>
+        prev.map((m) =>
+          m.metric_id === notificationMetric.metric_id
+            ? { ...m, notification_config: newConfig }
+            : m
+        )
+      );
+
+      setNotificationMetric(null);
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e));
+    } finally {
+      setSavingNotification(false);
+    }
+  }, [notificationMetric, notificationEnabled, negativeThresholds, positiveThresholds]);
 
   // Auto-generate metric_id from name
   const handleNewNameChange = (name: string) => {
@@ -1627,6 +1752,7 @@ export default function MetricsPage() {
                         onFieldChange={updateMetricField}
                         savingFields={savingFields}
                         onDelete={deleteMetric}
+                        onNotificationClick={openNotificationConfig}
                       />
                     ))}
                   </tbody>
@@ -1684,6 +1810,101 @@ export default function MetricsPage() {
                 </div>
               </details>
             ))}
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Notification config sheet */}
+      <Sheet
+        open={notificationMetric !== null}
+        onOpenChange={(open) => !open && setNotificationMetric(null)}
+      >
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Notification Settings</SheetTitle>
+            <SheetDescription>
+              {notificationMetric?.metric_name} ({notificationMetric?.metric_id})
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-6">
+            {/* Enable toggle */}
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={notificationEnabled}
+                onChange={(e) => setNotificationEnabled(e.target.checked)}
+                className="h-5 w-5 rounded"
+              />
+              <div>
+                <div className="font-medium">Enable streak alerts</div>
+                <div className="text-sm text-muted-foreground">
+                  Receive email notifications when streak thresholds are crossed
+                </div>
+              </div>
+            </label>
+
+            {notificationEnabled && (
+              <>
+                {/* Negative thresholds */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Negative streak thresholds
+                  </label>
+                  <Input
+                    value={negativeThresholds}
+                    onChange={(e) => setNegativeThresholds(e.target.value)}
+                    placeholder="-20, -25, -26, -27, -28, -29, -30"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated negative numbers. You'll get an email when your streak
+                    reaches each threshold (e.g., -20 means 20 days without logging).
+                  </p>
+                </div>
+
+                {/* Positive thresholds */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">
+                    Positive streak thresholds (milestones)
+                  </label>
+                  <Input
+                    value={positiveThresholds}
+                    onChange={(e) => setPositiveThresholds(e.target.value)}
+                    placeholder="30, 60, 90, 180, 365"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated positive numbers. Celebrate milestones!
+                  </p>
+                </div>
+
+                {/* Current tracking info */}
+                {notificationMetric?.notification_config?.streak_alerts?.last_notified_threshold && (
+                  <div className="p-3 bg-muted rounded-md text-sm">
+                    <p className="text-muted-foreground">
+                      Last notified at threshold:{" "}
+                      <strong>{notificationMetric.notification_config.streak_alerts.last_notified_threshold}</strong>
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Save button */}
+            <div className="flex gap-2 pt-4">
+              <Button
+                onClick={saveNotificationConfig}
+                disabled={savingNotification}
+              >
+                {savingNotification ? "Saving..." : "Save"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setNotificationMetric(null)}
+                disabled={savingNotification}
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         </SheetContent>
       </Sheet>
