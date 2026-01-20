@@ -1,6 +1,39 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
+/**
+ * Format a number of days as a human-readable duration
+ * - < 30 days: "15" (just the number)
+ * - 30-364 days: "3m 15d"
+ * - 365+ days: "2y 3m 15d"
+ */
+function formatStreakDuration(days: number): string {
+  const absDays = Math.abs(days);
+
+  if (absDays < 30) {
+    return String(absDays);
+  }
+
+  const years = Math.floor(absDays / 365);
+  const remainingAfterYears = absDays % 365;
+  const months = Math.floor(remainingAfterYears / 30);
+  const remainingDays = remainingAfterYears % 30;
+
+  const parts: string[] = [];
+
+  if (years > 0) {
+    parts.push(`${years}y`);
+  }
+  if (months > 0) {
+    parts.push(`${months}m`);
+  }
+  if (remainingDays > 0 || parts.length === 0) {
+    parts.push(`${remainingDays}d`);
+  }
+
+  return parts.join(" ");
+}
+
 export interface StreakBadgeProps {
   // Streak value from API (yesterday's streak, what's in the DB)
   yesterdayStreak: number;
@@ -66,21 +99,25 @@ export function StreakBadge({
   // Format the display
   const absStreak = Math.abs(displayStreak);
   const isPositive = displayStreak > 0;
+  const formattedStreak = formatStreakDuration(displayStreak);
+
+  // Show flame for good streaks (positive for normal, negative for avoid)
   const showFlame = isGood && !isMuted;
 
-  // Build tooltip
+  // Build tooltip with full day count for longer streaks
+  const dayLabel = absStreak === 1 ? "day" : "days";
   let tooltipText: string;
   if (isPositive) {
     if (avoid) {
-      tooltipText = `${absStreak} day${absStreak === 1 ? "" : "s"} in a row (try to avoid!)`;
+      tooltipText = `${absStreak} ${dayLabel} in a row (try to avoid!)`;
     } else {
-      tooltipText = `${absStreak} day streak${isMuted ? " - not logged today" : " - keep it going!"}`;
+      tooltipText = `${absStreak} ${dayLabel} streak${isMuted ? " - not logged today" : " - keep it going!"}`;
     }
   } else {
     if (avoid) {
-      tooltipText = `${absStreak} day${absStreak === 1 ? "" : "s"} avoided - great job!`;
+      tooltipText = `${absStreak} ${dayLabel} avoided - great job!`;
     } else {
-      tooltipText = `${absStreak} day${absStreak === 1 ? "" : "s"} missed`;
+      tooltipText = `${absStreak} ${dayLabel} missed`;
     }
   }
 
@@ -114,8 +151,8 @@ export function StreakBadge({
     >
       {showFlame && <span className="text-sm">🔥</span>}
       <span>
-        {isPositive ? "+" : ""}
-        {displayStreak}
+        {isPositive ? "+" : "-"}
+        {formattedStreak}
       </span>
     </span>
   );
