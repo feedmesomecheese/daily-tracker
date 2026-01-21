@@ -107,6 +107,22 @@ function formatDateRange(start: string, end: string): string {
   return `${formatDate(start)} - ${formatDate(end)}`;
 }
 
+// Format a numeric value based on metric type (handles time/hhmm as HH:MM)
+function formatMetricValue(value: number | null | undefined, metricType: string | null): string {
+  if (value == null) return "N/A";
+
+  if (metricType === "time" || metricType === "hhmm") {
+    // Value is in minutes, format as H:MM or HH:MM
+    const totalMins = Math.round(value);
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return `${hrs}:${String(mins).padStart(2, "0")}`;
+  }
+
+  // Regular number - round to 1 decimal
+  return String(Math.round(value * 10) / 10);
+}
+
 function formatDuration(days: number): string {
   // Ensure we have a valid positive number
   if (!Number.isFinite(days)) return "N/A";
@@ -177,11 +193,13 @@ function DayOfWeekBar({
   maxValue,
   averages,
   isAverage = false,
+  metricType = null,
 }: {
   breakdown: Record<string, number>;
   maxValue: number;
   averages?: Record<string, number | null>;
   isAverage?: boolean;
+  metricType?: string | null;
 }) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -197,6 +215,17 @@ function DayOfWeekBar({
   const minVal = values.length > 0 ? Math.min(...values) : 0;
   const maxVal = values.length > 0 ? Math.max(...values) : 0;
   const range = maxVal - minVal;
+
+  // Format value based on metric type
+  const formatValue = (v: number) => {
+    if (isAverage && (metricType === "time" || metricType === "hhmm")) {
+      const totalMins = Math.round(v);
+      const hrs = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      return `${hrs}:${String(mins).padStart(2, "0")}`;
+    }
+    return isAverage ? v.toFixed(1) : String(v);
+  };
 
   return (
     <div className="flex gap-1 items-end" style={{ height: 80 }}>
@@ -227,12 +256,12 @@ function DayOfWeekBar({
           <div key={day} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: 80 }}>
             {/* Data label above bar */}
             <span className="text-[10px] font-medium tabular-nums text-muted-foreground">
-              {value !== null && displayValue > 0 ? (isAverage ? displayValue.toFixed(1) : displayValue) : ""}
+              {value !== null && displayValue > 0 ? formatValue(displayValue) : ""}
             </span>
             <div
               className="w-full rounded-t transition-all"
               style={{ height: barHeight, backgroundColor: barColor }}
-              title={`${day}: ${isAverage ? displayValue.toFixed(1) : displayValue}`}
+              title={`${day}: ${formatValue(displayValue)}`}
             />
             <span className="text-[10px] text-muted-foreground">{day}</span>
           </div>
@@ -679,30 +708,30 @@ export function MetricStatsSheet({
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                     <StatItem
                       label="Lifetime Avg"
-                      value={stats.numberStats.lifetimeAvg}
+                      value={formatMetricValue(stats.numberStats.lifetimeAvg, metricType)}
                     />
                     <StatItem
                       label="7-Day Avg"
-                      value={stats.numberStats.periodAverages.days7 ?? "N/A"}
+                      value={formatMetricValue(stats.numberStats.periodAverages.days7, metricType)}
                     />
                     <StatItem
                       label="30-Day Avg"
-                      value={stats.numberStats.periodAverages.days30 ?? "N/A"}
+                      value={formatMetricValue(stats.numberStats.periodAverages.days30, metricType)}
                     />
                     <StatItem
                       label="90-Day Avg"
-                      value={stats.numberStats.periodAverages.days90 ?? "N/A"}
+                      value={formatMetricValue(stats.numberStats.periodAverages.days90, metricType)}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4 pt-3 border-t">
                     <StatItem
                       label="All-Time High"
-                      value={stats.numberStats.high?.value ?? "N/A"}
+                      value={formatMetricValue(stats.numberStats.high?.value, metricType)}
                       subtext={stats.numberStats.high ? formatDate(stats.numberStats.high.date) : undefined}
                     />
                     <StatItem
                       label="All-Time Low"
-                      value={stats.numberStats.low?.value ?? "N/A"}
+                      value={formatMetricValue(stats.numberStats.low?.value, metricType)}
                       subtext={stats.numberStats.low ? formatDate(stats.numberStats.low.date) : undefined}
                     />
                   </div>
@@ -902,7 +931,7 @@ export function MetricStatsSheet({
                     />
                     <StatItem
                       label="180-Day Avg"
-                      value={stats.numberStats?.periodAverages.days180 ?? "N/A"}
+                      value={formatMetricValue(stats.numberStats?.periodAverages.days180, metricType)}
                     />
                   </div>
                 )}
@@ -922,6 +951,7 @@ export function MetricStatsSheet({
                   maxValue={maxDayOfWeek}
                   averages={stats.dayOfWeekAverages}
                   isAverage={!isCheckbox}
+                  metricType={metricType}
                 />
               </CardContent>
             </Card>
@@ -961,12 +991,12 @@ export function MetricStatsSheet({
                       <>
                         <div className="flex items-baseline gap-2">
                           <span className="text-2xl font-semibold tabular-nums">
-                            {stats.comparisons.ytd.avg ?? "N/A"}
+                            {formatMetricValue(stats.comparisons.ytd.avg, metricType)}
                           </span>
                           <span className="text-xs text-muted-foreground">avg</span>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          vs {stats.comparisons.prevYtd.avg ?? "N/A"} avg same period last year
+                          vs {formatMetricValue(stats.comparisons.prevYtd.avg, metricType)} avg same period last year
                         </div>
                       </>
                     )}
@@ -992,12 +1022,12 @@ export function MetricStatsSheet({
                       <>
                         <div className="flex items-baseline gap-2">
                           <span className="text-2xl font-semibold tabular-nums">
-                            {stats.comparisons.thisMonth.avg ?? "N/A"}
+                            {formatMetricValue(stats.comparisons.thisMonth.avg, metricType)}
                           </span>
                           <span className="text-xs text-muted-foreground">avg</span>
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          vs {stats.comparisons.sameMonthLastYear.avg ?? "N/A"} avg same month last year
+                          vs {formatMetricValue(stats.comparisons.sameMonthLastYear.avg, metricType)} avg same month last year
                         </div>
                       </>
                     )}

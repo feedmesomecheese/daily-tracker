@@ -47,6 +47,20 @@ function Sparkline({ values, width = 120, height = 24 }: { values: number[]; wid
   );
 }
 
+// Format a numeric value based on metric type (handles time/hhmm as HH:MM)
+function formatValue(value: number | null | undefined, metricType: string): string {
+  if (value == null) return "N/A";
+
+  if (metricType === "time" || metricType === "hhmm") {
+    const totalMins = Math.round(value);
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return `${hrs}:${String(mins).padStart(2, "0")}`;
+  }
+
+  return value.toFixed(1);
+}
+
 type QuickStats = {
   // Common
   metricType: string;
@@ -308,7 +322,7 @@ export function MetricHoverTooltip({
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                     <div className="text-muted-foreground">7-day avg</div>
                     <div className="font-medium tabular-nums text-right flex items-center justify-end gap-1">
-                      {stats.ma7 != null ? stats.ma7.toFixed(1) : "N/A"}
+                      {formatValue(stats.ma7, stats.metricType)}
                       {stats.trend && (
                         <span className={cn(
                           "text-[10px]",
@@ -321,12 +335,12 @@ export function MetricHoverTooltip({
 
                     <div className="text-muted-foreground">180-day avg</div>
                     <div className="font-medium tabular-nums text-right">
-                      {stats.ma180 != null ? stats.ma180.toFixed(1) : "N/A"}
+                      {formatValue(stats.ma180, stats.metricType)}
                     </div>
 
                     <div className="text-muted-foreground">Lifetime avg</div>
                     <div className="font-medium tabular-nums text-right">
-                      {stats.lifetimeAvg != null ? stats.lifetimeAvg.toFixed(1) : "N/A"}
+                      {formatValue(stats.lifetimeAvg, stats.metricType)}
                     </div>
 
                     <div className="text-muted-foreground">Logged</div>
