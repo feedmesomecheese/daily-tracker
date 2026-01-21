@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
 import { TrendBadge } from "@/components/ui/trend-badge";
 import { StreakBadge } from "@/components/ui/streak-badge";
 import { DatePicker } from "@/components/ui/date-picker";
+import { MetricStatsSheet } from "@/components/metric-stats-sheet";
+import { MetricHoverTooltip } from "@/components/metric-hover-tooltip";
 
 type ConfigRow = {
   metric_id: string;
@@ -164,6 +166,9 @@ export default function Home() {
 
   // Available years for date picker (years with log data)
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+
+  // Stats sheet state
+  const [statsMetric, setStatsMetric] = useState<ConfigRow | null>(null);
 
   function toggleGroup(name: string) {
     setCollapsedGroups((prev) => ({
@@ -1637,7 +1642,13 @@ export default function Home() {
                         <div key={m.metric_id} className="mb-3">
                           {/* LABEL */}
                           <label className="flex items-center gap-2 font-medium mb-1">
-                            {m.metric_name}
+                            <MetricHoverTooltip
+                              metricId={m.metric_id}
+                              metricName={m.metric_name}
+                              metricType={m.type}
+                              onClick={() => setStatsMetric(m)}
+                              hoverDelay={300}
+                            />
                             {m.required && !isCalculated && (
                               <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
                                 required
@@ -1954,6 +1965,15 @@ export default function Home() {
           </table>
         )}
       </div>
+
+      {/* Metric stats sheet */}
+      <MetricStatsSheet
+        metricId={statsMetric?.metric_id ?? null}
+        metricName={statsMetric?.metric_name ?? null}
+        metricType={statsMetric?.type ?? null}
+        open={statsMetric !== null}
+        onOpenChange={(open) => !open && setStatsMetric(null)}
+      />
       </main>
     </div>
   );

@@ -33,6 +33,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { MetricStatsSheet } from "@/components/metric-stats-sheet";
 
 // Formula help data
 const FORMULA_HELP = [
@@ -187,6 +188,7 @@ function SortableMetricRow({
   savingFields,
   onDelete,
   onNotificationClick,
+  onStatsClick,
 }: {
   metric: Metric;
   metrics: Metric[];
@@ -196,6 +198,7 @@ function SortableMetricRow({
   savingFields: Set<string>;
   onDelete: (metricId: string) => void;
   onNotificationClick: (metric: Metric) => void;
+  onStatsClick: (metric: Metric) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: metric.metric_id,
@@ -535,8 +538,20 @@ function SortableMetricRow({
       )}
 
       {/* Actions */}
-      <td className="py-2 px-2 w-[80px]">
+      <td className="py-2 px-2 w-[110px]">
         <div className="flex gap-1">
+          {/* Stats button - only for non-text metrics */}
+          {metric.type !== "text" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-primary/10"
+              title="View detailed stats"
+              onClick={() => onStatsClick(metric)}
+            >
+              <BarChart3 className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -759,6 +774,28 @@ function Bell({ className }: { className?: string }) {
   );
 }
 
+function BarChart3({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="M3 3v18h18" />
+      <path d="M18 17V9" />
+      <path d="M13 17V5" />
+      <path d="M8 17v-3" />
+    </svg>
+  );
+}
+
 // Main page component
 export default function MetricsPage() {
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -777,6 +814,9 @@ export default function MetricsPage() {
   const [negativeThresholds, setNegativeThresholds] = useState("");
   const [positiveThresholds, setPositiveThresholds] = useState("");
   const [savingNotification, setSavingNotification] = useState(false);
+
+  // Stats sheet state
+  const [statsMetric, setStatsMetric] = useState<Metric | null>(null);
 
   // Track which fields are currently saving
   const [savingFields, setSavingFields] = useState<Set<string>>(new Set());
@@ -1475,7 +1515,7 @@ export default function MetricsPage() {
                           <th className="text-center py-2 px-2 w-[60px]" title="Pre-log days to add to streak">Seed</th>
                         </>
                       )}
-                      <th className="text-center py-2 px-2 w-[80px]">Actions</th>
+                      <th className="text-center py-2 px-2 w-[110px]">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1753,6 +1793,7 @@ export default function MetricsPage() {
                         savingFields={savingFields}
                         onDelete={deleteMetric}
                         onNotificationClick={openNotificationConfig}
+                        onStatsClick={setStatsMetric}
                       />
                     ))}
                   </tbody>
@@ -1908,6 +1949,15 @@ export default function MetricsPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Metric stats sheet */}
+      <MetricStatsSheet
+        metricId={statsMetric?.metric_id ?? null}
+        metricName={statsMetric?.metric_name ?? null}
+        metricType={statsMetric?.type ?? null}
+        open={statsMetric !== null}
+        onOpenChange={(open) => !open && setStatsMetric(null)}
+      />
     </main>
   );
 }
