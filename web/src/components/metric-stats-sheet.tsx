@@ -70,6 +70,12 @@ type StatsResponse = {
       days180: number | null;
     };
     trend: "up" | "down" | "stable" | null;
+    timeTotals?: {
+      thisWeek: number;
+      thisMonth: number;
+      thisYear: number;
+      lifetime: number;
+    };
   };
   comparisons: {
     ytd: { count: number; daysInPeriod: number; avg?: number };
@@ -121,6 +127,30 @@ function formatMetricValue(value: number | null | undefined, metricType: string 
 
   // Regular number - round to 1 decimal
   return String(Math.round(value * 10) / 10);
+}
+
+// Format time duration in minutes to a human-readable format (e.g., "12h 30m" or "3d 5h")
+function formatTimeDuration(minutes: number): string {
+  if (minutes < 60) {
+    return `${Math.round(minutes)}m`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+
+  if (hours < 24) {
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+
+  if (days < 7) {
+    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+  }
+
+  // For longer durations, show days and hours
+  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
 }
 
 function formatDuration(days: number): string {
@@ -733,6 +763,35 @@ export function MetricStatsSheet({
                       label="All-Time Low"
                       value={formatMetricValue(stats.numberStats.low?.value, metricType)}
                       subtext={stats.numberStats.low ? formatDate(stats.numberStats.low.date) : undefined}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Time Totals Section - only for time metrics */}
+            {stats.numberStats?.timeTotals && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Time Spent</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <StatItem
+                      label="This Week"
+                      value={formatTimeDuration(stats.numberStats.timeTotals.thisWeek)}
+                    />
+                    <StatItem
+                      label="This Month"
+                      value={formatTimeDuration(stats.numberStats.timeTotals.thisMonth)}
+                    />
+                    <StatItem
+                      label="This Year"
+                      value={formatTimeDuration(stats.numberStats.timeTotals.thisYear)}
+                    />
+                    <StatItem
+                      label="Lifetime"
+                      value={formatTimeDuration(stats.numberStats.timeTotals.lifetime)}
                     />
                   </div>
                 </CardContent>

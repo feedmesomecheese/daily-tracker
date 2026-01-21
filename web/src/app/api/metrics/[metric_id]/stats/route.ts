@@ -70,6 +70,13 @@ type StatsResponse = {
       days180: number | null;
     };
     trend: "up" | "down" | "stable" | null; // 30-day vs 90-day comparison
+    // Time totals (only for time metrics, values in minutes)
+    timeTotals?: {
+      thisWeek: number;
+      thisMonth: number;
+      thisYear: number;
+      lifetime: number;
+    };
   };
   comparisons: {
     ytd: { count: number; daysInPeriod: number; avg?: number };
@@ -783,12 +790,48 @@ export async function GET(
         else trend = "stable";
       }
 
+      // Calculate time totals for time metrics only (not hhmm which is a point-in-time)
+      let timeTotals: { thisWeek: number; thisMonth: number; thisYear: number; lifetime: number } | undefined;
+      if (metricConfig.type === "time") {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth(); // 0-indexed
+
+        // Get start of current week (Monday)
+        const dayOfWeek = now.getDay();
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - daysFromMonday);
+        const weekStartStr = `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, "0")}-${String(weekStart.getDate()).padStart(2, "0")}`;
+
+        // Get start of current month
+        const monthStartStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-01`;
+
+        // Get start of current year
+        const yearStartStr = `${currentYear}-01-01`;
+
+        let thisWeek = 0;
+        let thisMonth = 0;
+        let thisYear = 0;
+        let lifetime = 0;
+
+        for (const v of validValues) {
+          lifetime += v.value;
+          if (v.date >= yearStartStr) thisYear += v.value;
+          if (v.date >= monthStartStr) thisMonth += v.value;
+          if (v.date >= weekStartStr) thisWeek += v.value;
+        }
+
+        timeTotals = { thisWeek, thisMonth, thisYear, lifetime };
+      }
+
       numberStats = {
         lifetimeAvg,
         high,
         low,
         periodAverages: { days7, days30, days90, days180 },
         trend,
+        timeTotals,
       };
     }
 

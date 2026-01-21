@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { cn } from "@/lib/utils";
 
@@ -61,6 +62,25 @@ function formatValue(value: number | null | undefined, metricType: string): stri
   return value.toFixed(1);
 }
 
+// Format time duration in minutes to a compact human-readable format
+function formatDuration(minutes: number): string {
+  if (minutes < 60) {
+    return `${Math.round(minutes)}m`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+
+  if (hours < 24) {
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+
+  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+}
+
 type QuickStats = {
   // Common
   metricType: string;
@@ -81,6 +101,9 @@ type QuickStats = {
   ma180?: number | null;
   trend?: "up" | "down" | "stable" | null;
   recentValues?: { date: string; value: number }[];
+
+  // Time specific (for duration tracking)
+  lifetimeTotal?: number; // in minutes
 };
 
 type MetricHoverTooltipProps = {
@@ -112,7 +135,7 @@ export function MetricHoverTooltip({
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fetchedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [positionAbove, setPositionAbove] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; above: boolean } | null>(null);
 
   // Fetch quick stats from the full stats endpoint
   const fetchQuickStats = useCallback(async () => {
@@ -161,6 +184,9 @@ export function MetricHoverTooltip({
         ma180: latestMA?.ma180 ?? data.numberStats?.periodAverages?.days180,
         trend: data.numberStats?.trend,
         recentValues,
+
+        // Time specific
+        lifetimeTotal: data.numberStats?.timeTotals?.lifetime,
       });
       fetchedRef.current = true;
     } catch (e) {
@@ -181,12 +207,17 @@ export function MetricHoverTooltip({
 
     // Set timeout to show tooltip after delay
     hoverTimeoutRef.current = setTimeout(() => {
-      // Check if we should position above (if near bottom of screen)
+      // Calculate tooltip position based on element's screen position
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect();
         const spaceBelow = window.innerHeight - rect.bottom;
-        // If less than 250px below, position above
-        setPositionAbove(spaceBelow < 250);
+        const positionAbove = spaceBelow < 250;
+
+        setTooltipPosition({
+          left: rect.left,
+          top: positionAbove ? rect.top : rect.bottom,
+          above: positionAbove,
+        });
       }
       setShowTooltip(true);
       fetchQuickStats();
@@ -243,17 +274,21 @@ export function MetricHoverTooltip({
         {children || metricName}
       </button>
 
-      {/* Tooltip */}
-      {showTooltip && (
+      {/* Tooltip - rendered via portal to avoid overflow clipping */}
+      {showTooltip && tooltipPosition && createPortal(
         <div
           className={cn(
-            "absolute z-50 left-0",
-            positionAbove ? "bottom-full mb-1" : "top-full mt-1",
+            "fixed z-[9999]",
             "bg-popover text-popover-foreground",
             "border rounded-md shadow-md",
             "p-3 min-w-[200px]",
             "animate-in fade-in-0 zoom-in-95 duration-100"
           )}
+          style={{
+            left: tooltipPosition.left,
+            top: tooltipPosition.above ? undefined : tooltipPosition.top + 4,
+            bottom: tooltipPosition.above ? window.innerHeight - tooltipPosition.top + 4 : undefined,
+          }}
         >
           {loading && (
             <div className="text-xs text-muted-foreground">Loading...</div>
@@ -347,6 +382,16 @@ export function MetricHoverTooltip({
                     <div className="font-medium tabular-nums text-right">
                       {stats.percent_logged}%
                     </div>
+
+                    {/* Lifetime total for time metrics */}
+                    {stats.lifetimeTotal != null && (
+                      <>
+                        <div className="text-muted-foreground">Total time</div>
+                        <div className="font-medium tabular-nums text-right">
+                          {formatDuration(stats.lifetimeTotal)}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               )}
@@ -356,7 +401,8 @@ export function MetricHoverTooltip({
               </div>
             </div>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
