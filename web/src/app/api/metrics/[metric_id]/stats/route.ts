@@ -13,6 +13,7 @@ type MetricConfig = {
   analytics_config: {
     avoid?: boolean;
     higher_is_better?: boolean;
+    show_streak?: boolean;
   } | null;
 };
 
@@ -27,6 +28,11 @@ type StreakInfo = {
   endDate: string;
 };
 
+type ValueWithDate = {
+  value: number;
+  date: string;
+};
+
 type StatsResponse = {
   metric: {
     id: string;
@@ -36,6 +42,7 @@ type StatsResponse = {
     trackingSince: string | null;
     isAvoid: boolean;
     isCalculated: boolean;
+    showStreak: boolean; // Whether to display streak section
   };
   streaks: {
     current: number;
@@ -51,14 +58,28 @@ type StatsResponse = {
     avgDaysBetween: number;
     rolling30DayAvgBetween: number | null;
   };
+  // Number metric specific stats
+  numberStats?: {
+    lifetimeAvg: number;
+    high: ValueWithDate | null;
+    low: ValueWithDate | null;
+    periodAverages: {
+      days7: number | null;
+      days30: number | null;
+      days90: number | null;
+      days180: number | null;
+    };
+    trend: "up" | "down" | "stable" | null; // 30-day vs 90-day comparison
+  };
   comparisons: {
-    ytd: { count: number; daysInPeriod: number };
-    prevYtd: { count: number; daysInPeriod: number };
-    thisMonth: { count: number; daysInPeriod: number };
-    sameMonthLastYear: { count: number; daysInPeriod: number };
+    ytd: { count: number; daysInPeriod: number; avg?: number };
+    prevYtd: { count: number; daysInPeriod: number; avg?: number };
+    thisMonth: { count: number; daysInPeriod: number; avg?: number };
+    sameMonthLastYear: { count: number; daysInPeriod: number; avg?: number };
   };
   dayOfWeekBreakdown: Record<string, number>;
-  movingAverages: { date: string; ma7: number | null; ma30: number | null; ma90: number | null; ma180: number | null }[];
+  dayOfWeekAverages?: Record<string, number | null>; // For number metrics
+  movingAverages: { date: string; raw: number | null; ma7: number | null; ma30: number | null; ma90: number | null; ma180: number | null }[];
 };
 
 async function getAuthedClient(req: Request) {
@@ -333,7 +354,7 @@ function calculateMovingAverages(
   startDate: string,
   today: string,
   metricType: string
-): { date: string; ma7: number | null; ma30: number | null; ma90: number | null; ma180: number | null }[] {
+): { date: string; raw: number | null; ma7: number | null; ma30: number | null; ma90: number | null; ma180: number | null }[] {
   // For checkbox, value is 1 (true) or 0 (false/missing)
   // Create a map of date -> value (use null to indicate "logged but null value")
   const valueMap = new Map<string, number | null>();
@@ -346,7 +367,7 @@ function calculateMovingAverages(
     }
   }
 
-  const results: { date: string; ma7: number | null; ma30: number | null; ma90: number | null; ma180: number | null }[] = [];
+  const results: { date: string; raw: number | null; ma7: number | null; ma30: number | null; ma90: number | null; ma180: number | null }[] = [];
 
   // Calculate from start date to today, but only emit points weekly for ranges > 365 days
   // to keep response size reasonable while showing full history
@@ -361,12 +382,13 @@ function calculateMovingAverages(
     const shouldInclude = dayIndex === 0 || isLastMonth || (dayIndex % sampleInterval === 0);
 
     if (shouldInclude) {
+      const raw = valueMap.get(curDate) ?? null;
       const ma7 = calculateMA(valueMap, curDate, 7, metricType);
       const ma30 = calculateMA(valueMap, curDate, 30, metricType);
       const ma90 = calculateMA(valueMap, curDate, 90, metricType);
       const ma180 = calculateMA(valueMap, curDate, 180, metricType);
 
-      results.push({ date: curDate, ma7, ma30, ma90, ma180 });
+      results.push({ date: curDate, raw, ma7, ma30, ma90, ma180 });
     }
 
     curDate = addDays(curDate, 1);
@@ -699,6 +721,113 @@ export async function GET(
   // Moving averages
   const movingAverages = calculateMovingAverages(logRows, trackingStartDate, today, metricConfig.type);
 
+  // Determine if streaks should be shown
+  // For checkbox: always show (unless explicitly disabled)
+  // For number/time: only show if show_streak is true in analytics_config
+  const showStreak = metricConfig.type === "checkbox"
+    ? metricConfig.analytics_config?.show_streak !== false
+    : metricConfig.analytics_config?.show_streak === true;
+
+  // Number-specific stats
+  let numberStats: StatsResponse["numberStats"] = undefined;
+  let dayOfWeekAverages: Record<string, number | null> | undefined = undefined;
+
+  if (metricConfig.type === "number" || metricConfig.type === "time" || metricConfig.type === "hhmm") {
+    // Get all valid numeric values
+    const validValues = loggedDays.filter(l => l.value !== null).map(l => ({ value: l.value!, date: l.date }));
+
+    if (validValues.length > 0) {
+      // Lifetime average
+      const sum = validValues.reduce((acc, v) => acc + v.value, 0);
+      const lifetimeAvg = Math.round((sum / validValues.length) * 10) / 10;
+
+      // High and low (most recent date if multiple)
+      let high: ValueWithDate | null = null;
+      let low: ValueWithDate | null = null;
+
+      for (const v of validValues) {
+        if (!high || v.value > high.value || (v.value === high.value && v.date > high.date)) {
+          high = { value: v.value, date: v.date };
+        }
+        if (!low || v.value < low.value || (v.value === low.value && v.date > low.date)) {
+          low = { value: v.value, date: v.date };
+        }
+      }
+
+      // Period averages (excluding today if not logged)
+      const calculatePeriodAvg = (days: number): number | null => {
+        const startDate = addDays(today, -(days - 1));
+        // Include today only if it has been logged
+        const todayLogged = validValues.some(v => v.date === today);
+        const endDate = todayLogged ? today : addDays(today, -1);
+
+        const periodValues = validValues.filter(v => v.date >= startDate && v.date <= endDate);
+        if (periodValues.length === 0) return null;
+
+        const periodSum = periodValues.reduce((acc, v) => acc + v.value, 0);
+        return Math.round((periodSum / periodValues.length) * 10) / 10;
+      };
+
+      const days7 = calculatePeriodAvg(7);
+      const days30 = calculatePeriodAvg(30);
+      const days90 = calculatePeriodAvg(90);
+      const days180 = calculatePeriodAvg(180);
+
+      // Trend: compare 30-day to 90-day average
+      let trend: "up" | "down" | "stable" | null = null;
+      if (days30 !== null && days90 !== null) {
+        const diff = days30 - days90;
+        const threshold = days90 * 0.05; // 5% threshold
+        if (diff > threshold) trend = "up";
+        else if (diff < -threshold) trend = "down";
+        else trend = "stable";
+      }
+
+      numberStats = {
+        lifetimeAvg,
+        high,
+        low,
+        periodAverages: { days7, days30, days90, days180 },
+        trend,
+      };
+    }
+
+    // Day of week averages (instead of counts)
+    const dowSums: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+    const dowCounts: Record<string, number> = { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0 };
+
+    for (const log of loggedDays) {
+      if (log.value !== null) {
+        const dow = getDayOfWeek(log.date);
+        if (dow in dowSums) {
+          dowSums[dow] += log.value;
+          dowCounts[dow]++;
+        }
+      }
+    }
+
+    dayOfWeekAverages = {
+      Mon: dowCounts.Mon > 0 ? Math.round((dowSums.Mon / dowCounts.Mon) * 10) / 10 : null,
+      Tue: dowCounts.Tue > 0 ? Math.round((dowSums.Tue / dowCounts.Tue) * 10) / 10 : null,
+      Wed: dowCounts.Wed > 0 ? Math.round((dowSums.Wed / dowCounts.Wed) * 10) / 10 : null,
+      Thu: dowCounts.Thu > 0 ? Math.round((dowSums.Thu / dowCounts.Thu) * 10) / 10 : null,
+      Fri: dowCounts.Fri > 0 ? Math.round((dowSums.Fri / dowCounts.Fri) * 10) / 10 : null,
+      Sat: dowCounts.Sat > 0 ? Math.round((dowSums.Sat / dowCounts.Sat) * 10) / 10 : null,
+      Sun: dowCounts.Sun > 0 ? Math.round((dowSums.Sun / dowCounts.Sun) * 10) / 10 : null,
+    };
+  }
+
+  // Calculate averages for comparison periods (number metrics)
+  const calcAvg = (logs: LogRow[]): number | undefined => {
+    if (metricConfig.type !== "number" && metricConfig.type !== "time" && metricConfig.type !== "hhmm") {
+      return undefined;
+    }
+    const validLogs = logs.filter(l => l.value !== null);
+    if (validLogs.length === 0) return undefined;
+    const sum = validLogs.reduce((acc, l) => acc + l.value!, 0);
+    return Math.round((sum / validLogs.length) * 10) / 10;
+  };
+
   const response: StatsResponse = {
     metric: {
       id: metricConfig.metric_id,
@@ -708,6 +837,7 @@ export async function GET(
       trackingSince: firstLogDate,
       isAvoid: isAvoidMetric,
       isCalculated: metricConfig.is_calculated ?? false,
+      showStreak,
     },
     streaks,
     frequency: {
@@ -719,13 +849,15 @@ export async function GET(
       avgDaysBetween,
       rolling30DayAvgBetween,
     },
+    numberStats,
     comparisons: {
-      ytd: { count: ytdLogs.length, daysInPeriod: ytdDays },
-      prevYtd: { count: prevYtdLogs.length, daysInPeriod: prevYtdDays },
-      thisMonth: { count: thisMonthLogs.length, daysInPeriod: thisMonthDays },
-      sameMonthLastYear: { count: sameMonthLastYearLogs.length, daysInPeriod: sameMonthLastYearDays },
+      ytd: { count: ytdLogs.length, daysInPeriod: ytdDays, avg: calcAvg(ytdLogs) },
+      prevYtd: { count: prevYtdLogs.length, daysInPeriod: prevYtdDays, avg: calcAvg(prevYtdLogs) },
+      thisMonth: { count: thisMonthLogs.length, daysInPeriod: thisMonthDays, avg: calcAvg(thisMonthLogs) },
+      sameMonthLastYear: { count: sameMonthLastYearLogs.length, daysInPeriod: sameMonthLastYearDays, avg: calcAvg(sameMonthLastYearLogs) },
     },
     dayOfWeekBreakdown,
+    dayOfWeekAverages,
     movingAverages,
   };
 

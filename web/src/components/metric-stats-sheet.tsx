@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import {
   Sheet,
@@ -29,6 +29,11 @@ type StreakInfo = {
   endDate: string;
 };
 
+type ValueWithDate = {
+  value: number;
+  date: string;
+};
+
 type StatsResponse = {
   metric: {
     id: string;
@@ -38,6 +43,7 @@ type StatsResponse = {
     trackingSince: string | null;
     isAvoid: boolean;
     isCalculated: boolean;
+    showStreak: boolean;
   };
   streaks: {
     current: number;
@@ -53,15 +59,29 @@ type StatsResponse = {
     avgDaysBetween: number;
     rolling30DayAvgBetween: number | null;
   };
+  numberStats?: {
+    lifetimeAvg: number;
+    high: ValueWithDate | null;
+    low: ValueWithDate | null;
+    periodAverages: {
+      days7: number | null;
+      days30: number | null;
+      days90: number | null;
+      days180: number | null;
+    };
+    trend: "up" | "down" | "stable" | null;
+  };
   comparisons: {
-    ytd: { count: number; daysInPeriod: number };
-    prevYtd: { count: number; daysInPeriod: number };
-    thisMonth: { count: number; daysInPeriod: number };
-    sameMonthLastYear: { count: number; daysInPeriod: number };
+    ytd: { count: number; daysInPeriod: number; avg?: number };
+    prevYtd: { count: number; daysInPeriod: number; avg?: number };
+    thisMonth: { count: number; daysInPeriod: number; avg?: number };
+    sameMonthLastYear: { count: number; daysInPeriod: number; avg?: number };
   };
   dayOfWeekBreakdown: Record<string, number>;
+  dayOfWeekAverages?: Record<string, number | null>;
   movingAverages: {
     date: string;
+    raw: number | null;
     ma7: number | null;
     ma30: number | null;
     ma90: number | null;
@@ -130,37 +150,191 @@ function StatItem({
   );
 }
 
-// Day of week bar component
+// Heatmap color interpolation - from cool (low) to warm (high)
+function getHeatmapColor(ratio: number): string {
+  // ratio is 0-1 representing position between min and max
+  // Color scale: blue (low) -> green (mid) -> orange (high)
+  if (ratio <= 0.5) {
+    // Blue to green (0 to 0.5)
+    const t = ratio * 2; // 0 to 1
+    const r = Math.round(59 + t * (34 - 59));
+    const g = Math.round(130 + t * (197 - 130));
+    const b = Math.round(246 + t * (94 - 246));
+    return `rgb(${r}, ${g}, ${b})`;
+  } else {
+    // Green to orange (0.5 to 1)
+    const t = (ratio - 0.5) * 2; // 0 to 1
+    const r = Math.round(34 + t * (249 - 34));
+    const g = Math.round(197 + t * (115 - 197));
+    const b = Math.round(94 + t * (22 - 94));
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+}
+
+// Day of week bar component - supports both counts and averages with heatmap coloring
 function DayOfWeekBar({
   breakdown,
   maxValue,
+  averages,
+  isAverage = false,
 }: {
   breakdown: Record<string, number>;
   maxValue: number;
+  averages?: Record<string, number | null>;
+  isAverage?: boolean;
 }) {
   const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  // Use averages if provided for number metrics
+  const displayData = isAverage && averages ? averages : breakdown;
+
+  // Get all valid values for min-max scaling
+  const values = days.map(day => {
+    const v = displayData[day];
+    return v !== null && v !== undefined ? v : null;
+  }).filter((v): v is number => v !== null);
+
+  const minVal = values.length > 0 ? Math.min(...values) : 0;
+  const maxVal = values.length > 0 ? Math.max(...values) : 0;
+  const range = maxVal - minVal;
 
   return (
     <div className="flex gap-1 items-end" style={{ height: 80 }}>
       {days.map((day) => {
-        const value = breakdown[day] ?? 0;
-        // Calculate height as pixels instead of percentage for reliability
-        const barHeight = maxValue > 0 ? Math.max((value / maxValue) * 48, 4) : 4;
+        const value = displayData[day];
+        const displayValue = value !== null && value !== undefined ? value : 0;
+        const hasValue = value !== null && value !== undefined && displayValue > 0;
+
+        // Calculate height using min-max scaling for better differentiation
+        // Use a minimum of 20% height difference between min and max
+        let barHeight = 4; // minimum height
+        if (hasValue && maxVal > 0) {
+          if (range > 0) {
+            // Min-max scaling: lowest value gets 30% height, highest gets 100%
+            const normalizedRatio = (displayValue - minVal) / range;
+            barHeight = Math.max((0.3 + normalizedRatio * 0.7) * 48, 4);
+          } else {
+            // All values are the same
+            barHeight = 48;
+          }
+        }
+
+        // Calculate heatmap color based on position in range
+        const colorRatio = range > 0 ? (displayValue - minVal) / range : 0.5;
+        const barColor = hasValue ? getHeatmapColor(colorRatio) : "rgb(100, 100, 100)";
+
         return (
           <div key={day} className="flex-1 flex flex-col items-center justify-end gap-0.5" style={{ height: 80 }}>
             {/* Data label above bar */}
             <span className="text-[10px] font-medium tabular-nums text-muted-foreground">
-              {value > 0 ? value : ""}
+              {value !== null && displayValue > 0 ? (isAverage ? displayValue.toFixed(1) : displayValue) : ""}
             </span>
             <div
-              className="w-full bg-primary/60 rounded-t transition-all"
-              style={{ height: barHeight }}
-              title={`${day}: ${value}`}
+              className="w-full rounded-t transition-all"
+              style={{ height: barHeight, backgroundColor: barColor }}
+              title={`${day}: ${isAverage ? displayValue.toFixed(1) : displayValue}`}
             />
             <span className="text-[10px] text-muted-foreground">{day}</span>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Full-width sparkline component with MA line and daily value points
+function FullWidthSparkline({
+  maValues,
+  dailyValues,
+  height = 60
+}: {
+  maValues: number[];
+  dailyValues?: (number | null)[];
+  height?: number;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(300);
+
+  // Update width on mount and resize
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setWidth(containerRef.current.offsetWidth);
+      }
+    };
+    updateWidth();
+    window.addEventListener("resize", updateWidth);
+    return () => window.removeEventListener("resize", updateWidth);
+  }, []);
+
+  if (maValues.length < 2) return null;
+
+  // Calculate min/max across both datasets
+  const allValues = [
+    ...maValues,
+    ...(dailyValues?.filter((v): v is number => v !== null) ?? [])
+  ];
+  const min = Math.min(...allValues);
+  const max = Math.max(...allValues);
+  const range = max - min || 1;
+
+  const padding = 8;
+  const chartHeight = height - padding * 2;
+
+  // Create MA line path
+  const maPoints = maValues.map((v, i) => {
+    const x = (i / (maValues.length - 1)) * width;
+    const y = padding + chartHeight - ((v - min) / range) * chartHeight;
+    return `${x},${y}`;
+  });
+  const maPathD = `M ${maPoints.join(" L ")}`;
+
+  // Determine trend color for MA line
+  const startAvg = maValues.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, maValues.length);
+  const endAvg = maValues.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, maValues.length);
+  const strokeColor = endAvg > startAvg ? "#22c55e" : endAvg < startAvg ? "#ef4444" : "#6b7280";
+
+  // Calculate daily value points
+  const dailyPoints = dailyValues?.map((v, i) => {
+    if (v === null) return null;
+    const x = (i / (dailyValues.length - 1)) * width;
+    const y = padding + chartHeight - ((v - min) / range) * chartHeight;
+    return { x, y, value: v };
+  }).filter((p): p is { x: number; y: number; value: number } => p !== null) ?? [];
+
+  return (
+    <div ref={containerRef} className="w-full">
+      <svg width="100%" height={height} className="overflow-visible">
+        {/* Daily value points - rendered first so MA line is on top */}
+        {dailyPoints.map((point, i) => (
+          <circle
+            key={i}
+            cx={point.x}
+            cy={point.y}
+            r={2.5}
+            fill="#94a3b8"
+            opacity={0.6}
+          />
+        ))}
+
+        {/* MA line */}
+        <path
+          d={maPathD}
+          fill="none"
+          stroke={strokeColor}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* End dot on MA line */}
+        <circle
+          cx={width}
+          cy={padding + chartHeight - ((maValues[maValues.length - 1] - min) / range) * chartHeight}
+          r={4}
+          fill={strokeColor}
+        />
+      </svg>
     </div>
   );
 }
@@ -359,6 +533,18 @@ export function MetricStatsSheet({
     };
   }, [chartData, isCheckbox, metricType]);
 
+  // Get recent values for sparkline (last 30 days of ma7 and raw daily values)
+  const sparklineData = useMemo(() => {
+    if (!chartData.length) return { maValues: [], dailyValues: [] };
+    const recent = chartData.slice(-30);
+    const maValues = recent
+      .map((d) => d.ma7)
+      .filter((v): v is number => v !== null);
+    // Use raw values for daily points
+    const dailyValues = recent.map((d) => d.raw);
+    return { maValues, dailyValues };
+  }, [chartData]);
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -397,71 +583,132 @@ export function MetricStatsSheet({
 
         {stats && !loading && (
           <div className="space-y-6 py-6">
-            {/* Streaks Section */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Streaks</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
-                  <StatItem
-                    label="Current"
-                    value={
-                      stats.metric.isAvoid
-                        ? (stats.streaks.current < 0
-                            ? `+${Math.abs(stats.streaks.current)}`
-                            : stats.streaks.current > 0
-                            ? `-${stats.streaks.current}`
-                            : "0")
-                        : (stats.streaks.current > 0
-                            ? `+${stats.streaks.current}`
-                            : stats.streaks.current)
-                    }
-                    subtext={
-                      stats.metric.isAvoid
-                        ? (stats.streaks.current < 0
-                            ? "days avoided"
-                            : "days slipped")
-                        : (stats.streaks.current > 0
-                            ? "days in a row"
-                            : "days missed")
-                    }
-                  />
-                  <StatItem
-                    label={stats.metric.isAvoid ? "Longest Avoided" : "Best Ever"}
-                    value={
-                      stats.streaks.best
-                        ? formatDuration(stats.streaks.best.value)
-                        : "N/A"
-                    }
-                    subtext={
-                      stats.streaks.best
-                        ? formatDateRange(
-                            stats.streaks.best.startDate,
-                            stats.streaks.best.endDate
-                          )
-                        : undefined
-                    }
-                  />
-                  <StatItem
-                    label={stats.metric.isAvoid ? "Worst Slip" : "Worst Dry Spell"}
-                    value={
-                      stats.streaks.worstDrySpell
-                        ? formatDuration(stats.streaks.worstDrySpell.value)
-                        : "N/A"
-                    }
-                    subtext={
-                      stats.streaks.worstDrySpell
-                        ? formatDateRange(
-                            stats.streaks.worstDrySpell.startDate,
-                            stats.streaks.worstDrySpell.endDate
-                          )
-                        : undefined
-                    }
-                  />
-                </div>
-              </CardContent>
-            </Card>
+            {/* Streaks Section - only show if showStreak is true */}
+            {stats.metric.showStreak && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Streaks</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <StatItem
+                      label="Current"
+                      value={
+                        stats.metric.isAvoid
+                          ? (stats.streaks.current < 0
+                              ? `+${Math.abs(stats.streaks.current)}`
+                              : stats.streaks.current > 0
+                              ? `-${stats.streaks.current}`
+                              : "0")
+                          : (stats.streaks.current > 0
+                              ? `+${stats.streaks.current}`
+                              : stats.streaks.current)
+                      }
+                      subtext={
+                        stats.metric.isAvoid
+                          ? (stats.streaks.current < 0
+                              ? "days avoided"
+                              : "days slipped")
+                          : (stats.streaks.current > 0
+                              ? "days in a row"
+                              : "days missed")
+                      }
+                    />
+                    <StatItem
+                      label={stats.metric.isAvoid ? "Longest Avoided" : "Best Ever"}
+                      value={
+                        stats.streaks.best
+                          ? formatDuration(stats.streaks.best.value)
+                          : "N/A"
+                      }
+                      subtext={
+                        stats.streaks.best
+                          ? formatDateRange(
+                              stats.streaks.best.startDate,
+                              stats.streaks.best.endDate
+                            )
+                          : undefined
+                      }
+                    />
+                    <StatItem
+                      label={stats.metric.isAvoid ? "Worst Slip" : "Worst Dry Spell"}
+                      value={
+                        stats.streaks.worstDrySpell
+                          ? formatDuration(stats.streaks.worstDrySpell.value)
+                          : "N/A"
+                      }
+                      subtext={
+                        stats.streaks.worstDrySpell
+                          ? formatDateRange(
+                              stats.streaks.worstDrySpell.startDate,
+                              stats.streaks.worstDrySpell.endDate
+                            )
+                          : undefined
+                      }
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Number Stats Section - only for number/time metrics */}
+            {stats.numberStats && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium flex items-center gap-2">
+                    Value Statistics
+                    {stats.numberStats.trend && (
+                      <Badge variant={stats.numberStats.trend === "up" ? "default" : stats.numberStats.trend === "down" ? "destructive" : "secondary"} className="text-xs">
+                        {stats.numberStats.trend === "up" ? "↑ Trending Up" : stats.numberStats.trend === "down" ? "↓ Trending Down" : "→ Stable"}
+                      </Badge>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {/* Full-width sparkline showing recent trend */}
+                  {sparklineData.maValues.length > 2 && (
+                    <div className="mb-4 pb-4 border-b">
+                      <div className="text-xs text-muted-foreground mb-2">Last 30 Days Trend</div>
+                      <FullWidthSparkline
+                        maValues={sparklineData.maValues}
+                        dailyValues={sparklineData.dailyValues}
+                        height={60}
+                      />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                    <StatItem
+                      label="Lifetime Avg"
+                      value={stats.numberStats.lifetimeAvg}
+                    />
+                    <StatItem
+                      label="7-Day Avg"
+                      value={stats.numberStats.periodAverages.days7 ?? "N/A"}
+                    />
+                    <StatItem
+                      label="30-Day Avg"
+                      value={stats.numberStats.periodAverages.days30 ?? "N/A"}
+                    />
+                    <StatItem
+                      label="90-Day Avg"
+                      value={stats.numberStats.periodAverages.days90 ?? "N/A"}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 pt-3 border-t">
+                    <StatItem
+                      label="All-Time High"
+                      value={stats.numberStats.high?.value ?? "N/A"}
+                      subtext={stats.numberStats.high ? formatDate(stats.numberStats.high.date) : undefined}
+                    />
+                    <StatItem
+                      label="All-Time Low"
+                      value={stats.numberStats.low?.value ?? "N/A"}
+                      subtext={stats.numberStats.low ? formatDate(stats.numberStats.low.date) : undefined}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Moving Averages Chart */}
             {chartData.length > 0 && (
@@ -606,55 +853,75 @@ export function MetricStatsSheet({
               </Card>
             )}
 
-            {/* Frequency Statistics */}
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">Statistics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  <StatItem
-                    label="Total Days Logged"
-                    value={stats.frequency.totalDaysLogged}
-                    subtext={`${stats.frequency.percentLogged}% of ${stats.frequency.totalDaysPossible} days`}
-                  />
-                  <StatItem
-                    label="Avg per Week"
-                    value={stats.frequency.avgPerWeek}
-                    subtext="times/week"
-                  />
-                  <StatItem
-                    label="Avg per Month"
-                    value={stats.frequency.avgPerMonth}
-                    subtext="times/month"
-                  />
-                  <StatItem
-                    label="Avg Days Between"
-                    value={stats.frequency.avgDaysBetween}
-                    subtext="days"
-                  />
-                  {stats.frequency.rolling30DayAvgBetween !== null && (
-                    <StatItem
-                      label="30-Day Rolling Avg"
-                      value={stats.frequency.rolling30DayAvgBetween}
-                      subtext="days between"
-                    />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Day of Week Breakdown */}
+            {/* Statistics - different for checkbox vs number metrics */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  Day of Week Pattern
+                  {isCheckbox ? "Frequency Statistics" : "Logging Statistics"}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isCheckbox ? (
+                  // Checkbox: show frequency stats
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <StatItem
+                      label="Total Days Logged"
+                      value={stats.frequency.totalDaysLogged}
+                      subtext={`${stats.frequency.percentLogged}% of ${stats.frequency.totalDaysPossible} days`}
+                    />
+                    <StatItem
+                      label="Avg per Week"
+                      value={stats.frequency.avgPerWeek}
+                      subtext="times/week"
+                    />
+                    <StatItem
+                      label="Avg per Month"
+                      value={stats.frequency.avgPerMonth}
+                      subtext="times/month"
+                    />
+                    <StatItem
+                      label="Avg Days Between"
+                      value={stats.frequency.avgDaysBetween}
+                      subtext="days"
+                    />
+                    {stats.frequency.rolling30DayAvgBetween !== null && (
+                      <StatItem
+                        label="30-Day Rolling Avg"
+                        value={stats.frequency.rolling30DayAvgBetween}
+                        subtext="days between"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  // Number/time: show logging info
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    <StatItem
+                      label="Total Days Logged"
+                      value={stats.frequency.totalDaysLogged}
+                      subtext={`${stats.frequency.percentLogged}% of ${stats.frequency.totalDaysPossible} days`}
+                    />
+                    <StatItem
+                      label="180-Day Avg"
+                      value={stats.numberStats?.periodAverages.days180 ?? "N/A"}
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Day of Week Breakdown/Averages */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  {isCheckbox ? "Day of Week Pattern" : "Average by Day of Week"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <DayOfWeekBar
                   breakdown={stats.dayOfWeekBreakdown}
                   maxValue={maxDayOfWeek}
+                  averages={stats.dayOfWeekAverages}
+                  isAverage={!isCheckbox}
                 />
               </CardContent>
             </Card>
@@ -670,38 +937,70 @@ export function MetricStatsSheet({
                     <div className="text-xs text-muted-foreground font-medium">
                       Year to Date
                     </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-semibold tabular-nums">
-                        {stats.comparisons.ytd.count}
-                      </span>
-                      {yoyChange !== null && (
-                        <Badge
-                          variant={yoyChange >= 0 ? "default" : "destructive"}
-                          className="text-xs"
-                        >
-                          {yoyChange >= 0 ? "+" : ""}
-                          {yoyChange}% YoY
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      vs {stats.comparisons.prevYtd.count} same period last year
-                    </div>
+                    {isCheckbox ? (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-semibold tabular-nums">
+                            {stats.comparisons.ytd.count}
+                          </span>
+                          {yoyChange !== null && (
+                            <Badge
+                              variant={yoyChange >= 0 ? "default" : "destructive"}
+                              className="text-xs"
+                            >
+                              {yoyChange >= 0 ? "+" : ""}
+                              {yoyChange}% YoY
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          vs {stats.comparisons.prevYtd.count} same period last year
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-semibold tabular-nums">
+                            {stats.comparisons.ytd.avg ?? "N/A"}
+                          </span>
+                          <span className="text-xs text-muted-foreground">avg</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          vs {stats.comparisons.prevYtd.avg ?? "N/A"} avg same period last year
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   <div className="space-y-3">
                     <div className="text-xs text-muted-foreground font-medium">
                       This Month
                     </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl font-semibold tabular-nums">
-                        {stats.comparisons.thisMonth.count}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      vs {stats.comparisons.sameMonthLastYear.count} same month
-                      last year
-                    </div>
+                    {isCheckbox ? (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-semibold tabular-nums">
+                            {stats.comparisons.thisMonth.count}
+                          </span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          vs {stats.comparisons.sameMonthLastYear.count} same month
+                          last year
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-2xl font-semibold tabular-nums">
+                            {stats.comparisons.thisMonth.avg ?? "N/A"}
+                          </span>
+                          <span className="text-xs text-muted-foreground">avg</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          vs {stats.comparisons.sameMonthLastYear.avg ?? "N/A"} avg same month last year
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </CardContent>
