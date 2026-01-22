@@ -10,6 +10,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   LineChart,
@@ -22,6 +23,26 @@ import {
   Legend,
   ReferenceLine,
 } from "recharts";
+import { GoalsSection } from "@/components/goal-progress-card";
+
+type GoalProgressData = {
+  goal_id: string;
+  name: string;
+  type: "numeric" | "numeric_threshold" | "checkbox" | "hhmm_target" | "hhmm_consistency";
+  frequency: "daily" | "weekly" | "monthly";
+  current: number;
+  target: number;
+  progress_pct: number;
+  is_met: boolean;
+  status: "on_track" | "at_risk" | "met" | "missed" | "not_started";
+  period_start: string;
+  period_end: string;
+  days_elapsed: number;
+  days_remaining: number;
+  projected: number | null;
+  measure?: "sum" | "average";
+  direction?: "gte" | "lte" | "before" | "after";
+};
 
 type StreakInfo = {
   value: number;
@@ -76,6 +97,12 @@ type StatsResponse = {
       thisYear: number;
       lifetime: number;
     };
+    hhmmStats?: {
+      avgTime: number;
+      stdDev: number;
+      earliest: ValueWithDate | null;
+      latest: ValueWithDate | null;
+    };
   };
   comparisons: {
     ytd: { count: number; daysInPeriod: number; avg?: number };
@@ -93,6 +120,7 @@ type StatsResponse = {
     ma90: number | null;
     ma180: number | null;
   }[];
+  goals?: GoalProgressData[];
 };
 
 type MetricStatsSheetProps = {
@@ -127,6 +155,24 @@ function formatMetricValue(value: number | null | undefined, metricType: string 
 
   // Regular number - round to 1 decimal
   return String(Math.round(value * 10) / 10);
+}
+
+// Format minutes from midnight to 12-hour time (e.g., "7:30 AM")
+function formatTimeOfDay(minutes: number): string {
+  const hrs24 = Math.floor(minutes / 60) % 24;
+  const mins = Math.round(minutes % 60);
+  const hrs12 = hrs24 === 0 ? 12 : hrs24 > 12 ? hrs24 - 12 : hrs24;
+  const ampm = hrs24 < 12 ? "AM" : "PM";
+  return `${hrs12}:${String(mins).padStart(2, "0")} ${ampm}`;
+}
+
+// Format consistency (standard deviation) as a readable string
+function formatConsistency(stdDevMinutes: number): string {
+  if (stdDevMinutes < 15) return "Very consistent";
+  if (stdDevMinutes < 30) return "Consistent";
+  if (stdDevMinutes < 60) return "Moderate";
+  if (stdDevMinutes < 120) return "Variable";
+  return "Highly variable";
 }
 
 // Format time duration in minutes to a human-readable format (e.g., "12h 30m" or "3d 5h")
@@ -417,6 +463,9 @@ export function MetricStatsSheet({
     ma180: true,
   });
 
+  // Date range for MA chart
+  const [chartRange, setChartRange] = useState<"30d" | "90d" | "1y" | "all">("all");
+
   // Fetch stats when sheet opens
   useEffect(() => {
     if (!open || !metricId) {
@@ -450,17 +499,35 @@ export function MetricStatsSheet({
     })();
   }, [open, metricId]);
 
-  // Prepare chart data - sample every N days for performance if needed
+  // Prepare chart data - filter by date range and sample for performance
   const chartData = useMemo(() => {
     if (!stats?.movingAverages) return [];
 
-    const ma = stats.movingAverages;
+    let ma = stats.movingAverages;
+
+    // Filter by date range
+    if (chartRange !== "all" && ma.length > 0) {
+      const lastDate = ma[ma.length - 1].date;
+      const [year, month, day] = lastDate.split("-").map(Number);
+      const endDate = new Date(year, month - 1, day);
+
+      let daysBack = 30;
+      if (chartRange === "90d") daysBack = 90;
+      else if (chartRange === "1y") daysBack = 365;
+
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - daysBack);
+      const startStr = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-${String(startDate.getDate()).padStart(2, "0")}`;
+
+      ma = ma.filter((d) => d.date >= startStr);
+    }
+
     // If more than 365 points, sample weekly
     if (ma.length > 365) {
       return ma.filter((_, i) => i % 7 === 0 || i === ma.length - 1);
     }
     return ma;
-  }, [stats?.movingAverages]);
+  }, [stats?.movingAverages, chartRange]);
 
   // Calculate year markers for the chart - find index positions for Jan 1 of each year
   const yearMarkers = useMemo(() => {
@@ -710,6 +777,14 @@ export function MetricStatsSheet({
               </Card>
             )}
 
+            {/* Goals Section - show if there are any goals */}
+            {stats.goals && stats.goals.length > 0 && (
+              <GoalsSection
+                goals={stats.goals}
+                metricType={metricType as "checkbox" | "number" | "time" | "hhmm"}
+              />
+            )}
+
             {/* Number Stats Section - only for number/time metrics */}
             {stats.numberStats && (
               <Card>
@@ -798,13 +873,60 @@ export function MetricStatsSheet({
               </Card>
             )}
 
+            {/* HHMM Stats Section - for point-in-time metrics like wake/sleep */}
+            {stats.numberStats?.hhmmStats && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Time Patterns</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+                    <StatItem
+                      label="Average Time"
+                      value={formatTimeOfDay(stats.numberStats.hhmmStats.avgTime)}
+                    />
+                    <StatItem
+                      label="Consistency"
+                      value={formatConsistency(stats.numberStats.hhmmStats.stdDev)}
+                      subtext={`±${Math.round(stats.numberStats.hhmmStats.stdDev)} min`}
+                    />
+                    <StatItem
+                      label="Earliest"
+                      value={stats.numberStats.hhmmStats.earliest ? formatTimeOfDay(stats.numberStats.hhmmStats.earliest.value) : "N/A"}
+                      subtext={stats.numberStats.hhmmStats.earliest ? formatDate(stats.numberStats.hhmmStats.earliest.date) : undefined}
+                    />
+                    <StatItem
+                      label="Latest"
+                      value={stats.numberStats.hhmmStats.latest ? formatTimeOfDay(stats.numberStats.hhmmStats.latest.value) : "N/A"}
+                      subtext={stats.numberStats.hhmmStats.latest ? formatDate(stats.numberStats.hhmmStats.latest.date) : undefined}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Moving Averages Chart */}
             {chartData.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">
-                    Moving Averages
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-sm font-medium">
+                      Moving Averages
+                    </CardTitle>
+                    <div className="flex gap-1">
+                      {(["30d", "90d", "1y", "all"] as const).map((range) => (
+                        <Button
+                          key={range}
+                          variant={chartRange === range ? "default" : "ghost"}
+                          size="sm"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => setChartRange(range)}
+                        >
+                          {range === "all" ? "All" : range.toUpperCase()}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div style={{ width: "100%", height: 280 }}>

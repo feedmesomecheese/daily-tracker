@@ -40,11 +40,11 @@ export function TrendBadge({
     colorClass = higherIsBetter ? "text-red-600" : "text-green-600";
   }
 
-  // Build tooltip text
+  // Build tooltip text - explain comparison of averages
   const tooltipText =
     direction === "flat"
-      ? `Stable vs previous ${periodDays} days`
-      : `${direction === "up" ? "Up" : "Down"} ${pctDisplay}% vs previous ${periodDays} days`;
+      ? `Last ${periodDays} days avg ≈ previous ${periodDays} days avg`
+      : `Last ${periodDays} days avg is ${pctDisplay}% ${direction === "up" ? "higher" : "lower"} than previous ${periodDays} days`;
 
   return (
     <span

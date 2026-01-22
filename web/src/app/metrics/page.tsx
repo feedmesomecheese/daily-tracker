@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { MetricStatsSheet } from "@/components/metric-stats-sheet";
+import { GoalConfigSheet } from "@/components/goal-config-sheet";
+import type { Goal } from "@/lib/goals";
 
 // Formula help data
 const FORMULA_HELP = [
@@ -105,6 +107,10 @@ type NotificationConfig = {
   };
 };
 
+type GoalsConfig = {
+  goals: Goal[];
+};
+
 type Metric = {
   metric_id: string;
   metric_name: string;
@@ -129,6 +135,7 @@ type Metric = {
   preset_values_csv: string | null;
   analytics_config: AnalyticsConfig | null;
   notification_config: NotificationConfig | null;
+  goals_config: GoalsConfig | null;
 };
 
 type GroupInfo = {
@@ -188,6 +195,7 @@ function SortableMetricRow({
   savingFields,
   onDelete,
   onNotificationClick,
+  onGoalsClick,
   onStatsClick,
 }: {
   metric: Metric;
@@ -198,6 +206,7 @@ function SortableMetricRow({
   savingFields: Set<string>;
   onDelete: (metricId: string) => void;
   onNotificationClick: (metric: Metric) => void;
+  onGoalsClick: (metric: Metric) => void;
   onStatsClick: (metric: Metric) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -538,7 +547,7 @@ function SortableMetricRow({
       )}
 
       {/* Actions */}
-      <td className="py-2 px-2 w-[110px]">
+      <td className="py-2 px-2 w-[140px]">
         <div className="flex gap-1">
           {/* Stats button - only for non-text metrics */}
           {metric.type !== "text" && (
@@ -550,6 +559,23 @@ function SortableMetricRow({
               onClick={() => onStatsClick(metric)}
             >
               <BarChart3 className="h-4 w-4" />
+            </Button>
+          )}
+          {/* Goals button - only for non-text metrics */}
+          {metric.type !== "text" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-7 w-7 p-0",
+                metric.goals_config?.goals && metric.goals_config.goals.length > 0
+                  ? "text-green-500 hover:text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+              title="Goal settings"
+              onClick={() => onGoalsClick(metric)}
+            >
+              <Target className="h-4 w-4" />
             </Button>
           )}
           <Button
@@ -796,6 +822,27 @@ function BarChart3({ className }: { className?: string }) {
   );
 }
 
+function Target({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="6" />
+      <circle cx="12" cy="12" r="2" />
+    </svg>
+  );
+}
+
 // Main page component
 export default function MetricsPage() {
   const [metrics, setMetrics] = useState<Metric[]>([]);
@@ -817,6 +864,9 @@ export default function MetricsPage() {
 
   // Stats sheet state
   const [statsMetric, setStatsMetric] = useState<Metric | null>(null);
+
+  // Goals config sheet state
+  const [goalsMetric, setGoalsMetric] = useState<Metric | null>(null);
 
   // Track which fields are currently saving
   const [savingFields, setSavingFields] = useState<Set<string>>(new Set());
@@ -951,6 +1001,7 @@ export default function MetricsPage() {
         preset_values_csv: (r.preset_values_csv ?? null) as string | null,
         analytics_config: (r.analytics_config ?? null) as AnalyticsConfig | null,
         notification_config: (r.notification_config ?? null) as NotificationConfig | null,
+        goals_config: (r.goals_config ?? null) as GoalsConfig | null,
       }));
 
       setMetrics(normalized);
@@ -1303,6 +1354,44 @@ export default function MetricsPage() {
       setSavingNotification(false);
     }
   }, [notificationMetric, notificationEnabled, negativeThresholds, positiveThresholds]);
+
+  // Save goals config
+  const saveGoalsConfig = useCallback(async (goals: Goal[]) => {
+    if (!goalsMetric) return;
+
+    try {
+      const newConfig: GoalsConfig = { goals };
+
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/metrics", {
+        method: "PATCH",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({
+          metric_id: goalsMetric.metric_id,
+          goals_config: newConfig,
+        }),
+      });
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        setError(j?.error || "Failed to save goals config");
+        return;
+      }
+
+      // Update local state
+      setMetrics((prev) =>
+        prev.map((m) =>
+          m.metric_id === goalsMetric.metric_id
+            ? { ...m, goals_config: newConfig }
+            : m
+        )
+      );
+
+      setGoalsMetric(null);
+    } catch (e) {
+      setError(String((e as Error)?.message ?? e));
+    }
+  }, [goalsMetric]);
 
   // Auto-generate metric_id from name
   const handleNewNameChange = (name: string) => {
@@ -1793,6 +1882,7 @@ export default function MetricsPage() {
                         savingFields={savingFields}
                         onDelete={deleteMetric}
                         onNotificationClick={openNotificationConfig}
+                        onGoalsClick={setGoalsMetric}
                         onStatsClick={setStatsMetric}
                       />
                     ))}
@@ -1958,6 +2048,21 @@ export default function MetricsPage() {
         open={statsMetric !== null}
         onOpenChange={(open) => !open && setStatsMetric(null)}
       />
+
+      {/* Goals config sheet */}
+      {goalsMetric && (
+        <GoalConfigSheet
+          open={goalsMetric !== null}
+          onOpenChange={(open) => !open && setGoalsMetric(null)}
+          metricId={goalsMetric.metric_id}
+          metricName={goalsMetric.metric_name}
+          metricType={goalsMetric.type}
+          goalsConfig={goalsMetric.goals_config}
+          onSave={async (goalsConfig) => {
+            await saveGoalsConfig(goalsConfig.goals);
+          }}
+        />
+      )}
     </main>
   );
 }

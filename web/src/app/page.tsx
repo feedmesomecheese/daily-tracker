@@ -16,6 +16,17 @@ import { StreakBadge } from "@/components/ui/streak-badge";
 import { DatePicker } from "@/components/ui/date-picker";
 import { MetricStatsSheet } from "@/components/metric-stats-sheet";
 import { MetricHoverTooltip } from "@/components/metric-hover-tooltip";
+import { MultiGoalBadge } from "@/components/ui/goal-progress-badge";
+
+type GoalIndicator = {
+  goal_id: string;
+  name: string;
+  progress_pct: number;
+  status: "on_track" | "at_risk" | "met" | "missed" | "not_started";
+  current: number;
+  target: number;
+  frequency: "daily" | "weekly" | "monthly";
+};
 
 type ConfigRow = {
   metric_id: string;
@@ -60,6 +71,7 @@ type IndicatorData = {
     current: number;
     seed: number;
   };
+  goals?: GoalIndicator[];
 };
 
 type IndicatorsResponse = {
@@ -160,6 +172,9 @@ export default function Home() {
 
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
+  // Show private metrics toggle (persists through date changes)
+  const [showPrivate, setShowPrivate] = useState(true);
+
   // Indicators state
   const [indicators, setIndicators] = useState<IndicatorsResponse | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
@@ -187,6 +202,17 @@ export default function Home() {
     return parentValue != null && parentValue.trim() !== "";
   }, [vals]);
 
+  // Track which metrics have dependent children
+  const metricsWithChildren = React.useMemo(() => {
+    const parentIds = new Set<string>();
+    for (const m of metrics) {
+      if (m.parent_metric_id) {
+        parentIds.add(m.parent_metric_id);
+      }
+    }
+    return parentIds;
+  }, [metrics]);
+
   const groupedMetrics = React.useMemo<
     { groupName: string; items: ConfigRow[] }[]
   >(() => {
@@ -198,6 +224,9 @@ export default function Home() {
       // Skip metrics whose parent is empty
       if (!isMetricVisible(m)) continue;
 
+      // Skip private metrics if showPrivate is disabled
+      if (!showPrivate && m.private) continue;
+
       const groupName = m.group || "Other";
       if (!map.has(groupName)) map.set(groupName, []);
       map.get(groupName)!.push(m);
@@ -207,7 +236,7 @@ export default function Home() {
       groupName,
       items,
     }));
-  }, [metrics, isMetricVisible, vals]);
+  }, [metrics, isMetricVisible, vals, showPrivate]);
 
   const daysBetween = (d1: string, d2: string) => {
     const t1 = Date.parse(d1);
@@ -314,11 +343,10 @@ export default function Home() {
           analytics_config: r.analytics_config ?? null,
         }));
 
-        const visible = normalized.filter(
-          (r) => !r.private && r.active
-        );
+        // Load all active metrics (including private) - filtering happens at display time
+        const active = normalized.filter((r) => r.active);
 
-        setMetrics(sortMetricsForForm(visible));
+        setMetrics(sortMetricsForForm(active));
       } catch (e: any) {
         setError(String(e?.message || e));
       }
@@ -580,8 +608,15 @@ export default function Home() {
         } else {
           value = null; // delete row
         }
+      } else if (m.type === "time") {
+        // time: accepts both minutes and h:mm format
+        if (trimmed !== "") {
+          value = parseTimeInput(trimmed);
+        } else {
+          value = null;
+        }
       } else {
-        // number / time
+        // number
         if (trimmed !== "") {
           const num = Number(trimmed);
           value = Number.isFinite(num) ? num : null;
@@ -628,7 +663,31 @@ export default function Home() {
     const minutes = Math.max(0, Math.round(totalMinutes));
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    return `${h}:${String(m).padStart(2, "0")}`;
+  }
+
+  // Parse time input - accepts both raw minutes (e.g., "420") and h:mm format (e.g., "7:00")
+  function parseTimeInput(raw: string): number | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    // Try h:mm or hh:mm format first
+    const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
+    if (match) {
+      const h = Number(match[1]);
+      const m = Number(match[2]);
+      if (h >= 0 && m >= 0 && m < 60) {
+        return h * 60 + m;
+      }
+    }
+
+    // Try raw minutes
+    const num = Number(trimmed);
+    if (Number.isFinite(num) && num >= 0) {
+      return num;
+    }
+
+    return null;
   }
 
 
@@ -652,7 +711,23 @@ export default function Home() {
       return null;
     }
 
-    // NUMBER / TIME: parse
+    // TIME type: accept both minutes and h:mm
+    if (m.type === "time") {
+      const mins = parseTimeInput(raw);
+      if (mins == null) {
+        return `${m.metric_name}: enter minutes (e.g., 90) or h:mm (e.g., 1:30)`;
+      }
+      // Range checks
+      if (m.min_value != null && mins < m.min_value) {
+        return `${m.metric_name}: must be ≥ ${m.min_value} minutes`;
+      }
+      if (m.max_value != null && mins > m.max_value) {
+        return `${m.metric_name}: must be ≤ ${m.max_value} minutes`;
+      }
+      return null;
+    }
+
+    // NUMBER: parse
     const num = Number(raw);
     if (!Number.isFinite(num)) {
       return `${m.metric_name}: not a valid number`;
@@ -1222,6 +1297,22 @@ export default function Home() {
     }
   }
 
+  async function reloadIndicators() {
+    if (!userSettings?.main_page?.show_indicators) return;
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/indicators?date=${encodeURIComponent(date)}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setIndicators(data);
+      }
+    } catch (e) {
+      console.warn("Failed to reload indicators:", e);
+    }
+  }
+
 
 
   async function save() {
@@ -1349,6 +1440,7 @@ export default function Home() {
       await loadSummary();
       setDirty(false);
       await reloadDateHints();
+      await reloadIndicators();
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
@@ -1425,8 +1517,18 @@ export default function Home() {
         } else {
           next[def.metric_id] = "";
         }
+      } else if (def.type === "time") {
+        // time: format as h:mm
+        if (hasExistingValue) {
+          next[def.metric_id] = formatDurationHHMM(existing);
+        } else if (def.default_value != null) {
+          next[def.metric_id] = formatDurationHHMM(def.default_value);
+          newDefaultPopulated.add(def.metric_id);
+        } else {
+          next[def.metric_id] = "";
+        }
       } else {
-        // number, time
+        // number
         if (hasExistingValue) {
           next[def.metric_id] = String(existing);
         } else if (def.default_value != null) {
@@ -1485,6 +1587,16 @@ export default function Home() {
                 Today
               </Button>
             )}
+            {/* Show private metrics checkbox */}
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showPrivate}
+                onChange={(e) => setShowPrivate(e.target.checked)}
+                className="h-3.5 w-3.5 rounded"
+              />
+              Private
+            </label>
             {dirty && (
               <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-200 dark:border-amber-700">
                 Unsaved changes
@@ -1518,7 +1630,8 @@ export default function Home() {
             })()}
             <Button
               onClick={save}
-              disabled={saving || metrics.length === 0}
+              disabled={saving || metrics.length === 0 || !dirty}
+              variant={dirty ? "default" : "outline"}
             >
               {saving ? "Saving..." : "Save Day"}
             </Button>
@@ -1629,7 +1742,8 @@ export default function Home() {
                       if (isCalculated) {
                         if (calcValue == null) {
                           calcDisplay = "—";
-                        } else if (m.type === "hhmm") {
+                        } else if (m.type === "hhmm" || m.type === "time") {
+                          // Format both hhmm and time as h:mm duration
                           calcDisplay = formatDurationHHMM(calcValue);
                         // } else if (m.type === "checkbox") {
                         //   calcDisplay = calcValue >= 0.5 ? "✓" : "";
@@ -1641,7 +1755,16 @@ export default function Home() {
                       return (
                         <div key={m.metric_id} className="mb-3">
                           {/* LABEL */}
-                          <label className="flex items-center gap-2 font-medium mb-1">
+                          <label className="flex items-center gap-2 font-medium mb-1 relative">
+                            {/* Indicator for metrics with dependent children - positioned left of name */}
+                            {metricsWithChildren.has(m.metric_id) && (
+                              <span
+                                className="absolute -left-4 text-[10px] text-muted-foreground opacity-70"
+                                title="Has dependent metrics that will appear when populated"
+                              >
+                                ▾
+                              </span>
+                            )}
                             <MetricHoverTooltip
                               metricId={m.metric_id}
                               metricName={m.metric_name}
@@ -1705,6 +1828,14 @@ export default function Home() {
                                   />
                                 );
                               })()}
+                            {/* Goal progress indicator */}
+                            {userSettings?.main_page?.show_indicators &&
+                              indicators?.metrics[m.metric_id]?.goals &&
+                              indicators.metrics[m.metric_id].goals!.length > 0 && (
+                                <MultiGoalBadge
+                                  goals={indicators.metrics[m.metric_id].goals!}
+                                />
+                              )}
                           </label>
 
                           {isCalculated ? (
@@ -1773,33 +1904,35 @@ export default function Home() {
                           ) : m.type === "checkbox" ? (
                             <>
                               <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={raw === "on"}
-                                  onClick={(e) => {
-                                    // If this is an untouched default, first click just confirms it
-                                    if (defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id)) {
-                                      e.preventDefault();
+                                {/* For unacknowledged defaults: show unchecked but highlighted */}
+                                {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) ? (
+                                  <input
+                                    type="checkbox"
+                                    checked={false}
+                                    onChange={() => {
+                                      // Clicking acknowledges the default - mark as touched and it will show as checked
                                       markAsTouched(m.metric_id);
                                       setDirty(true);
-                                      return;
-                                    }
-                                  }}
-                                  onChange={(e) => {
-                                    markAsTouched(m.metric_id);
-                                    const v = e.target.checked ? "on" : "";
-                                    setVal(m.metric_id, v);
-                                    setDirty(true);
-                                    setFieldErrors((prev) => ({
-                                      ...prev,
-                                      [m.metric_id]: null,
-                                    }));
-                                  }}
-                                  className={cn(
-                                    "h-5 w-5 rounded border-gray-300",
-                                    defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && "accent-amber-500"
-                                  )}
-                                />
+                                    }}
+                                    className="h-5 w-5 rounded border-amber-500 dark:border-amber-400 ring-2 ring-amber-300 dark:ring-amber-600 ring-offset-1"
+                                  />
+                                ) : (
+                                  <input
+                                    type="checkbox"
+                                    checked={raw === "on"}
+                                    onChange={(e) => {
+                                      markAsTouched(m.metric_id);
+                                      const v = e.target.checked ? "on" : "";
+                                      setVal(m.metric_id, v);
+                                      setDirty(true);
+                                      setFieldErrors((prev) => ({
+                                        ...prev,
+                                        [m.metric_id]: null,
+                                      }));
+                                    }}
+                                    className="h-5 w-5 rounded border-gray-300"
+                                  />
+                                )}
                                 {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
                                   <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30">
                                     default
@@ -1878,6 +2011,16 @@ export default function Home() {
                                     ...prev,
                                     [m.metric_id]: msg,
                                   }));
+                                  // For time type, format as h:mm after blur
+                                  if (m.type === "time" && v.trim() !== "" && !msg) {
+                                    const mins = parseTimeInput(v);
+                                    if (mins != null) {
+                                      setVals(prev => ({
+                                        ...prev,
+                                        [m.metric_id]: formatDurationHHMM(mins),
+                                      }));
+                                    }
+                                  }
                                 }}
                                 className={cn(
                                   "w-72",

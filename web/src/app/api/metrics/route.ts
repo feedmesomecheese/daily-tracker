@@ -30,6 +30,79 @@ const NotificationConfigSchema = z.object({
   }).optional(),
 }).nullable().optional();
 
+// Goal alert config (shared across goal types)
+const GoalAlertConfig = z.object({
+  approaching_pct: z.number().min(0).max(100).optional(), // notify at X% progress
+  missed: z.boolean().optional(), // notify when period ends without meeting goal
+  achieved: z.boolean().optional(), // notify when goal is achieved
+}).optional();
+
+// Base fields shared by all goal types
+const GoalBaseFields = {
+  id: z.string().min(1), // unique ID for this goal
+  name: z.string().min(1), // display name
+  frequency: z.enum(['daily', 'weekly', 'monthly']),
+  enabled: z.boolean().default(true),
+  start_date: z.string().nullable().optional(), // YYYY-MM-DD, null = no start limit
+  end_date: z.string().nullable().optional(), // YYYY-MM-DD, null = ongoing
+  alerts: GoalAlertConfig,
+  created_at: z.string().optional(), // ISO timestamp
+};
+
+// Numeric goal (for number/time metrics) - sum or average target
+const NumericGoalSchema = z.object({
+  ...GoalBaseFields,
+  type: z.literal('numeric'),
+  target: z.number(),
+  measure: z.enum(['sum', 'average']), // sum = total, average = per-logged-day avg
+  direction: z.enum(['gte', 'lte']), // >= or <= target
+});
+
+// Checkbox goal - count of times checked per period
+const CheckboxGoalSchema = z.object({
+  ...GoalBaseFields,
+  type: z.literal('checkbox'),
+  target_count: z.number().int().min(1), // times per day/week/month
+});
+
+// HHMM target time goal (e.g., wake by 7:00 AM)
+const HHMMTargetGoalSchema = z.object({
+  ...GoalBaseFields,
+  type: z.literal('hhmm_target'),
+  target_time: z.number().int().min(0).max(1439), // minutes from midnight (0-1439)
+  direction: z.enum(['before', 'after']), // "before" = <= target, "after" = >= target
+});
+
+// HHMM consistency goal - standard deviation within X minutes
+const HHMMConsistencyGoalSchema = z.object({
+  ...GoalBaseFields,
+  type: z.literal('hhmm_consistency'),
+  max_std_dev: z.number().int().min(1), // maximum std dev in minutes
+});
+
+// Numeric threshold goal - count days meeting threshold (e.g., "score >= 7 on 5 days/week")
+const NumericThresholdGoalSchema = z.object({
+  ...GoalBaseFields,
+  type: z.literal('numeric_threshold'),
+  threshold: z.number(),
+  direction: z.enum(['gte', 'lte']), // value must be >= or <= threshold
+  target_count: z.number().int().min(1), // how many days must meet threshold
+});
+
+// Union of all goal types
+const GoalSchema = z.discriminatedUnion('type', [
+  NumericGoalSchema,
+  NumericThresholdGoalSchema,
+  CheckboxGoalSchema,
+  HHMMTargetGoalSchema,
+  HHMMConsistencyGoalSchema,
+]);
+
+// Goals config schema
+const GoalsConfigSchema = z.object({
+  goals: z.array(GoalSchema).default([]),
+}).nullable().optional();
+
 const BaseSchema = z.object({
   metric_id: z
     .string()
@@ -71,6 +144,9 @@ const BaseSchema = z.object({
 
   // notification configuration
   notification_config: NotificationConfigSchema,
+
+  // goals configuration
+  goals_config: GoalsConfigSchema,
 });
 
 // CREATE uses defaults; PATCH must NOT apply defaults for fields the client didn't send.
@@ -115,6 +191,9 @@ const UpdateSchema = z.object({
 
   // notification configuration
   notification_config: NotificationConfigSchema,
+
+  // goals configuration
+  goals_config: GoalsConfigSchema,
 });
 
 function formatZodError(error: z.ZodError): string {
@@ -294,6 +373,7 @@ export async function PATCH(req: Request) {
   if (body.preset_values_csv !== undefined) updates.preset_values_csv = body.preset_values_csv ?? null;
   if (body.analytics_config !== undefined) updates.analytics_config = body.analytics_config ?? {};
   if (body.notification_config !== undefined) updates.notification_config = body.notification_config ?? {};
+  if (body.goals_config !== undefined) updates.goals_config = body.goals_config ?? {};
 
   if (body.group !== undefined) {
     updates.group = body.group ?? null;

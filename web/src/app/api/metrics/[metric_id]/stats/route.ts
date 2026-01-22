@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 import { getLocalDateString, addDays } from "@/lib/dateUtils";
 import { evaluateCalculatedMetricsV2, MetricDef } from "@/lib/calc";
+import { calculateAllGoalProgress, Goal, GoalProgress } from "@/lib/goals";
 
 type MetricConfig = {
   metric_id: string;
@@ -14,6 +15,9 @@ type MetricConfig = {
     avoid?: boolean;
     higher_is_better?: boolean;
     show_streak?: boolean;
+  } | null;
+  goals_config: {
+    goals?: Goal[];
   } | null;
 };
 
@@ -77,6 +81,13 @@ type StatsResponse = {
       thisYear: number;
       lifetime: number;
     };
+    // HHMM-specific stats (point-in-time like wake/sleep time)
+    hhmmStats?: {
+      avgTime: number; // minutes from midnight
+      stdDev: number; // standard deviation in minutes
+      earliest: ValueWithDate | null;
+      latest: ValueWithDate | null;
+    };
   };
   comparisons: {
     ytd: { count: number; daysInPeriod: number; avg?: number };
@@ -87,6 +98,10 @@ type StatsResponse = {
   dayOfWeekBreakdown: Record<string, number>;
   dayOfWeekAverages?: Record<string, number | null>; // For number metrics
   movingAverages: { date: string; raw: number | null; ma7: number | null; ma30: number | null; ma90: number | null; ma180: number | null }[];
+  // Goals data
+  goals?: {
+    active: GoalProgress[];
+  };
 };
 
 async function getAuthedClient(req: Request) {
@@ -454,7 +469,7 @@ export async function GET(
   // Get metric config
   const { data: config, error: configError } = await supabase
     .from("config")
-    .select("metric_id, metric_name, type, start_date, analytics_config, is_calculated, calc_expr")
+    .select("metric_id, metric_name, type, start_date, analytics_config, goals_config, is_calculated, calc_expr")
     .eq("owner_id", user.id)
     .eq("metric_id", metric_id)
     .single();
@@ -825,6 +840,48 @@ export async function GET(
         timeTotals = { thisWeek, thisMonth, thisYear, lifetime };
       }
 
+      // HHMM-specific stats (point-in-time metrics like wake/sleep time)
+      let hhmmStats: { avgTime: number; stdDev: number; earliest: ValueWithDate | null; latest: ValueWithDate | null } | undefined;
+      if (metricConfig.type === "hhmm" && validValues.length > 0) {
+        // For time-of-day metrics, we need to handle wraparound (e.g., 23:00 and 01:00 are close)
+        // Use circular mean for averaging times
+        const values = validValues.map((v) => v.value);
+
+        // Calculate circular mean (treating time as angle on 24-hour clock)
+        const minutesInDay = 1440;
+        let sinSum = 0;
+        let cosSum = 0;
+        for (const mins of values) {
+          const angle = (mins / minutesInDay) * 2 * Math.PI;
+          sinSum += Math.sin(angle);
+          cosSum += Math.cos(angle);
+        }
+        const avgAngle = Math.atan2(sinSum / values.length, cosSum / values.length);
+        let avgTime = (avgAngle / (2 * Math.PI)) * minutesInDay;
+        if (avgTime < 0) avgTime += minutesInDay;
+        avgTime = Math.round(avgTime);
+
+        // Calculate circular standard deviation
+        const R = Math.sqrt(sinSum * sinSum + cosSum * cosSum) / values.length;
+        const circularVariance = 1 - R;
+        // Convert to approximate minutes (this is an approximation)
+        const stdDev = Math.round(Math.sqrt(-2 * Math.log(R)) * (minutesInDay / (2 * Math.PI)));
+
+        // Find earliest and latest (simple min/max works for single-day context)
+        let earliest: ValueWithDate | null = null;
+        let latest: ValueWithDate | null = null;
+        for (const v of validValues) {
+          if (!earliest || v.value < earliest.value) {
+            earliest = { value: v.value, date: v.date };
+          }
+          if (!latest || v.value > latest.value) {
+            latest = { value: v.value, date: v.date };
+          }
+        }
+
+        hhmmStats = { avgTime, stdDev: Number.isFinite(stdDev) ? stdDev : 0, earliest, latest };
+      }
+
       numberStats = {
         lifetimeAvg,
         high,
@@ -832,6 +889,7 @@ export async function GET(
         periodAverages: { days7, days30, days90, days180 },
         trend,
         timeTotals,
+        hhmmStats,
       };
     }
 
@@ -871,6 +929,21 @@ export async function GET(
     return Math.round((sum / validLogs.length) * 10) / 10;
   };
 
+  // Calculate goal progress
+  let goalsData: { active: GoalProgress[] } | undefined;
+  if (metricConfig.goals_config?.goals && metricConfig.goals_config.goals.length > 0) {
+    const todayLogged = logRows.some(l => l.date === today && l.value !== null);
+    const goalProgressList = calculateAllGoalProgress(
+      metricConfig.goals_config.goals,
+      logRows,
+      today,
+      todayLogged
+    );
+    if (goalProgressList.length > 0) {
+      goalsData = { active: goalProgressList };
+    }
+  }
+
   const response: StatsResponse = {
     metric: {
       id: metricConfig.metric_id,
@@ -902,6 +975,7 @@ export async function GET(
     dayOfWeekBreakdown,
     dayOfWeekAverages,
     movingAverages,
+    goals: goalsData,
   };
 
   return NextResponse.json(response);

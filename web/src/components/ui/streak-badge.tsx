@@ -82,14 +82,17 @@ export function StreakBadge({
   // Add seed to positive streaks only
   const displayStreak = baseStreak > 0 ? baseStreak + seed : baseStreak;
 
-  // Determine if this is "live" (matches what will be saved) or "muted" (preview)
-  const isLive = formHasValue === loggedTodayInDb || formHasValue;
-  const isMuted = !formHasValue && !loggedTodayInDb;
-
   // Determine if this streak is "good" based on avoid flag
   // - Normal: positive streak = good
   // - Avoid: negative streak = good (avoiding bad thing)
   const isGood = avoid ? displayStreak < 0 : displayStreak > 0;
+
+  // Determine if this is "live" (matches what will be saved) or "muted" (preview)
+  // For avoid metrics: empty form is the "good" live state when on an avoid streak
+  const isLive = formHasValue === loggedTodayInDb || formHasValue || (avoid && !formHasValue && isGood);
+  const isMuted = avoid
+    ? (formHasValue && displayStreak < 0) // Avoid: muted when about to break a good streak
+    : (!formHasValue && !loggedTodayInDb); // Normal: muted when empty and not saved
 
   // Don't show anything for zero streak (shouldn't happen often)
   if (displayStreak === 0) {

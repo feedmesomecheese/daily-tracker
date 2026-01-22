@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 import { getLocalDateString, addDays } from "@/lib/dateUtils";
+import { calculateAllGoalProgress, Goal, GoalProgress } from "@/lib/goals";
 
 type TrendData = {
   direction: "up" | "down" | "flat";
@@ -22,9 +23,20 @@ type StreakData = {
   seed: number;
 };
 
+type GoalIndicator = {
+  goal_id: string;
+  name: string;
+  progress_pct: number;
+  status: "on_track" | "at_risk" | "met" | "missed" | "not_started";
+  current: number;
+  target: number;
+  frequency: "daily" | "weekly" | "monthly";
+};
+
 type MetricIndicators = {
   trend?: TrendData;
   streak?: StreakData;
+  goals?: GoalIndicator[];
 };
 
 type IndicatorsResponse = {
@@ -56,13 +68,12 @@ export async function GET(req: Request) {
   const dateParam = url.searchParams.get("date");
   const referenceDate = dateParam || getLocalDateString();
 
-  // 1) Get all active, non-calculated metrics for this user
+  // 1) Get all active metrics for this user (including calculated for goals)
   const { data: metrics, error: configError } = await supabase
     .from("config")
-    .select("metric_id, type, analytics_config, start_date, is_calculated")
+    .select("metric_id, type, analytics_config, goals_config, start_date, is_calculated")
     .eq("owner_id", user.id)
-    .eq("active", true)
-    .or("is_calculated.is.null,is_calculated.eq.false");
+    .eq("active", true);
 
   if (configError) {
     return NextResponse.json(
@@ -168,6 +179,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 
+  // 2c) Load logs for metrics with goals that haven't been loaded yet
+  const metricsWithGoals = allMetrics.filter((m) => {
+    const goalsConfig = m.goals_config as { goals?: unknown[] } | null;
+    return goalsConfig?.goals && goalsConfig.goals.length > 0;
+  });
+  const goalMetricIds = metricsWithGoals
+    .map((m) => m.metric_id)
+    .filter((id) => !byMetric.has(id)); // Only load if not already loaded
+
+  if (goalMetricIds.length > 0) {
+    try {
+      // Load 90 days for goals (covers monthly periods)
+      const goalStartDate = addDays(referenceDate, -90);
+      await loadLogs(goalMetricIds, goalStartDate);
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
+    }
+  }
+
   // 3) Calculate indicators for each metric
   const result: Record<string, MetricIndicators> = {};
 
@@ -203,6 +233,37 @@ export async function GET(req: Request) {
     if (trend) {
       if (!result[m.metric_id]) result[m.metric_id] = {};
       result[m.metric_id].trend = trend;
+    }
+  }
+
+  // Goals for metrics with goals_config
+  for (const m of allMetrics) {
+    const goalsConfig = m.goals_config as { goals?: Goal[] } | null;
+    if (!goalsConfig?.goals || goalsConfig.goals.length === 0) continue;
+
+    const rows = byMetric.get(m.metric_id) ?? [];
+    // Determine if today is logged (from streak data if available)
+    const todayLogged = result[m.metric_id]?.streak?.logged_today ??
+      rows.some(r => r.date === referenceDate && r.value != null);
+
+    const goalProgressList = calculateAllGoalProgress(
+      goalsConfig.goals,
+      rows,
+      referenceDate,
+      todayLogged
+    );
+
+    if (goalProgressList.length > 0) {
+      if (!result[m.metric_id]) result[m.metric_id] = {};
+      result[m.metric_id].goals = goalProgressList.map((gp: GoalProgress) => ({
+        goal_id: gp.goal_id,
+        name: gp.name,
+        progress_pct: gp.progress_pct,
+        status: gp.status,
+        current: gp.current,
+        target: gp.target,
+        frequency: gp.frequency,
+      }));
     }
   }
 
