@@ -90,7 +90,8 @@ type AnalyticsConfig = {
   hide_trend?: boolean;
   hide_streak?: boolean; // deprecated
   show_streak?: boolean; // default: true
-  avoid?: boolean; // if true, negative streaks are good (avoiding bad thing)
+  avoid?: boolean; // deprecated, use direction instead
+  direction?: "increase" | "decrease" | "neutral"; // increase=positive streaks good, decrease=negative good, neutral=no flame
   lifetime_streak?: boolean; // if true, load all-time data for streak calc
   streak_seed?: number; // pre-log days to add to streak display
   trend_period?: number;
@@ -483,22 +484,26 @@ function SortableMetricRow({
               />
             )}
           </td>
-          {/* Avoid - for all non-text types */}
-          <td className="py-2 px-2 w-[50px] text-center">
+          {/* Direction - for all non-text types */}
+          <td className="py-2 px-2 w-[80px] text-center">
             {metric.type !== "text" && (
-              <input
-                type="checkbox"
-                checked={metric.analytics_config?.avoid ?? false}
+              <select
+                value={metric.analytics_config?.direction ?? (metric.analytics_config?.avoid ? "decrease" : "increase")}
                 onChange={(e) => {
                   const newConfig = {
                     ...(metric.analytics_config || {}),
-                    avoid: e.target.checked,
+                    direction: e.target.value as "increase" | "decrease" | "neutral",
+                    avoid: undefined, // Clear deprecated field
                   };
                   onFieldChange(metric.metric_id, "analytics_config", newConfig);
                 }}
-                className="h-4 w-4"
-                title="Negative streaks are good (avoiding bad behavior)"
-              />
+                className="h-7 text-xs border rounded px-1 bg-background"
+                title="Increase: positive streaks good, Decrease: negative streaks good, Neutral: no flame"
+              >
+                <option value="increase">↑ Inc</option>
+                <option value="decrease">↓ Dec</option>
+                <option value="neutral">— Neut</option>
+              </select>
             )}
           </td>
           {/* Lifetime - for all non-text types, only if streak is enabled */}
@@ -1603,7 +1608,7 @@ export default function MetricsPage() {
                           <th className="text-center py-2 px-2 w-[50px]" title="Hide trend indicator on main page">No Trend</th>
                           <th className="text-center py-2 px-2 w-[50px]" title="Lower values are better (green when down)">Low Good</th>
                           <th className="text-center py-2 px-2 w-[50px]" title="Show streak indicator">Streak</th>
-                          <th className="text-center py-2 px-2 w-[50px]" title="Negative streaks are good (avoiding bad behavior)">Avoid</th>
+                          <th className="text-center py-2 px-2 w-[80px]" title="Direction: Increase (positive streaks good), Decrease (negative streaks good), Neutral (no flame)">Direction</th>
                           <th className="text-center py-2 px-2 w-[50px]" title="Track all-time streak (no 365-day limit)">Lifetime</th>
                           <th className="text-center py-2 px-2 w-[60px]" title="Pre-log days to add to streak">Seed</th>
                         </>

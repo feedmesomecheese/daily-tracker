@@ -34,6 +34,8 @@ function formatStreakDuration(days: number): string {
   return parts.join(" ");
 }
 
+export type StreakDirection = "increase" | "decrease" | "neutral";
+
 export interface StreakBadgeProps {
   // Streak value from API (yesterday's streak, what's in the DB)
   yesterdayStreak: number;
@@ -41,8 +43,8 @@ export interface StreakBadgeProps {
   loggedTodayInDb: boolean;
   // Current form state - is today's value filled?
   formHasValue: boolean;
-  // If true, negative streaks are good (you want to avoid this thing)
-  avoid?: boolean;
+  // Direction: increase=positive streaks good, decrease=negative streaks good, neutral=no flame
+  direction?: StreakDirection;
   // Pre-log days to add to positive streak display (for lifetime streaks)
   seed?: number;
   className?: string;
@@ -52,10 +54,13 @@ export function StreakBadge({
   yesterdayStreak,
   loggedTodayInDb,
   formHasValue,
-  avoid = false,
+  direction = "increase",
   seed = 0,
   className,
 }: StreakBadgeProps) {
+  // For backward compat: treat decrease like old avoid=true
+  const isDecrease = direction === "decrease";
+  const isNeutral = direction === "neutral";
   // Calculate what the streak would be based on current form state
   const baseStreak = React.useMemo(() => {
     if (formHasValue) {
@@ -82,17 +87,18 @@ export function StreakBadge({
   // Add seed to positive streaks only
   const displayStreak = baseStreak > 0 ? baseStreak + seed : baseStreak;
 
-  // Determine if this streak is "good" based on avoid flag
-  // - Normal: positive streak = good
-  // - Avoid: negative streak = good (avoiding bad thing)
-  const isGood = avoid ? displayStreak < 0 : displayStreak > 0;
+  // Determine if this streak is "good" based on direction
+  // - increase: positive streak = good
+  // - decrease: negative streak = good (avoiding bad thing)
+  // - neutral: neither is highlighted
+  const isGood = isNeutral ? false : (isDecrease ? displayStreak < 0 : displayStreak > 0);
 
   // Determine if this is "live" (matches what will be saved) or "muted" (preview)
-  // For avoid metrics: empty form is the "good" live state when on an avoid streak
-  const isLive = formHasValue === loggedTodayInDb || formHasValue || (avoid && !formHasValue && isGood);
-  const isMuted = avoid
-    ? (formHasValue && displayStreak < 0) // Avoid: muted when about to break a good streak
-    : (!formHasValue && !loggedTodayInDb); // Normal: muted when empty and not saved
+  // For decrease metrics: empty form is the "good" live state when on a decrease streak
+  const isLive = formHasValue === loggedTodayInDb || formHasValue || (isDecrease && !formHasValue && isGood);
+  const isMuted = isDecrease
+    ? (formHasValue && displayStreak < 0) // Decrease: muted when about to break a good streak
+    : (!formHasValue && !loggedTodayInDb); // Increase/Neutral: muted when empty and not saved
 
   // Don't show anything for zero streak (shouldn't happen often)
   if (displayStreak === 0) {
@@ -104,20 +110,20 @@ export function StreakBadge({
   const isPositive = displayStreak > 0;
   const formattedStreak = formatStreakDuration(displayStreak);
 
-  // Show flame for good streaks (positive for normal, negative for avoid)
-  const showFlame = isGood && !isMuted;
+  // Show flame for good streaks (positive for increase, negative for decrease, never for neutral)
+  const showFlame = isGood && !isMuted && !isNeutral;
 
   // Build tooltip with full day count for longer streaks
   const dayLabel = absStreak === 1 ? "day" : "days";
   let tooltipText: string;
   if (isPositive) {
-    if (avoid) {
+    if (isDecrease) {
       tooltipText = `${absStreak} ${dayLabel} in a row (try to avoid!)`;
     } else {
       tooltipText = `${absStreak} ${dayLabel} streak${isMuted ? " - not logged today" : " - keep it going!"}`;
     }
   } else {
-    if (avoid) {
+    if (isDecrease) {
       tooltipText = `${absStreak} ${dayLabel} avoided - great job!`;
     } else {
       tooltipText = `${absStreak} ${dayLabel} missed`;

@@ -62,7 +62,8 @@ type StatsResponse = {
     type: string;
     startDate: string | null;
     trackingSince: string | null;
-    isAvoid: boolean;
+    isAvoid: boolean; // deprecated, use direction
+    direction: "increase" | "decrease" | "neutral";
     isCalculated: boolean;
     showStreak: boolean;
   };
@@ -720,7 +721,7 @@ export function MetricStatsSheet({
                     <StatItem
                       label="Current"
                       value={
-                        stats.metric.isAvoid
+                        stats.metric.direction === "decrease"
                           ? (stats.streaks.current < 0
                               ? `+${Math.abs(stats.streaks.current)}`
                               : stats.streaks.current > 0
@@ -731,7 +732,7 @@ export function MetricStatsSheet({
                               : stats.streaks.current)
                       }
                       subtext={
-                        stats.metric.isAvoid
+                        stats.metric.direction === "decrease"
                           ? (stats.streaks.current < 0
                               ? "days avoided"
                               : "days slipped")
@@ -741,7 +742,7 @@ export function MetricStatsSheet({
                       }
                     />
                     <StatItem
-                      label={stats.metric.isAvoid ? "Longest Avoided" : "Best Ever"}
+                      label={stats.metric.direction === "decrease" ? "Longest Avoided" : "Best Ever"}
                       value={
                         stats.streaks.best
                           ? formatDuration(stats.streaks.best.value)
@@ -757,7 +758,7 @@ export function MetricStatsSheet({
                       }
                     />
                     <StatItem
-                      label={stats.metric.isAvoid ? "Worst Slip" : "Worst Dry Spell"}
+                      label={stats.metric.direction === "decrease" ? "Worst Slip" : "Worst Dry Spell"}
                       value={
                         stats.streaks.worstDrySpell
                           ? formatDuration(stats.streaks.worstDrySpell.value)

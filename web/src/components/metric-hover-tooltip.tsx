@@ -85,7 +85,8 @@ type QuickStats = {
   // Common
   metricType: string;
   percent_logged: number;
-  isAvoid: boolean;
+  isAvoid: boolean; // deprecated, use direction
+  direction: "increase" | "decrease" | "neutral";
   isCalculated: boolean;
   showStreak: boolean;
 
@@ -168,7 +169,8 @@ export function MetricHoverTooltip({
       setStats({
         metricType: data.metric?.type ?? "checkbox",
         percent_logged: data.frequency?.percentLogged ?? 0,
-        isAvoid: data.metric?.isAvoid ?? false,
+        isAvoid: data.metric?.isAvoid ?? false, // deprecated
+        direction: data.metric?.direction ?? (data.metric?.isAvoid ? "decrease" : "increase"),
         isCalculated: data.metric?.isCalculated ?? false,
         showStreak: data.metric?.showStreak ?? true,
 
@@ -311,7 +313,7 @@ export function MetricHoverTooltip({
                     <>
                       <div className="text-muted-foreground">Current streak</div>
                       <div className="font-medium tabular-nums text-right">
-                        {stats.isAvoid
+                        {stats.direction === "decrease"
                           ? (stats.current_streak < 0
                               ? `+${Math.abs(stats.current_streak)}`
                               : stats.current_streak > 0
@@ -322,7 +324,7 @@ export function MetricHoverTooltip({
                               : stats.current_streak)}
                       </div>
 
-                      <div className="text-muted-foreground">{stats.isAvoid ? "Longest avoided" : "Best streak"}</div>
+                      <div className="text-muted-foreground">{stats.direction === "decrease" ? "Longest avoided" : "Best streak"}</div>
                       <div className="font-medium tabular-nums text-right">
                         {stats.best_streak > 0 ? stats.best_streak : "N/A"}
                       </div>

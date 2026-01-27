@@ -9,7 +9,8 @@ const AnalyticsConfigSchema = z.object({
   hide_streak: z.boolean().optional(), // deprecated, use show_streak
   show_streak: z.boolean().optional(), // default: true
   streak_mode: z.enum(['positive', 'days_since', 'none']).optional(), // deprecated
-  avoid: z.boolean().optional(), // if true, negative streaks show flame (avoiding bad thing)
+  avoid: z.boolean().optional(), // deprecated, use direction instead
+  direction: z.enum(['increase', 'decrease', 'neutral']).optional(), // increase=positive streaks good, decrease=negative streaks good, neutral=no flame
   lifetime_streak: z.boolean().optional(), // if true, load all-time data for streak calc
   streak_seed: z.number().int().min(0).optional(), // pre-log days to add to streak display
   trend_period: z.number().int().positive().optional(),

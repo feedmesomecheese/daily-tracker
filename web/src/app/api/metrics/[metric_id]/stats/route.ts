@@ -12,7 +12,8 @@ type MetricConfig = {
   is_calculated: boolean;
   calc_expr: string | null;
   analytics_config: {
-    avoid?: boolean;
+    avoid?: boolean; // deprecated
+    direction?: "increase" | "decrease" | "neutral";
     higher_is_better?: boolean;
     show_streak?: boolean;
   } | null;
@@ -44,7 +45,8 @@ type StatsResponse = {
     type: string;
     startDate: string | null;
     trackingSince: string | null;
-    isAvoid: boolean;
+    isAvoid: boolean; // deprecated, use direction
+    direction: "increase" | "decrease" | "neutral";
     isCalculated: boolean;
     showStreak: boolean; // Whether to display streak section
   };
@@ -638,11 +640,16 @@ export async function GET(
   // For frequency/percentage calculations, use first log date (not config start_date)
   const trackingStartDate = firstLogDate || today;
 
-  // Check if this is an "avoid" metric
-  const isAvoidMetric = metricConfig.analytics_config?.avoid === true;
+  // Determine direction with backward compatibility (avoid=true maps to decrease)
+  const direction: "increase" | "decrease" | "neutral" =
+    metricConfig.analytics_config?.direction ??
+    (metricConfig.analytics_config?.avoid ? "decrease" : "increase");
 
-  // Debug log for avoid metric detection
-  console.log(`[Stats API] Metric ${metric_id}: analytics_config=${JSON.stringify(metricConfig.analytics_config)}, isAvoid=${isAvoidMetric}`);
+  // For streak calculations, "decrease" means negative streaks are good (isAvoidMetric)
+  const isAvoidMetric = direction === "decrease";
+
+  // Debug log for direction detection
+  console.log(`[Stats API] Metric ${metric_id}: analytics_config=${JSON.stringify(metricConfig.analytics_config)}, direction=${direction}, isAvoid=${isAvoidMetric}`);
 
   // Debug: show date range info
   const lastLogDate = logRows.length > 0 ? logRows[logRows.length - 1].date : null;
@@ -951,7 +958,8 @@ export async function GET(
       type: metricConfig.type,
       startDate: metricConfig.start_date,
       trackingSince: firstLogDate,
-      isAvoid: isAvoidMetric,
+      isAvoid: isAvoidMetric, // deprecated, use direction
+      direction,
       isCalculated: metricConfig.is_calculated ?? false,
       showStreak,
     },

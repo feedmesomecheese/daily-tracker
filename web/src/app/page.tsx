@@ -53,7 +53,8 @@ type ConfigRow = {
     hide_trend?: boolean;
     hide_streak?: boolean; // deprecated
     show_streak?: boolean; // default: true
-    avoid?: boolean; // if true, negative streaks are good
+    avoid?: boolean; // deprecated, use direction instead
+    direction?: "increase" | "decrease" | "neutral"; // increase=positive streaks good, decrease=negative streaks good, neutral=no flame
     trend_period?: number;
     higher_is_better?: boolean;
   } | null;
@@ -1877,12 +1878,16 @@ export default function Home() {
                                   formHasValue = rawVal != null && rawVal.trim() !== "";
                                 }
 
+                                // Handle backward compat: avoid=true maps to direction="decrease"
+                                const direction = m.analytics_config?.direction ??
+                                  (m.analytics_config?.avoid ? "decrease" : "increase");
+
                                 return (
                                   <StreakBadge
                                     yesterdayStreak={streak.yesterday}
                                     loggedTodayInDb={streak.logged_today}
                                     formHasValue={formHasValue}
-                                    avoid={m.analytics_config?.avoid ?? false}
+                                    direction={direction}
                                     seed={streak.seed ?? 0}
                                   />
                                 );
