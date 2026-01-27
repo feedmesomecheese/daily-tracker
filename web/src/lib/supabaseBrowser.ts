@@ -24,7 +24,8 @@ export const supabaseBrowser = createBrowserClient(url, anonKey, {
     },
     set(name: string, value: string, options?: { maxAge?: number; path?: string }) {
       if (typeof document === "undefined") return;
-      const opts = { ...cookieOptions, ...options };
+      // Our cookieOptions must come AFTER to ensure our maxAge takes precedence
+      const opts = { ...options, ...cookieOptions };
       let cookieStr = `${name}=${encodeURIComponent(value)}`;
       if (opts.maxAge) cookieStr += `; max-age=${opts.maxAge}`;
       if (opts.path) cookieStr += `; path=${opts.path}`;
