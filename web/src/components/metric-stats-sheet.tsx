@@ -598,8 +598,10 @@ export function MetricStatsSheet({
     return Math.round(pct);
   }, [stats]);
 
-  // Determine if checkbox metric (for chart formatting)
+  // Determine if checkbox or count metric (for chart/stats formatting)
   const isCheckbox = metricType === "checkbox";
+  const isCount = metricType === "count";
+  const showFrequencyStats = isCheckbox || isCount;
 
   // Calculate Y-axis domain for non-checkbox metrics
   const yAxisConfig = useMemo(() => {
@@ -1064,16 +1066,16 @@ export function MetricStatsSheet({
               </Card>
             )}
 
-            {/* Statistics - different for checkbox vs number metrics */}
+            {/* Statistics - different for checkbox/count vs number metrics */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {isCheckbox ? "Frequency Statistics" : "Logging Statistics"}
+                  {showFrequencyStats ? "Frequency Statistics" : "Logging Statistics"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isCheckbox ? (
-                  // Checkbox: show frequency stats
+                {showFrequencyStats ? (
+                  // Checkbox/Count: show frequency stats
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <StatItem
                       label="Total Days Logged"
@@ -1124,7 +1126,7 @@ export function MetricStatsSheet({
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">
-                  {isCheckbox ? "Day of Week Pattern" : "Average by Day of Week"}
+                  {showFrequencyStats ? "Day of Week Pattern" : "Average by Day of Week"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1132,7 +1134,7 @@ export function MetricStatsSheet({
                   breakdown={stats.dayOfWeekBreakdown}
                   maxValue={maxDayOfWeek}
                   averages={stats.dayOfWeekAverages}
-                  isAverage={!isCheckbox}
+                  isAverage={!showFrequencyStats}
                   metricType={metricType}
                 />
               </CardContent>
@@ -1149,7 +1151,7 @@ export function MetricStatsSheet({
                     <div className="text-xs text-muted-foreground font-medium">
                       Year to Date
                     </div>
-                    {isCheckbox ? (
+                    {showFrequencyStats ? (
                       <>
                         <div className="flex items-baseline gap-2">
                           <span className="text-2xl font-semibold tabular-nums">
@@ -1188,7 +1190,7 @@ export function MetricStatsSheet({
                     <div className="text-xs text-muted-foreground font-medium">
                       This Month
                     </div>
-                    {isCheckbox ? (
+                    {showFrequencyStats ? (
                       <>
                         <div className="flex items-baseline gap-2">
                           <span className="text-2xl font-semibold tabular-nums">

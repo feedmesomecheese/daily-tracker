@@ -176,8 +176,14 @@ function calculateStreaks(
       if (isTruthy(log.value)) {
         loggedDates.add(log.date);
       }
+    } else if (metricType === "count") {
+      // For count, non-zero values count (like checkbox behavior)
+      const num = Number(log.value);
+      if (!isNaN(num) && num !== 0) {
+        loggedDates.add(log.date);
+      }
     } else {
-      // For number/time, any non-null value counts
+      // For number/score/time/hhmm, any non-null value counts
       if (hasValue(log.value)) {
         loggedDates.add(log.date);
       }
@@ -193,10 +199,10 @@ function calculateStreaks(
     };
   }
 
-  // For checkbox metrics, we need to determine the first ACTIVE date for streak boundaries
-  // (first date where value was truthy, not just first log entry)
+  // For checkbox/count metrics, we need to determine the first ACTIVE date for streak boundaries
+  // (first date where value was truthy/non-zero, not just first log entry)
   let effectiveFirstDate = firstLogDate;
-  if (metricType === "checkbox" && loggedDates.size > 0) {
+  if ((metricType === "checkbox" || metricType === "count") && loggedDates.size > 0) {
     // Get earliest date from the set
     effectiveFirstDate = Array.from(loggedDates).sort()[0];
   }
@@ -664,11 +670,20 @@ export async function GET(
 
   // Calculate frequency stats
   // For checkbox: count CHECKED days (truthy values)
-  // For number/time: count any logged days (non-null values)
+  // For count: count days with non-zero values (like checkbox)
+  // For number/score/time/hhmm: count any logged days (non-null values)
   const totalDaysPossible = daysBetween(trackingStartDate, today) + 1;
-  const loggedDays = metricConfig.type === "checkbox"
-    ? logRows.filter((l) => isTruthy(l.value))
-    : logRows.filter((l) => hasValue(l.value));
+  let loggedDays: LogRow[];
+  if (metricConfig.type === "checkbox") {
+    loggedDays = logRows.filter((l) => isTruthy(l.value));
+  } else if (metricConfig.type === "count") {
+    loggedDays = logRows.filter((l) => {
+      const num = Number(l.value);
+      return !isNaN(num) && num !== 0;
+    });
+  } else {
+    loggedDays = logRows.filter((l) => hasValue(l.value));
+  }
   const totalDaysLogged = loggedDays.length;
   const percentLogged = totalDaysPossible > 0 ? Math.round((totalDaysLogged / totalDaysPossible) * 1000) / 10 : 0;
 
