@@ -14,6 +14,8 @@ export async function GET(req: Request) {
 
   const start = url.searchParams.get("start"); // optional YYYY-MM-DD
   const end = url.searchParams.get("end");     // optional YYYY-MM-DD
+  const includeArchived = url.searchParams.get("archived") === "1";
+  const includePrivate = url.searchParams.get("private") === "1";
 
   const isISODate = (s: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
   if ((start && !isISODate(start)) || (end && !isISODate(end))) {
@@ -33,7 +35,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // 1) Visible metric columns (match /wide behavior: !private && active)
+  // 1) Metric columns (filtered by archived/private params)
   const { data: cfg, error: cfgErr } = await supabase
     .from("config")
     .select("metric_id, type, private, active, group_order, group, metric_order")
@@ -49,7 +51,11 @@ export async function GET(req: Request) {
 
   const metricIds =
     (cfg ?? [])
-      .filter((c: any) => !c.private && (c.active ?? true))
+      .filter((c: any) => {
+        if (!includeArchived && !(c.active ?? true)) return false;
+        if (!includePrivate && c.private) return false;
+        return true;
+      })
       .map((c: any) => String(c.metric_id)) ?? [];
 
   const typeById = new Map<string, string>();

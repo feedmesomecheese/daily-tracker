@@ -18,10 +18,14 @@ type ConfigRow = {
 const PAGE_SIZE_OPTIONS = [7, 14, 30, 90] as const;
 
 export default function WideViewPage() {
-  const [config, setConfig] = useState<ConfigRow[]>([]);
+  const [allConfig, setAllConfig] = useState<ConfigRow[]>([]);
   const [logRows, setLogRows] = useState<LogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Visibility toggles
+  const [showArchived, setShowArchived] = useState(false);
+  const [showPrivate, setShowPrivate] = useState(false);
 
   // Pagination state
   const [pageSize, setPageSize] = useState<number>(30);
@@ -30,6 +34,15 @@ export default function WideViewPage() {
   // Date range filter (optional custom range)
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+
+  // Filtered config based on visibility toggles
+  const config = useMemo(() => {
+    return allConfig.filter((c) => {
+      if (!showArchived && !(c.active ?? true)) return false;
+      if (!showPrivate && c.private) return false;
+      return true;
+    });
+  }, [allConfig, showArchived, showPrivate]);
 
   useEffect(() => {
     (async () => {
@@ -49,10 +62,7 @@ export default function WideViewPage() {
         if (!cfgRes.ok) throw new Error(cfgData?.error || "Failed to load config");
         if (!logRes.ok) throw new Error(logData?.error || "Failed to load log");
 
-        const cfgVisible: ConfigRow[] = cfgData.filter(
-          (c: ConfigRow) => !c.private && (c.active ?? true)
-        );
-        setConfig(cfgVisible);
+        setAllConfig(cfgData);
         setLogRows(logData);
       } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e);
@@ -157,8 +167,12 @@ export default function WideViewPage() {
           onClick={async () => {
             try {
               const headers = await getAuthHeaders();
+              const params = new URLSearchParams();
+              if (showArchived) params.set("archived", "1");
+              if (showPrivate) params.set("private", "1");
+              const queryStr = params.toString();
 
-              const res = await fetch("/api/export/wide.csv", { headers });
+              const res = await fetch(`/api/export/wide.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
               if (!res.ok) {
                 let msg = `Export failed (${res.status})`;
                 try {
@@ -191,6 +205,30 @@ export default function WideViewPage() {
 
       {/* Controls row */}
       <div className="flex items-center gap-4 flex-wrap">
+        {/* Visibility toggles */}
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Archived
+          </label>
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showPrivate}
+              onChange={(e) => setShowPrivate(e.target.checked)}
+              className="h-4 w-4"
+            />
+            Private
+          </label>
+        </div>
+
+        <div className="h-5 w-px bg-border" />
+
         {/* Page size selector */}
         <div className="flex items-center gap-2">
           <label htmlFor="pageSize" className="text-sm text-muted-foreground">
