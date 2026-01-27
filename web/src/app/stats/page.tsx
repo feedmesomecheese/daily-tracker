@@ -62,12 +62,23 @@ type NumericRecentRow = {
   last_date_recent: string | null;
 };
 
+type CountStreakRow = {
+  metric_id: string;
+  metric_name: string | null;
+  private: boolean | null;
+  active: boolean | null;
+  current_streak: number;
+  longest_streak: number;
+  total_count: number;
+  days_with_value: number;
+};
 
 type StatsResponse = {
   checkbox_lifetime: CheckboxLifetimeRow[];
   checkbox_streaks: CheckboxStreakRow[];
   numeric_lifetime: NumericLifetimeRow[];
   numeric_recent: NumericRecentRow[];
+  count_streaks: CountStreakRow[];
 };
 
 export default function StatsPage() {
@@ -107,6 +118,10 @@ export default function StatsPage() {
   );
 
   const numericRecent = (data?.numeric_recent ?? []).filter((row) =>
+    showPrivate ? true : !row.private
+  );
+
+  const countStreaks = (data?.count_streaks ?? []).filter((row) =>
     showPrivate ? true : !row.private
   );
 
@@ -236,6 +251,43 @@ export default function StatsPage() {
                     <td className="p-2 text-right">
                       {row.days_since_last_true ?? "—"}
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {!loading && countStreaks.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-semibold">Count – Streaks &amp; Totals</h2>
+          <div className="overflow-auto border rounded">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b bg-gray-50">
+                  <th className="p-2 text-left">Metric</th>
+                  <th className="p-2 text-right">Current Streak</th>
+                  <th className="p-2 text-right">Longest Streak</th>
+                  <th className="p-2 text-right">Total Count</th>
+                  <th className="p-2 text-right">Days with Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {countStreaks.map((row) => (
+                  <tr key={row.metric_id} className="border-b">
+                    <td className="p-2">
+                      {row.metric_name || row.metric_id}
+                      {row.private ? (
+                        <span className="ml-1 text-[10px] px-1 py-0.5 border rounded text-gray-500">
+                          private
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="p-2 text-right">{row.current_streak}</td>
+                    <td className="p-2 text-right">{row.longest_streak}</td>
+                    <td className="p-2 text-right">{row.total_count}</td>
+                    <td className="p-2 text-right">{row.days_with_value}</td>
                   </tr>
                 ))}
               </tbody>

@@ -7,7 +7,7 @@ import { calculateAllGoalProgress, Goal, GoalProgress } from "@/lib/goals";
 type MetricConfig = {
   metric_id: string;
   metric_name: string;
-  type: "checkbox" | "number" | "time" | "hhmm" | "text";
+  type: "checkbox" | "number" | "score" | "count" | "time" | "hhmm" | "text";
   start_date: string | null;
   is_calculated: boolean;
   calc_expr: string | null;
@@ -761,7 +761,7 @@ export async function GET(
   let numberStats: StatsResponse["numberStats"] = undefined;
   let dayOfWeekAverages: Record<string, number | null> | undefined = undefined;
 
-  if (metricConfig.type === "number" || metricConfig.type === "time" || metricConfig.type === "hhmm") {
+  if (["number", "score", "count", "time", "hhmm"].includes(metricConfig.type)) {
     // Get all valid numeric values
     const validValues = loggedDays.filter(l => l.value !== null).map(l => ({ value: l.value!, date: l.date }));
 
@@ -927,7 +927,7 @@ export async function GET(
 
   // Calculate averages for comparison periods (number metrics)
   const calcAvg = (logs: LogRow[]): number | undefined => {
-    if (metricConfig.type !== "number" && metricConfig.type !== "time" && metricConfig.type !== "hhmm") {
+    if (!["number", "score", "count", "time", "hhmm"].includes(metricConfig.type)) {
       return undefined;
     }
     const validLogs = logs.filter(l => l.value !== null);

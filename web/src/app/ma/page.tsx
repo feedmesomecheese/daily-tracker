@@ -16,7 +16,7 @@ import {
 type ConfigRow = {
   metric_id: string;
   metric_name?: string | null;
-  type: "number" | "integer" | "checkbox" | "time" | "hhmm";
+  type: "number" | "score" | "count" | "checkbox" | "time" | "hhmm" | "text";
   show_ma?: boolean | null;
   ma_periods_csv?: string | null;
   private?: boolean | null;

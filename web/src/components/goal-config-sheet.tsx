@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Goal, GoalFrequency } from "@/lib/goals";
 
-type MetricType = "checkbox" | "number" | "time" | "hhmm" | "text";
+type MetricType = "checkbox" | "number" | "score" | "count" | "time" | "hhmm" | "text";
 
 type GoalsConfig = {
   goals: Goal[];
@@ -61,6 +61,8 @@ function createDefaultGoal(metricType: MetricType): Goal {
     case "checkbox":
       return { ...base, type: "checkbox", target_count: 5 };
     case "number":
+    case "score":
+    case "count":
     case "time":
       return { ...base, type: "numeric", target: 100, measure: "sum", direction: "gte" };
     case "hhmm":

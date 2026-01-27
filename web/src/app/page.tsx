@@ -31,7 +31,7 @@ type GoalIndicator = {
 type ConfigRow = {
   metric_id: string;
   metric_name: string;
-  type: "checkbox" | "number" | "time" | "hhmm" | "text";
+  type: "checkbox" | "number" | "score" | "count" | "time" | "hhmm" | "text";
   group?: string | null;
   default_value: number | null;
   min_value: number | null;
@@ -1846,7 +1846,7 @@ export default function Home() {
                             {userSettings?.main_page?.show_indicators &&
                               userSettings?.main_page?.show_trends &&
                               !m.is_calculated &&
-                              ["number", "time", "hhmm"].includes(m.type) &&
+                              ["number", "score", "count", "time", "hhmm"].includes(m.type) &&
                               !m.analytics_config?.hide_trend &&
                               indicators?.metrics[m.metric_id]?.trend && (
                                 <TrendBadge

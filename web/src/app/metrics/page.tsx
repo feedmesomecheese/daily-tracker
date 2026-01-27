@@ -84,7 +84,7 @@ const FORMULA_HELP = [
   },
 ];
 
-type MetricType = "checkbox" | "number" | "time" | "hhmm" | "text";
+type MetricType = "checkbox" | "number" | "score" | "count" | "time" | "hhmm" | "text";
 
 type AnalyticsConfig = {
   hide_trend?: boolean;
@@ -278,6 +278,8 @@ function SortableMetricRow({
           className="w-full h-8 text-xs border rounded-md px-2 bg-transparent"
         >
           <option value="checkbox">checkbox</option>
+          <option value="score">score</option>
+          <option value="count">count</option>
           <option value="number">number</option>
           <option value="time">time</option>
           <option value="hhmm">HH:MM</option>
@@ -428,7 +430,7 @@ function SortableMetricRow({
           </td>
           {/* Hide Trend - only relevant for numeric types */}
           <td className="py-2 px-2 w-[50px] text-center">
-            {["number", "time", "hhmm"].includes(metric.type) && (
+            {["number", "score", "count", "time", "hhmm"].includes(metric.type) && (
               <input
                 type="checkbox"
                 checked={metric.analytics_config?.hide_trend ?? false}
@@ -446,7 +448,7 @@ function SortableMetricRow({
           </td>
           {/* Lower is Better - only relevant for numeric types */}
           <td className="py-2 px-2 w-[50px] text-center">
-            {["number", "time", "hhmm"].includes(metric.type) && (
+            {["number", "score", "count", "time", "hhmm"].includes(metric.type) && (
               <input
                 type="checkbox"
                 checked={metric.analytics_config?.higher_is_better === false}
@@ -1669,6 +1671,8 @@ export default function MetricsPage() {
                             className="w-full h-8 text-xs border rounded-md px-2 bg-transparent"
                           >
                             <option value="checkbox">checkbox</option>
+                            <option value="score">score</option>
+                            <option value="count">count</option>
                             <option value="number">number</option>
                             <option value="time">time</option>
                             <option value="hhmm">HH:MM</option>

@@ -1,5 +1,5 @@
 // web/src/lib/calc.ts
-export type MetricType = "checkbox" | "number" | "time" | "hhmm" | "text";
+export type MetricType = "checkbox" | "number" | "score" | "count" | "time" | "hhmm" | "text";
 
 export type MetricDef = {
   metric_id: string;

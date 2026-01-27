@@ -110,7 +110,7 @@ const BaseSchema = z.object({
     .min(1)
     .regex(/^[a-z0-9_]+$/i, "Use letters, numbers, and underscores only"),
   metric_name: z.string().min(1),
-  type: z.enum(["checkbox", "number", "time", "hhmm", "text"]),
+  type: z.enum(["checkbox", "number", "score", "count", "time", "hhmm", "text"]),
   private: z.boolean().optional().default(false),
   active: z.boolean().optional().default(true),
   show_ma: z.boolean().optional().default(false),
@@ -159,7 +159,7 @@ const UpdateSchema = z.object({
 
   // everything else optional, NO defaults (prevents accidental overwrites during reorder)
   metric_name: z.string().min(1).optional(),
-  type: z.enum(["checkbox", "number", "time", "hhmm", "text"]).optional(),
+  type: z.enum(["checkbox", "number", "score", "count", "time", "hhmm", "text"]).optional(),
   private: z.boolean().optional(),
   active: z.boolean().optional(),
   show_ma: z.boolean().optional(),

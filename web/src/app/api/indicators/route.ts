@@ -103,7 +103,7 @@ export async function GET(req: Request) {
 
   // Separate metrics for different calculations
   const numericMetrics = allMetrics.filter((m) =>
-    ["number", "time", "hhmm"].includes(m.type)
+    ["number", "score", "count", "time", "hhmm"].includes(m.type)
   );
   // All non-text metrics can have streaks
   const streakEligibleMetrics = allMetrics.filter((m) => m.type !== "text");

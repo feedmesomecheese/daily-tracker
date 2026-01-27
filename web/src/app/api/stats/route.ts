@@ -8,8 +8,20 @@ type CheckboxStreakRow = {
   longest_streak_true: number;
 };
 
+type CountStreakRow = {
+  metric_id: string;
+  metric_name: string | null;
+  private: boolean | null;
+  active: boolean | null;
+  current_streak: number;
+  longest_streak: number;
+  total_count: number;
+  days_with_value: number;
+};
+
 type StatsResponse = {
   checkbox_streaks: CheckboxStreakRow[];
+  count_streaks: CountStreakRow[];
 };
 
 export async function GET(req: Request) {
@@ -24,13 +36,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // 1) Get checkbox metrics for this user
+  // 1) Get checkbox and count metrics for this user
   const { data: metrics, error: configError } = await supabase
     .from("config")
-    .select("metric_id, type, active, private, start_date")
+    .select("metric_id, metric_name, type, active, private, start_date")
     .eq("owner_id", user.id)
     .eq("active", true)
-    .eq("type", "checkbox");
+    .in("type", ["checkbox", "count"]);
 
   if (configError) {
     return NextResponse.json(
@@ -39,11 +51,13 @@ export async function GET(req: Request) {
     );
   }
 
-  const checkboxMetrics = (metrics ?? []).filter((m: { private?: boolean }) => !m.private);
-  const metricIds = checkboxMetrics.map((m: { metric_id: string }) => m.metric_id);
+  const allMetrics = (metrics ?? []).filter((m: { private?: boolean }) => !m.private);
+  const checkboxMetrics = allMetrics.filter((m: { type: string }) => m.type === "checkbox");
+  const countMetrics = allMetrics.filter((m: { type: string }) => m.type === "count");
+  const metricIds = allMetrics.map((m: { metric_id: string }) => m.metric_id);
 
   if (metricIds.length === 0) {
-    const empty: StatsResponse = { checkbox_streaks: [] };
+    const empty: StatsResponse = { checkbox_streaks: [], count_streaks: [] };
     return NextResponse.json(empty);
   }
 
@@ -129,8 +143,78 @@ export async function GET(req: Request) {
     });
   }
 
+  // Calculate count metrics streaks (based on non-zero values)
+  const countResults: CountStreakRow[] = [];
+
+  for (const m of countMetrics) {
+    const metric_id = m.metric_id;
+    const rows = byMetric.get(metric_id) ?? [];
+
+    if (rows.length === 0) {
+      countResults.push({
+        metric_id,
+        metric_name: m.metric_name ?? null,
+        private: m.private ?? null,
+        active: m.active ?? null,
+        current_streak: 0,
+        longest_streak: 0,
+        total_count: 0,
+        days_with_value: 0,
+      });
+      continue;
+    }
+
+    // Build a set of dates with non-zero values and sum total
+    const nonZeroDates = new Set<string>();
+    let earliestDate = today;
+    let totalCount = 0;
+
+    for (const r of rows) {
+      const d = r.date as string;
+      if (d < earliestDate) earliestDate = d;
+      const val = Number(r.value);
+      if (!isNaN(val) && val !== 0) {
+        nonZeroDates.add(d);
+        totalCount += val;
+      }
+    }
+
+    if (m.start_date && m.start_date < earliestDate) {
+      earliestDate = m.start_date;
+    }
+
+    // Walk from earliestDate to today for streak calculation
+    let curDate = earliestDate;
+    let currentStreak = 0;
+    let longestStreak = 0;
+
+    while (curDate <= today) {
+      if (nonZeroDates.has(curDate)) {
+        currentStreak += 1;
+        if (currentStreak > longestStreak) {
+          longestStreak = currentStreak;
+        }
+      } else {
+        currentStreak = 0;
+      }
+      curDate = addDays(curDate, 1);
+    }
+
+    countResults.push({
+      metric_id,
+      metric_name: m.metric_name ?? null,
+      private: m.private ?? null,
+      active: m.active ?? null,
+      current_streak: currentStreak,
+      longest_streak: longestStreak,
+      total_count: totalCount,
+      days_with_value: nonZeroDates.size,
+    });
+  }
+
   const resp: StatsResponse = {
     checkbox_streaks: results,
+    count_streaks: countResults,
   };
 
   return NextResponse.json(resp);
