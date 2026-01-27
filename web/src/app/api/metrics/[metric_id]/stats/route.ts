@@ -509,7 +509,7 @@ export async function GET(
     }
 
     // Build MetricDef array for calc engine
-    const metricDefs: MetricDef[] = (allConfigs ?? []).map((c) => ({
+    const metricDefs: MetricDef[] = (allConfigs ?? []).map((c: { metric_id: string; type: string; is_calculated: boolean; calc_expr: string | null }) => ({
       metric_id: c.metric_id,
       type: c.type as MetricDef["type"],
       is_calculated: c.is_calculated ?? false,

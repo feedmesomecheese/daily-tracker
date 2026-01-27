@@ -45,6 +45,15 @@ type IndicatorsResponse = {
   metrics: Record<string, MetricIndicators>;
 };
 
+type MetricConfig = {
+  metric_id: string;
+  type: string;
+  analytics_config: Record<string, unknown> | null;
+  goals_config: { goals?: Goal[] } | null;
+  start_date: string | null;
+  is_calculated: boolean;
+};
+
 // Default trend period (days)
 const DEFAULT_TREND_PERIOD = 7;
 
@@ -82,7 +91,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const allMetrics = metrics ?? [];
+  const allMetrics: MetricConfig[] = (metrics ?? []) as MetricConfig[];
   if (allMetrics.length === 0) {
     const empty: IndicatorsResponse = {
       generated_at: new Date().toISOString(),

@@ -46,7 +46,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const metrics = (configRows ?? []).filter((m) => !m.private);
+  const metrics = (configRows ?? []).filter((m: { private?: boolean }) => !m.private);
   const metricTypeMap = new Map<string, string>();
   for (const m of metrics) {
     metricTypeMap.set(m.metric_id, m.type as string);

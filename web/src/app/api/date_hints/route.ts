@@ -103,7 +103,7 @@ export async function GET(req: Request) {
 
   // 4) Fetch ONLY log rows for required metrics in range [minRequiredSince..today]
   // This stays small even with huge datasets.
-  const reqMetricIds = requiredList.map((m) => m.metric_id);
+  const reqMetricIds = requiredList.map((m: { metric_id: string }) => m.metric_id);
 
   const rows: any[] = [];
   const pageSize = 1000;

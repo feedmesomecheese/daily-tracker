@@ -39,8 +39,8 @@ export async function GET(req: Request) {
     );
   }
 
-  const checkboxMetrics = (metrics ?? []).filter((m) => !m.private);
-  const metricIds = checkboxMetrics.map((m) => m.metric_id);
+  const checkboxMetrics = (metrics ?? []).filter((m: { private?: boolean }) => !m.private);
+  const metricIds = checkboxMetrics.map((m: { metric_id: string }) => m.metric_id);
 
   if (metricIds.length === 0) {
     const empty: StatsResponse = { checkbox_streaks: [] };
