@@ -4,6 +4,7 @@ import * as React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { addDays, getLocalDateString } from "@/lib/dateUtils";
 
 interface DatePickerProps {
   value: string; // YYYY-MM-DD
@@ -72,11 +73,14 @@ export function DatePicker({
   const buildDate = useCallback((m: string, d: string, y: string): string | null => {
     if (m.length !== 2 || d.length !== 2 || y.length !== 4) return null;
     const dateStr = `${y}-${m}-${d}`;
-    // Validate it's a real date
-    const date = new Date(dateStr + "T00:00:00");
+    // Validate it's a real date using component-based Date constructor (avoids timezone issues)
+    const year = parseInt(y, 10);
+    const month = parseInt(m, 10);
+    const day = parseInt(d, 10);
+    const date = new Date(year, month - 1, day);
     if (isNaN(date.getTime())) return null;
     // Check it matches (handles invalid dates like 02-31)
-    const check = date.toISOString().slice(0, 10);
+    const check = getLocalDateString(date);
     if (check !== dateStr) return null;
     return dateStr;
   }, []);
@@ -156,16 +160,12 @@ export function DatePicker({
 
   // Navigate by day
   const goToPrevDay = () => {
-    const date = new Date(value + "T00:00:00");
-    date.setDate(date.getDate() - 1);
-    const newDate = date.toISOString().slice(0, 10);
+    const newDate = addDays(value, -1);
     onChange(newDate);
   };
 
   const goToNextDay = () => {
-    const date = new Date(value + "T00:00:00");
-    date.setDate(date.getDate() + 1);
-    const newDate = date.toISOString().slice(0, 10);
+    const newDate = addDays(value, 1);
     if (!maxDate || newDate <= maxDate) {
       onChange(newDate);
     }

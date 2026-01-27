@@ -1,6 +1,7 @@
 // web/src/lib/recalculate.ts
 import { SupabaseClient } from "@supabase/supabase-js";
 import { evaluateCalculatedMetricsV2, MetricDef } from "./calc";
+import { addDays, getLocalDateString } from "./dateUtils";
 
 type LogRow = {
   date: string;
@@ -82,30 +83,11 @@ function buildPrevByN(
   const prevByN: Record<number, Record<string, number | null>> = {};
 
   for (let n = 1; n <= maxN; n++) {
-    const dt = new Date(targetDate + "T00:00:00");
-    dt.setDate(dt.getDate() - n);
-    const prevDate = dt.toISOString().slice(0, 10);
+    const prevDate = addDays(targetDate, -n);
     prevByN[n] = buildContextFromRows(configs, rows, prevDate);
   }
 
   return prevByN;
-}
-
-/**
- * Add days to a date string
- */
-function addDays(dateStr: string, days: number): string {
-  const dt = new Date(dateStr + "T00:00:00");
-  dt.setDate(dt.getDate() + days);
-  return dt.toISOString().slice(0, 10);
-}
-
-/**
- * Get today's date in YYYY-MM-DD format
- */
-function getTodayISO(): string {
-  const now = new Date();
-  return now.toISOString().slice(0, 10);
 }
 
 export type ProgressCallback = (progress: {
@@ -134,7 +116,7 @@ export async function recalculateFromDate(
   onProgress?: ProgressCallback
 ): Promise<{ success: boolean; daysProcessed: number; errors: string[] }> {
   const errors: string[] = [];
-  const today = toDate || getTodayISO();
+  const today = toDate || getLocalDateString();
 
   // Don't recalculate future dates
   if (fromDate >= today) {

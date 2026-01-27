@@ -151,7 +151,6 @@ export default function Home() {
   const [initialDateLoaded, setInitialDateLoaded] = useState(false);
   const [metrics, setMetrics] = useState<ConfigRow[]>([]);
   const [vals, setVals] = useState<Record<string, string>>({});
-  const [summary, setSummary] = useState<any[] | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -178,6 +177,9 @@ export default function Home() {
   // Indicators state
   const [indicators, setIndicators] = useState<IndicatorsResponse | null>(null);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+
+  // Track original saved numeric values for goal indicator live updates
+  const [savedNumericVals, setSavedNumericVals] = useState<Record<string, number | null>>({});
 
   // Available years for date picker (years with log data)
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -870,13 +872,8 @@ export default function Home() {
     (async () => {
       try {
         // Build [start, end] = [date - maxN, date - 1]
-        const dtEnd = new Date(date + "T00:00:00");
-        dtEnd.setDate(dtEnd.getDate() - 1);
-        const end = dtEnd.toISOString().slice(0, 10);
-
-        const dtStart = new Date(date + "T00:00:00");
-        dtStart.setDate(dtStart.getDate() - maxN);
-        const start = dtStart.toISOString().slice(0, 10);
+        const end = addDays(date, -1);
+        const start = addDays(date, -maxN);
 
         const headers = await getAuthHeaders();
         const res = await fetch(
@@ -901,10 +898,7 @@ export default function Home() {
         const out: Record<number, Record<string, number | null>> = {};
 
         for (let n = 1; n <= maxN; n++) {
-          const dt = new Date(date + "T00:00:00");
-          dt.setDate(dt.getDate() - n);
-          const d = dt.toISOString().slice(0, 10);
-
+          const d = addDays(date, -n);
           const dayRows = rowsByDate.get(d) ?? [];
           out[n] = buildNumericContextFromLogRows(metrics, dayRows);
         }
@@ -1186,6 +1180,78 @@ export default function Home() {
     if (anyErr.length) console.warn("Calc errors:", anyErr);
   }, [calcErrors]);
 
+  // Compute adjusted goal indicators based on current (unsaved) values
+  const adjustedIndicators = React.useMemo((): IndicatorsResponse | null => {
+    if (!indicators) return null;
+
+    const adjusted: IndicatorsResponse = {
+      metrics: { ...indicators.metrics },
+    };
+
+    // For each metric with goals, adjust based on value changes
+    for (const [metricId, indicatorData] of Object.entries(indicators.metrics)) {
+      if (!indicatorData.goals || indicatorData.goals.length === 0) continue;
+
+      const currentNumeric = numericContext[metricId];
+      const savedNumeric = savedNumericVals[metricId];
+
+      // Skip if no change or both are null
+      if (currentNumeric === savedNumeric) continue;
+      if (currentNumeric == null && savedNumeric == null) continue;
+
+      // Calculate delta
+      const oldVal = savedNumeric ?? 0;
+      const newVal = currentNumeric ?? 0;
+      const delta = newVal - oldVal;
+
+      // Adjust each goal
+      const adjustedGoals = indicatorData.goals.map((goal) => {
+        let adjustedCurrent = goal.current;
+
+        // For daily goals, current is just today's value
+        if (goal.frequency === "daily") {
+          adjustedCurrent = newVal;
+        } else {
+          // For weekly/monthly, adjust by delta
+          adjustedCurrent = goal.current + delta;
+        }
+
+        // Recalculate progress_pct
+        const progress_pct = goal.target > 0
+          ? Math.round((adjustedCurrent / goal.target) * 1000) / 10
+          : 0;
+
+        // Recalculate status
+        let status = goal.status;
+        const is_met = adjustedCurrent >= goal.target;
+
+        if (is_met) {
+          status = "met";
+        } else if (progress_pct >= 80) {
+          status = "on_track";
+        } else if (progress_pct >= 50) {
+          status = "at_risk";
+        } else if (goal.status === "met") {
+          // Was met but now isn't
+          status = "at_risk";
+        }
+
+        return {
+          ...goal,
+          current: adjustedCurrent,
+          progress_pct,
+          status,
+        };
+      });
+
+      adjusted.metrics[metricId] = {
+        ...indicatorData,
+        goals: adjustedGoals,
+      };
+    }
+
+    return adjusted;
+  }, [indicators, numericContext, savedNumericVals]);
 
 
   type PresetValue = { raw: string; display: string };
@@ -1436,8 +1502,6 @@ export default function Home() {
       }
 
       await loadDayValues(date);
-
-      await loadSummary();
       setDirty(false);
       await reloadDateHints();
       await reloadIndicators();
@@ -1450,18 +1514,6 @@ export default function Home() {
 
   // Update ref so keyboard shortcut always has current save function
   saveRef.current = save;
-
-  async function loadSummary() {
-    setError(null);
-    const headers = await getAuthHeaders();
-    const res = await fetch("/api/summary_7d", { headers });
-    const data = await res.json();
-    if (!res.ok) {
-      setError(data?.error || "Failed to load summary");
-      return;
-    }
-    setSummary(data);
-  }
 
   async function loadDayValues(d: string) {
     setError(null);
@@ -1486,6 +1538,13 @@ export default function Home() {
       valueMap.set(r.metric_id, r.value);
       textMap.set(r.metric_id, r.value_text ?? null);
     }
+
+    // Store original numeric values for goal indicator live updates
+    const numericVals: Record<string, number | null> = {};
+    valueMap.forEach((value, metricId) => {
+      numericVals[metricId] = value;
+    });
+    setSavedNumericVals(numericVals);
 
     const next: Record<string, string> = {};
     const newDefaultPopulated = new Set<string>();
@@ -1830,10 +1889,10 @@ export default function Home() {
                               })()}
                             {/* Goal progress indicator */}
                             {userSettings?.main_page?.show_indicators &&
-                              indicators?.metrics[m.metric_id]?.goals &&
-                              indicators.metrics[m.metric_id].goals!.length > 0 && (
+                              adjustedIndicators?.metrics[m.metric_id]?.goals &&
+                              adjustedIndicators.metrics[m.metric_id].goals!.length > 0 && (
                                 <MultiGoalBadge
-                                  goals={indicators.metrics[m.metric_id].goals!}
+                                  goals={adjustedIndicators.metrics[m.metric_id].goals!}
                                 />
                               )}
                           </label>
@@ -2070,44 +2129,6 @@ export default function Home() {
       
       {error && <div className="text-red-600 text-sm">Error: {error}</div>}
 
-      <div className="border rounded p-3">
-        <div className="flex items-center justify-between mb-2">
-          <span className="font-medium">7-day Summary</span>
-          <Button variant="outline" size="sm" onClick={loadSummary}>
-            Refresh
-          </Button>
-        </div>
-        {!summary ? (
-          <div className="text-sm text-gray-600">Click "Refresh" to load summary.</div>
-        ) : summary.length === 0 ? (
-          <div className="text-sm text-gray-600">No data yet.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b">
-                <th className="py-1 pr-2">metric_id</th>
-                <th className="py-1 pr-2">type</th>
-                <th className="py-1 pr-2">n_rows</th>
-                <th className="py-1 pr-2">sum_7d</th>
-                <th className="py-1 pr-2">count_true_7d</th>
-                <th className="py-1 pr-2">avg_7d</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summary.map((row: any) => (
-                <tr key={row.metric_id} className="border-b">
-                  <td className="py-1 pr-2">{row.metric_id}</td>
-                  <td className="py-1 pr-2">{row.type}</td>
-                  <td className="py-1 pr-2">{row.n_rows ?? ""}</td>
-                  <td className="py-1 pr-2">{row.sum_7d ?? ""}</td>
-                  <td className="py-1 pr-2">{row.count_true_7d ?? ""}</td>
-                  <td className="py-1 pr-2">{row.avg_7d ?? ""}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
 
       {/* Metric stats sheet */}
       <MetricStatsSheet

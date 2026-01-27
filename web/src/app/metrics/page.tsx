@@ -224,20 +224,20 @@ function SortableMetricRow({
 
   return (
     <tr ref={setNodeRef} style={style} className="border-b hover:bg-muted/30">
-      {/* Drag handle - sticky */}
-      <td className="py-2 px-1 w-10 sticky left-0 z-10 bg-background">
-        <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab hover:bg-muted rounded p-1"
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-        </button>
-      </td>
-
-      {/* ID - sticky */}
-      <td className="py-2 px-2 font-mono text-xs text-muted-foreground w-[130px] truncate sticky left-[40px] z-10 bg-background">
-        {metric.metric_id}
+      {/* Drag handle + ID - combined sticky cell */}
+      <td className="py-2 px-1 sticky left-0 z-10 bg-background border-r">
+        <div className="flex items-center gap-1">
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab hover:bg-muted rounded p-1 shrink-0"
+          >
+            <GripVertical className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <span className="font-mono text-xs text-muted-foreground truncate w-[120px]">
+            {metric.metric_id}
+          </span>
+        </div>
       </td>
 
       {/* Name */}
@@ -1567,11 +1567,15 @@ export default function MetricsPage() {
                 items={sortedMetrics.map((m) => m.metric_id)}
                 strategy={verticalListSortingStrategy}
               >
-                <table className="w-full text-sm whitespace-nowrap">
+                <table className="w-full text-sm whitespace-nowrap border-collapse">
                   <thead className="sticky top-0 z-20 bg-muted">
                     <tr className="text-xs text-muted-foreground">
-                      <th className="w-10 sticky left-0 z-20 bg-muted"></th>
-                      <th className="text-left py-2 px-2 min-w-[130px] sticky left-[40px] z-20 bg-muted">ID</th>
+                      <th className="text-left py-2 px-1 sticky left-0 z-20 bg-muted border-r">
+                        <div className="flex items-center gap-1">
+                          <span className="w-6"></span>
+                          <span className="w-[120px]">ID</span>
+                        </div>
+                      </th>
                       <th className="text-left py-2 px-2 min-w-[140px]">Name</th>
                       <th className="text-left py-2 px-2 min-w-[120px]">Group</th>
                       <th className="text-center py-2 px-2 min-w-[100px]">Order</th>
@@ -1611,16 +1615,18 @@ export default function MetricsPage() {
                     {/* New metric row */}
                     {showNewMetric && (
                       <tr className="border-b bg-green-50 dark:bg-green-950/30">
-                        <td className="py-2 px-1 sticky left-0 z-10 bg-green-50 dark:bg-green-950/30"></td>
-                        <td className="py-2 px-2 sticky left-[40px] z-10 bg-green-50 dark:bg-green-950/30">
-                          <Input
-                            value={newMetric.metric_id}
-                            onChange={(e) =>
-                              setNewMetric((p) => ({ ...p, metric_id: e.target.value }))
-                            }
-                            placeholder="metric_id"
-                            className="h-8 text-xs font-mono"
-                          />
+                        <td className="py-2 px-1 sticky left-0 z-10 bg-green-50 dark:bg-green-950/30 border-r">
+                          <div className="flex items-center gap-1">
+                            <span className="w-6"></span>
+                            <Input
+                              value={newMetric.metric_id}
+                              onChange={(e) =>
+                                setNewMetric((p) => ({ ...p, metric_id: e.target.value }))
+                              }
+                              placeholder="metric_id"
+                              className="h-8 text-xs font-mono w-[120px]"
+                            />
+                          </div>
                         </td>
                         <td className="py-2 px-2">
                           <Input
