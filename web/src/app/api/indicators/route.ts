@@ -220,7 +220,7 @@ export async function GET(req: Request) {
     if (!showStreak) continue;
 
     const rows = byMetric.get(m.metric_id) ?? [];
-    const streak = calculateStreak(rows, referenceDate, m.start_date);
+    const streak = calculateStreak(rows, referenceDate, m.start_date, m.type);
 
     // Add streak_seed for lifetime metrics
     const seed = (analyticsConfig.streak_seed as number) ?? 0;
@@ -291,17 +291,35 @@ export async function GET(req: Request) {
  * - Positive: N consecutive days WITH a logged value
  * - Negative: N consecutive days WITHOUT a logged value
  *
+ * For checkbox: only truthy values (>= 0.5) count
+ * For count: only non-zero values count
+ * For other types: any non-null value counts
+ *
  * Returns both yesterday's streak (for muted display) and current streak (if today is logged)
  */
 function calculateStreak(
   rows: { date: string; value: number | null }[],
   referenceDate: string,
-  startDate?: string | null
+  startDate?: string | null,
+  metricType?: string
 ): StreakData {
-  // Build set of "logged" dates (dates with non-null values)
+  // Build set of "logged" dates based on metric type
   const loggedDates = new Set<string>();
   for (const r of rows) {
-    if (r.value !== null) {
+    if (r.value === null) continue;
+
+    if (metricType === "checkbox") {
+      // For checkbox, only truthy values count
+      if (r.value >= 0.5) {
+        loggedDates.add(r.date);
+      }
+    } else if (metricType === "count") {
+      // For count, only non-zero values count
+      if (r.value !== 0) {
+        loggedDates.add(r.date);
+      }
+    } else {
+      // For number/score/time/hhmm, any non-null value counts
       loggedDates.add(r.date);
     }
   }
