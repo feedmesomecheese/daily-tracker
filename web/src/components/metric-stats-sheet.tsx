@@ -599,8 +599,10 @@ export function MetricStatsSheet({
   }, [stats]);
 
   // Determine if checkbox or count metric (for chart/stats formatting)
-  const isCheckbox = metricType === "checkbox";
-  const isCount = metricType === "count";
+  // Use the type from stats response if available (more reliable than prop)
+  const effectiveType = stats?.metric?.type ?? metricType;
+  const isCheckbox = effectiveType === "checkbox";
+  const isCount = effectiveType === "count";
   const showFrequencyStats = isCheckbox || isCount;
 
   // Calculate Y-axis domain for non-checkbox metrics

@@ -315,7 +315,8 @@ function calculateStreak(
       }
     } else if (metricType === "count") {
       // For count, only non-zero values count
-      if (r.value !== 0) {
+      const num = Number(r.value);
+      if (!isNaN(num) && num !== 0) {
         loggedDates.add(r.date);
       }
     } else {
