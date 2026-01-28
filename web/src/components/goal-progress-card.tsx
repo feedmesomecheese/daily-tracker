@@ -24,6 +24,7 @@ type GoalProgressData = {
   projected: number | null;
   measure?: "sum" | "average";
   direction?: "gte" | "lte" | "before" | "after";
+  target_value?: number; // Original target for display (e.g., target_time for hhmm)
 };
 
 type GoalProgressCardProps = {
@@ -131,7 +132,9 @@ export function GoalProgressCard({ goal, metricType, className }: GoalProgressCa
     goalDescription = `Check off ${goal.target} time${goal.target !== 1 ? "s" : ""}`;
   } else if (goal.type === "hhmm_target") {
     const directionLabel = goal.direction === "before" ? "before" : "after";
-    goalDescription = `Log time ${directionLabel} ${formatNumber(goal.target, goal.type)}`;
+    // Use target_value (actual target time) instead of target (day count)
+    const targetTime = goal.target_value ?? goal.target;
+    goalDescription = `Log time ${directionLabel} ${formatNumber(targetTime, goal.type)}`;
   } else if (goal.type === "hhmm_consistency") {
     goalDescription = `Stay within ${goal.target} min standard deviation`;
   }
@@ -222,15 +225,151 @@ export function GoalProgressCard({ goal, metricType, className }: GoalProgressCa
   );
 }
 
+// Historical stats types
+type GoalPeriodResult = {
+  period_start: string;
+  period_end: string;
+  status: "met" | "missed" | "in_progress";
+  current: number;
+  target: number;
+};
+
+type GoalHistoricalStats = {
+  goal_id: string;
+  periods_evaluated: number;
+  periods_met: number;
+  hit_rate: number;
+  current_streak: number;
+  best_streak: number;
+  worst_streak: number;
+  recent_periods: GoalPeriodResult[];
+};
+
 type GoalsSectionProps = {
   goals: GoalProgressData[];
+  history?: GoalHistoricalStats[];
   metricType: "checkbox" | "number" | "time" | "hhmm";
   className?: string;
 };
 
-export function GoalsSection({ goals, metricType, className }: GoalsSectionProps) {
+// Mini timeline showing recent period results
+function RecentPeriodsTimeline({ periods, frequency }: { periods: GoalPeriodResult[]; frequency: GoalFrequency }) {
+  // Take up to 8 most recent periods for display (show oldest to newest, left to right)
+  const displayPeriods = periods.slice(0, 8).reverse();
+
+  if (displayPeriods.length === 0) return null;
+
+  const periodLabel = frequency === "daily" ? "days" : frequency === "weekly" ? "weeks" : "months";
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground mr-1">Last {displayPeriods.length} {periodLabel}:</span>
+      {displayPeriods.map((period, idx) => (
+        <div
+          key={period.period_start}
+          className={cn(
+            "w-4 h-4 rounded-sm flex items-center justify-center",
+            period.status === "met" && "bg-green-500",
+            period.status === "missed" && "bg-red-400",
+            period.status === "in_progress" && "bg-gray-300 dark:bg-gray-600 border border-dashed border-gray-400"
+          )}
+          title={`${formatDate(period.period_start)}: ${period.status === "in_progress" ? "In progress" : period.status}`}
+        >
+          {period.status === "met" && (
+            <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3}>
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+          {period.status === "missed" && (
+            <svg width={10} height={10} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3}>
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Historical stats section for a goal
+function GoalHistorySection({ history, frequency }: { history: GoalHistoricalStats; frequency: GoalFrequency }) {
+  const periodLabel = frequency === "daily" ? "days" : frequency === "weekly" ? "weeks" : "months";
+
+  // Format streak with appropriate label
+  const formatStreak = (streak: number): string => {
+    if (streak === 0) return "—";
+    const absStreak = Math.abs(streak);
+    const unit = frequency === "daily" ? "d" : frequency === "weekly" ? "w" : "mo";
+    return `${absStreak}${unit}`;
+  };
+
+  return (
+    <div className="pt-2 mt-2 border-t space-y-2">
+      {/* Recent periods timeline */}
+      <RecentPeriodsTimeline periods={history.recent_periods} frequency={frequency} />
+
+      {/* Stats row */}
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-3">
+          {/* Hit rate */}
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">Hit rate:</span>
+            <span className={cn(
+              "font-medium",
+              history.hit_rate >= 80 && "text-green-600 dark:text-green-400",
+              history.hit_rate >= 50 && history.hit_rate < 80 && "text-amber-600 dark:text-amber-400",
+              history.hit_rate < 50 && "text-red-600 dark:text-red-400"
+            )}>
+              {history.hit_rate}%
+            </span>
+            <span className="text-muted-foreground">
+              ({history.periods_met}/{history.periods_evaluated})
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Current streak */}
+          <div className="flex items-center gap-1">
+            <span className="text-muted-foreground">Streak:</span>
+            <span className={cn(
+              "font-medium",
+              history.current_streak > 0 && "text-green-600 dark:text-green-400",
+              history.current_streak < 0 && "text-red-600 dark:text-red-400",
+              history.current_streak === 0 && "text-muted-foreground"
+            )}>
+              {history.current_streak > 0 && "+"}
+              {formatStreak(history.current_streak)}
+            </span>
+          </div>
+
+          {/* Best streak */}
+          {history.best_streak > 0 && (
+            <div className="flex items-center gap-1">
+              <span className="text-muted-foreground">Best:</span>
+              <span className="font-medium text-green-600 dark:text-green-400">
+                {formatStreak(history.best_streak)}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function GoalsSection({ goals, history, metricType, className }: GoalsSectionProps) {
   if (!goals || goals.length === 0) {
     return null;
+  }
+
+  // Create a map of goal_id to history for easy lookup
+  const historyMap = new Map<string, GoalHistoricalStats>();
+  if (history) {
+    for (const h of history) {
+      historyMap.set(h.goal_id, h);
+    }
   }
 
   return (
@@ -240,13 +379,135 @@ export function GoalsSection({ goals, metricType, className }: GoalsSectionProps
       </h3>
       <div className="space-y-2">
         {goals.map((goal) => (
-          <GoalProgressCard
+          <GoalProgressCardWithHistory
             key={goal.goal_id}
             goal={goal}
+            history={historyMap.get(goal.goal_id)}
             metricType={metricType}
           />
         ))}
       </div>
     </div>
+  );
+}
+
+// Extended card that includes historical stats
+function GoalProgressCardWithHistory({
+  goal,
+  history,
+  metricType,
+  className,
+}: GoalProgressCardProps & { history?: GoalHistoricalStats }) {
+  const styles = STATUS_STYLES[goal.status];
+  const cappedProgress = Math.min(100, Math.max(0, goal.progress_pct));
+
+  // Build description based on goal type
+  let goalDescription = "";
+  if (goal.type === "numeric") {
+    const measureLabel = goal.measure === "sum" ? "Total" : "Average";
+    const directionLabel = goal.direction === "gte" ? "at least" : "at most";
+    goalDescription = `${measureLabel} ${directionLabel} ${formatNumber(goal.target, goal.type)}`;
+  } else if (goal.type === "numeric_threshold") {
+    const directionLabel = goal.direction === "gte" ? "≥" : "≤";
+    goalDescription = `${directionLabel} threshold on ${goal.target} days`;
+  } else if (goal.type === "checkbox") {
+    goalDescription = `Check off ${goal.target} time${goal.target !== 1 ? "s" : ""}`;
+  } else if (goal.type === "hhmm_target") {
+    const directionLabel = goal.direction === "before" ? "before" : "after";
+    // Use target_value (actual target time) instead of target (day count)
+    const targetTime = goal.target_value ?? goal.target;
+    goalDescription = `Log time ${directionLabel} ${formatNumber(targetTime, goal.type)}`;
+  } else if (goal.type === "hhmm_consistency") {
+    goalDescription = `Stay within ${goal.target} min standard deviation`;
+  }
+
+  return (
+    <Card className={cn("border", styles.border, className)}>
+      <CardContent className="p-4 space-y-3">
+        {/* Header: Goal name and status */}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h4 className="font-medium text-sm">{goal.name}</h4>
+            <p className="text-xs text-muted-foreground">{goalDescription}</p>
+          </div>
+          <div className={cn("px-2 py-0.5 rounded text-xs font-medium", styles.bg, styles.text)}>
+            {STATUS_LABELS[goal.status]}
+          </div>
+        </div>
+
+        {/* Period info */}
+        <div className="text-xs text-muted-foreground">
+          {FREQUENCY_LABELS[goal.frequency]}: {formatDate(goal.period_start)} – {formatDate(goal.period_end)}
+          {goal.days_remaining > 0 && (
+            <span className="ml-2">
+              ({goal.days_remaining} day{goal.days_remaining !== 1 ? "s" : ""} left)
+            </span>
+          )}
+        </div>
+
+        {/* Progress bar */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium">
+              {formatNumber(goal.current, goal.type)}
+              <span className="text-muted-foreground font-normal">
+                {" "}/ {formatNumber(goal.target, goal.type)}
+              </span>
+            </span>
+            <span className={cn("font-medium", styles.text)}>
+              {Math.round(goal.progress_pct)}%
+            </span>
+          </div>
+          <div className="h-2 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className={cn("h-full rounded-full transition-all", getProgressColor(goal.status))}
+              style={{ width: `${cappedProgress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Projected value (for sum/count goals) */}
+        {goal.projected != null && goal.days_remaining > 0 && !goal.is_met && (
+          <div className="text-xs text-muted-foreground pt-1 border-t">
+            <span className="font-medium">Projected:</span>{" "}
+            {formatNumber(goal.projected, goal.type)} by end of period
+            {goal.projected < goal.target && (
+              <span className="text-amber-600 dark:text-amber-400 ml-1">
+                (need {formatNumber(goal.target - goal.current, goal.type)} more)
+              </span>
+            )}
+            {goal.projected >= goal.target && (
+              <span className="text-green-600 dark:text-green-400 ml-1">
+                (on pace)
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Met indicator with checkmark */}
+        {goal.is_met && (
+          <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400 pt-1 border-t">
+            <svg
+              width={16}
+              height={16}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Goal achieved!
+          </div>
+        )}
+
+        {/* Historical stats section */}
+        {history && history.periods_evaluated > 0 && (
+          <GoalHistorySection history={history} frequency={goal.frequency} />
+        )}
+      </CardContent>
+    </Card>
   );
 }

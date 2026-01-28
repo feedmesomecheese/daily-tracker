@@ -1842,11 +1842,11 @@ export default function Home() {
                                 calc
                               </Badge>
                             )}
-                            {/* Trend indicator for numeric types (not calculated) */}
+                            {/* Trend indicator for numeric types (not calculated, not count) */}
                             {userSettings?.main_page?.show_indicators &&
                               userSettings?.main_page?.show_trends &&
                               !m.is_calculated &&
-                              ["number", "score", "count", "time", "hhmm"].includes(m.type) &&
+                              ["number", "score", "time", "hhmm"].includes(m.type) &&
                               !m.analytics_config?.hide_trend &&
                               indicators?.metrics[m.metric_id]?.trend && (
                                 <TrendBadge
@@ -1874,6 +1874,10 @@ export default function Home() {
                                 let formHasValue = false;
                                 if (m.type === "checkbox") {
                                   formHasValue = rawVal === "on";
+                                } else if (m.type === "count") {
+                                  // For count type, only non-zero values count (like checkbox)
+                                  const numVal = Number(rawVal);
+                                  formHasValue = !isNaN(numVal) && numVal !== 0;
                                 } else {
                                   formHasValue = rawVal != null && rawVal.trim() !== "";
                                 }

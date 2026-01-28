@@ -80,6 +80,8 @@ export type GoalProgress = {
   // For display purposes
   measure?: "sum" | "average";
   direction?: "gte" | "lte" | "before" | "after";
+  // Original target value for display (e.g., target_time for hhmm, threshold for numeric_threshold)
+  target_value?: number;
 };
 
 export type LogRow = {
@@ -426,6 +428,19 @@ export function calculateGoalProgress(
     status = "on_track";
   }
 
+  // Get the original target value for display purposes
+  // This is different from `target` which is used for progress calculation
+  let target_value: number | undefined;
+  if (goal.type === "hhmm_target") {
+    target_value = (goal as HHMMTargetGoal).target_time;
+  } else if (goal.type === "numeric_threshold") {
+    target_value = (goal as NumericThresholdGoal).threshold;
+  } else if (goal.type === "numeric") {
+    target_value = (goal as NumericGoal).target;
+  } else if (goal.type === "hhmm_consistency") {
+    target_value = (goal as HHMMConsistencyGoal).max_std_dev;
+  }
+
   return {
     goal_id: goal.id,
     name: goal.name,
@@ -447,7 +462,10 @@ export function calculateGoalProgress(
         ? (goal as NumericGoal).direction
         : goal.type === "hhmm_target"
         ? (goal as HHMMTargetGoal).direction
+        : goal.type === "numeric_threshold"
+        ? (goal as NumericThresholdGoal).direction
         : undefined,
+    target_value,
   };
 }
 
@@ -552,4 +570,190 @@ export function calculateAllGoalProgress(
   return goals
     .filter((g) => g.enabled)
     .map((goal) => calculateGoalProgress(goal, logs, referenceDate, todayLogged));
+}
+
+// ============== Historical Goal Stats ==============
+
+export type GoalPeriodResult = {
+  period_start: string;
+  period_end: string;
+  status: "met" | "missed" | "in_progress";
+  current: number;
+  target: number;
+};
+
+export type GoalHistoricalStats = {
+  goal_id: string;
+  periods_evaluated: number;
+  periods_met: number;
+  hit_rate: number; // 0-100 percentage
+  current_streak: number; // positive = consecutive met, negative = consecutive missed
+  best_streak: number;
+  worst_streak: number; // longest miss streak
+  recent_periods: GoalPeriodResult[];
+};
+
+/**
+ * Get the previous period start date.
+ */
+function getPreviousPeriodStart(frequency: GoalFrequency, currentPeriodStart: string): string {
+  if (frequency === "daily") {
+    return addDays(currentPeriodStart, -1);
+  }
+
+  if (frequency === "weekly") {
+    return addDays(currentPeriodStart, -7);
+  }
+
+  if (frequency === "monthly") {
+    const [year, month] = currentPeriodStart.split("-").map(Number);
+    const prevMonth = month === 1 ? 12 : month - 1;
+    const prevYear = month === 1 ? year - 1 : year;
+    return `${prevYear}-${String(prevMonth).padStart(2, "0")}-01`;
+  }
+
+  return currentPeriodStart;
+}
+
+/**
+ * Calculate if a goal was met for a specific completed period.
+ */
+function calculatePeriodResult(
+  goal: Goal,
+  logs: LogRow[],
+  periodStart: string,
+  periodEnd: string,
+  isCurrentPeriod: boolean
+): GoalPeriodResult {
+  let result: { current: number; target: number; is_met: boolean };
+
+  switch (goal.type) {
+    case "numeric":
+      result = calculateNumericGoalProgress(goal as NumericGoal, logs, periodStart, periodEnd);
+      break;
+    case "numeric_threshold":
+      result = calculateNumericThresholdGoalProgress(goal as NumericThresholdGoal, logs, periodStart, periodEnd);
+      break;
+    case "checkbox":
+      result = calculateCheckboxGoalProgress(goal as CheckboxGoal, logs, periodStart, periodEnd);
+      break;
+    case "hhmm_target":
+      result = calculateHHMMTargetGoalProgress(goal as HHMMTargetGoal, logs, periodStart, periodEnd);
+      break;
+    case "hhmm_consistency":
+      result = calculateHHMMConsistencyGoalProgress(goal as HHMMConsistencyGoal, logs, periodStart, periodEnd);
+      break;
+  }
+
+  return {
+    period_start: periodStart,
+    period_end: periodEnd,
+    status: isCurrentPeriod ? "in_progress" : (result.is_met ? "met" : "missed"),
+    current: Math.round(result.current * 10) / 10,
+    target: result.target,
+  };
+}
+
+/**
+ * Calculate historical stats for a goal by replaying past periods.
+ *
+ * @param goal - The goal to evaluate
+ * @param logs - All metric logs (should include historical data)
+ * @param referenceDate - The reference date (usually today)
+ * @param periodsToEvaluate - How many past periods to look at (default 12)
+ */
+export function calculateGoalHistory(
+  goal: Goal,
+  logs: LogRow[],
+  referenceDate: string,
+  periodsToEvaluate: number = 12
+): GoalHistoricalStats {
+  const today = getLocalDateString();
+  const currentPeriodStart = getPeriodStart(goal.frequency, referenceDate);
+  const currentPeriodEnd = getPeriodEnd(goal.frequency, currentPeriodStart);
+  const isCurrentPeriodComplete = currentPeriodEnd < today;
+
+  const results: GoalPeriodResult[] = [];
+  let periodStart = currentPeriodStart;
+  let periodEnd = currentPeriodEnd;
+
+  // Collect results for current + past periods
+  for (let i = 0; i < periodsToEvaluate; i++) {
+    // Skip if before goal start date
+    if (goal.start_date && periodEnd < goal.start_date) {
+      break;
+    }
+
+    // Skip if after goal end date
+    if (goal.end_date && periodStart > goal.end_date) {
+      periodStart = getPreviousPeriodStart(goal.frequency, periodStart);
+      periodEnd = getPeriodEnd(goal.frequency, periodStart);
+      continue;
+    }
+
+    const isCurrentPeriod = i === 0 && !isCurrentPeriodComplete;
+    const result = calculatePeriodResult(goal, logs, periodStart, periodEnd, isCurrentPeriod);
+    results.push(result);
+
+    // Move to previous period
+    periodStart = getPreviousPeriodStart(goal.frequency, periodStart);
+    periodEnd = getPeriodEnd(goal.frequency, periodStart);
+  }
+
+  // Calculate stats from completed periods only
+  const completedPeriods = results.filter(r => r.status !== "in_progress");
+  const periodsEvaluated = completedPeriods.length;
+  const periodsMet = completedPeriods.filter(r => r.status === "met").length;
+  const hitRate = periodsEvaluated > 0 ? Math.round((periodsMet / periodsEvaluated) * 100) : 0;
+
+  // Calculate current streak (from most recent completed period)
+  let currentStreak = 0;
+  for (const period of completedPeriods) {
+    if (currentStreak === 0) {
+      // Start counting
+      currentStreak = period.status === "met" ? 1 : -1;
+    } else if (currentStreak > 0 && period.status === "met") {
+      currentStreak++;
+    } else if (currentStreak < 0 && period.status === "missed") {
+      currentStreak--;
+    } else {
+      // Streak broken
+      break;
+    }
+  }
+
+  // Calculate best streak and worst streak
+  let bestStreak = 0;
+  let worstStreak = 0;
+  let runningStreak = 0;
+  let runningMissStreak = 0;
+
+  // Go through in chronological order (reverse the list)
+  const chronological = [...completedPeriods].reverse();
+  for (const period of chronological) {
+    if (period.status === "met") {
+      runningStreak++;
+      runningMissStreak = 0;
+      if (runningStreak > bestStreak) {
+        bestStreak = runningStreak;
+      }
+    } else {
+      runningMissStreak++;
+      runningStreak = 0;
+      if (runningMissStreak > worstStreak) {
+        worstStreak = runningMissStreak;
+      }
+    }
+  }
+
+  return {
+    goal_id: goal.id,
+    periods_evaluated: periodsEvaluated,
+    periods_met: periodsMet,
+    hit_rate: hitRate,
+    current_streak: currentStreak,
+    best_streak: bestStreak,
+    worst_streak: worstStreak,
+    recent_periods: results, // Most recent first
+  };
 }

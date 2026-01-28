@@ -42,6 +42,7 @@ type GoalProgressData = {
   projected: number | null;
   measure?: "sum" | "average";
   direction?: "gte" | "lte" | "before" | "after";
+  target_value?: number; // Original target for display (e.g., target_time for hhmm)
 };
 
 type StreakInfo = {
@@ -121,7 +122,29 @@ type StatsResponse = {
     ma90: number | null;
     ma180: number | null;
   }[];
-  goals?: GoalProgressData[];
+  goals?: {
+    active: GoalProgressData[];
+    history: GoalHistoricalStats[];
+  };
+};
+
+type GoalPeriodResult = {
+  period_start: string;
+  period_end: string;
+  status: "met" | "missed" | "in_progress";
+  current: number;
+  target: number;
+};
+
+type GoalHistoricalStats = {
+  goal_id: string;
+  periods_evaluated: number;
+  periods_met: number;
+  hit_rate: number;
+  current_streak: number;
+  best_streak: number;
+  worst_streak: number;
+  recent_periods: GoalPeriodResult[];
 };
 
 type MetricStatsSheetProps = {
@@ -464,8 +487,99 @@ export function MetricStatsSheet({
     ma180: true,
   });
 
+  // Track which goal target lines are visible
+  const [visibleGoalTargets, setVisibleGoalTargets] = useState<Record<string, boolean>>({});
+
   // Date range for MA chart
   const [chartRange, setChartRange] = useState<"30d" | "90d" | "1y" | "all">("all");
+
+  // Compare to previous year
+  const [compareLastYear, setCompareLastYear] = useState(false);
+
+  // Compare with other metrics
+  const [availableMetrics, setAvailableMetrics] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [compareMetricIds, setCompareMetricIds] = useState<string[]>([]);
+  const [compareMetricsData, setCompareMetricsData] = useState<Record<string, StatsResponse>>({});
+  const [normalizeComparison, setNormalizeComparison] = useState(true);
+  const [showCompareDropdown, setShowCompareDropdown] = useState(false);
+
+  // Reset chart settings when sheet closes
+  useEffect(() => {
+    if (!open) {
+      // Reset comparison selections
+      setCompareMetricIds([]);
+      setCompareMetricsData({});
+      setCompareLastYear(false);
+      setShowCompareDropdown(false);
+      // Reset chart range and visible lines to defaults
+      setChartRange("all");
+      setVisibleLines({ ma7: true, ma30: true, ma90: true, ma180: true });
+      setVisibleGoalTargets({});
+      // Keep normalizeComparison at its default (true)
+    }
+  }, [open]);
+
+  // Fetch available metrics list when sheet opens
+  useEffect(() => {
+    if (!open) return;
+
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch("/api/config", { headers });
+        if (res.ok) {
+          const data = await res.json();
+          // Filter to only show numeric-like metrics that can be charted
+          const chartableTypes = ["number", "score", "time", "hhmm", "checkbox", "count"];
+          const metrics = (data || [])
+            .filter((m: { type: string; active: boolean }) =>
+              m.active && chartableTypes.includes(m.type)
+            )
+            .map((m: { metric_id: string; metric_name: string; type: string }) => ({
+              id: m.metric_id,
+              name: m.metric_name,
+              type: m.type,
+            }));
+          setAvailableMetrics(metrics);
+        }
+      } catch (e) {
+        console.error("Failed to load metrics for comparison:", e);
+      }
+    })();
+  }, [open]);
+
+  // Fetch stats for comparison metrics
+  useEffect(() => {
+    if (compareMetricIds.length === 0) {
+      setCompareMetricsData({});
+      return;
+    }
+
+    (async () => {
+      const headers = await getAuthHeaders();
+      const newData: Record<string, StatsResponse> = {};
+
+      for (const id of compareMetricIds) {
+        // Skip if already loaded
+        if (compareMetricsData[id]) {
+          newData[id] = compareMetricsData[id];
+          continue;
+        }
+
+        try {
+          const res = await fetch(`/api/metrics/${encodeURIComponent(id)}/stats`, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            newData[id] = data;
+          }
+        } catch (e) {
+          console.error(`Failed to load stats for ${id}:`, e);
+        }
+      }
+
+      setCompareMetricsData(newData);
+    })();
+  }, [compareMetricIds]);
 
   // Fetch stats when sheet opens
   useEffect(() => {
@@ -529,6 +643,165 @@ export function MetricStatsSheet({
     }
     return ma;
   }, [stats?.movingAverages, chartRange]);
+
+  // Generate year-over-year comparison data
+  // Shifts last year's data to align with this year's dates
+  const chartDataWithComparison = useMemo(() => {
+    if (!compareLastYear || !stats?.movingAverages) return chartData;
+
+    // Build a map of "MM-DD" -> last year's values
+    const lastYearMap = new Map<string, { ma7: number | null; ma30: number | null }>();
+    const currentYear = new Date().getFullYear();
+    const lastYear = currentYear - 1;
+
+    for (const d of stats.movingAverages) {
+      const year = parseInt(d.date.slice(0, 4), 10);
+      if (year === lastYear) {
+        const monthDay = d.date.slice(5); // "MM-DD"
+        lastYearMap.set(monthDay, { ma7: d.ma7, ma30: d.ma30 });
+      }
+    }
+
+    // Add last year's data to chart data points
+    return chartData.map((d) => {
+      const monthDay = d.date.slice(5);
+      const lastYearData = lastYearMap.get(monthDay);
+      return {
+        ...d,
+        ma7_ly: lastYearData?.ma7 ?? null,
+        ma30_ly: lastYearData?.ma30 ?? null,
+      };
+    });
+  }, [chartData, compareLastYear, stats?.movingAverages]);
+
+  // Merge comparison metrics data into chart
+  // Creates a union of all dates from primary and comparison metrics
+  const chartDataWithMetricComparison = useMemo(() => {
+    if (compareMetricIds.length === 0 || Object.keys(compareMetricsData).length === 0) {
+      return chartDataWithComparison;
+    }
+
+    // Build maps of date -> ma7 for each comparison metric
+    const comparisonMaps: Record<string, Map<string, number | null>> = {};
+
+    for (const [id, data] of Object.entries(compareMetricsData)) {
+      const map = new Map<string, number | null>();
+      for (const d of data.movingAverages || []) {
+        map.set(d.date, d.ma7);
+      }
+      comparisonMaps[id] = map;
+    }
+
+    // Create a union of all dates from primary and comparison metrics
+    const allDates = new Set<string>();
+    for (const d of chartDataWithComparison) {
+      allDates.add(d.date);
+    }
+    for (const id of compareMetricIds) {
+      const map = comparisonMaps[id];
+      if (map) {
+        for (const date of Array.from(map.keys())) {
+          allDates.add(date);
+        }
+      }
+    }
+
+    // Sort dates and filter by current chart range
+    const sortedDates = Array.from(allDates).sort();
+
+    // Get date range from primary chart data
+    const primaryDates = chartDataWithComparison.map(d => d.date);
+    const minDate = primaryDates.length > 0 ? primaryDates[0] : sortedDates[0];
+    const maxDate = primaryDates.length > 0 ? primaryDates[primaryDates.length - 1] : sortedDates[sortedDates.length - 1];
+
+    // Filter to chart range
+    const filteredDates = sortedDates.filter(d => d >= minDate && d <= maxDate);
+
+    // Build a map of primary metric data for quick lookup
+    const primaryDataMap = new Map<string, typeof chartDataWithComparison[0]>();
+    for (const d of chartDataWithComparison) {
+      primaryDataMap.set(d.date, d);
+    }
+
+    // Calculate normalization ranges if enabled
+    let primaryMin = Infinity, primaryMax = -Infinity;
+    const comparisonRanges: Record<string, { min: number; max: number }> = {};
+
+    if (normalizeComparison) {
+      // Find primary metric range from current chart data
+      for (const d of chartDataWithComparison) {
+        if (d.ma7 != null) {
+          primaryMin = Math.min(primaryMin, d.ma7);
+          primaryMax = Math.max(primaryMax, d.ma7);
+        }
+      }
+
+      // Find ranges for each comparison metric - only using dates in the filtered range
+      for (const id of compareMetricIds) {
+        let min = Infinity, max = -Infinity;
+        const map = comparisonMaps[id];
+        if (map) {
+          for (const date of filteredDates) {
+            const v = map.get(date);
+            if (v != null) {
+              min = Math.min(min, v);
+              max = Math.max(max, v);
+            }
+          }
+        }
+        comparisonRanges[id] = { min, max };
+      }
+    }
+
+    // Build merged data with all dates
+    return filteredDates.map((date) => {
+      // Start with primary data if it exists for this date, otherwise create empty entry
+      const primaryData = primaryDataMap.get(date);
+      const base = primaryData || {
+        date,
+        raw: null,
+        ma7: null,
+        ma30: null,
+        ma90: null,
+        ma180: null,
+      };
+
+      const extras: Record<string, number | null> = {};
+      for (const id of compareMetricIds) {
+        const map = comparisonMaps[id];
+        if (map) {
+          let value = map.get(date) ?? null;
+
+          // Normalize if enabled and ranges are valid
+          if (normalizeComparison && value != null) {
+            const range = comparisonRanges[id];
+            const primaryRange = primaryMax - primaryMin;
+            const compRange = range.max - range.min;
+            if (primaryRange > 0 && compRange > 0) {
+              // Scale to primary range
+              value = ((value - range.min) / compRange) * primaryRange + primaryMin;
+            }
+          }
+
+          extras[`compare_${id}`] = value;
+        }
+      }
+      return { ...base, ...extras };
+    });
+  }, [chartDataWithComparison, compareMetricIds, compareMetricsData, normalizeComparison]);
+
+  // Get comparison metric info for legend
+  const comparisonMetricInfo = useMemo(() => {
+    return compareMetricIds
+      .map((id) => {
+        const metric = availableMetrics.find((m) => m.id === id);
+        return metric ? { id, name: metric.name, type: metric.type } : null;
+      })
+      .filter((m): m is { id: string; name: string; type: string } => m !== null);
+  }, [compareMetricIds, availableMetrics]);
+
+  // Colors for comparison metrics
+  const comparisonColors = ["#f43f5e", "#14b8a6", "#a855f7"];
 
   // Calculate year markers for the chart - find index positions for Jan 1 of each year
   const yearMarkers = useMemo(() => {
@@ -598,6 +871,73 @@ export function MetricStatsSheet({
     return Math.round(pct);
   }, [stats]);
 
+  // Extract goal targets for chart reference lines
+  // Shows goals that have meaningful target values to display on the chart
+  const goalTargets = useMemo(() => {
+    if (!stats?.goals?.active) return [];
+
+    // Skip checkbox metrics (they use 0-1 scale which doesn't match goal counts)
+    if (stats.metric.type === "checkbox") return [];
+
+    const targets: { id: string; name: string; target: number; direction?: string; color: string }[] = [];
+
+    for (const g of stats.goals.active) {
+      let targetValue: number | null = null;
+      let label = g.name;
+
+      if (g.type === "numeric") {
+        // Numeric goals: show the target value (use target_value if available)
+        targetValue = g.target_value ?? g.target;
+      } else if (g.type === "numeric_threshold") {
+        // Threshold goals: show the threshold line (e.g., "score >= 7")
+        // target_value contains the threshold
+        if (g.target_value != null) {
+          targetValue = g.target_value;
+          label = `${g.name} (threshold)`;
+        }
+      } else if (g.type === "hhmm_target" && (stats.metric.type === "hhmm" || stats.metric.type === "time")) {
+        // HHMM target goals: show the target time (use target_value which is target_time)
+        targetValue = g.target_value ?? g.target;
+        label = `${g.name} (target)`;
+      }
+
+      if (targetValue !== null) {
+        targets.push({
+          id: g.goal_id,
+          name: label,
+          target: targetValue,
+          direction: g.direction,
+          color: ["#ec4899", "#06b6d4", "#f97316", "#84cc16"][targets.length % 4],
+        });
+      }
+    }
+
+    return targets;
+  }, [stats?.goals?.active, stats?.metric.type]);
+
+  // Initialize goal target visibility when goals change
+  useEffect(() => {
+    if (goalTargets.length > 0) {
+      setVisibleGoalTargets((prev) => {
+        const next = { ...prev };
+        for (const g of goalTargets) {
+          if (!(g.id in next)) {
+            next[g.id] = true; // Default to visible
+          }
+        }
+        return next;
+      });
+    }
+  }, [goalTargets]);
+
+  // Toggle goal target visibility
+  const handleGoalTargetClick = (goalId: string) => {
+    setVisibleGoalTargets((prev) => ({
+      ...prev,
+      [goalId]: !prev[goalId],
+    }));
+  };
+
   // Determine if checkbox or count metric (for chart/stats formatting)
   // Use the type from stats response if available (more reliable than prop)
   const effectiveType = stats?.metric?.type ?? metricType;
@@ -627,6 +967,7 @@ export function MetricStatsSheet({
     let min = Infinity;
     let max = -Infinity;
 
+    // Include current year data
     for (const d of chartData) {
       for (const key of ["ma7", "ma30", "ma90", "ma180"] as const) {
         const v = d[key];
@@ -634,6 +975,29 @@ export function MetricStatsSheet({
           min = Math.min(min, v);
           max = Math.max(max, v);
         }
+      }
+    }
+
+    // Include last year data if comparing
+    if (compareLastYear) {
+      for (const d of chartDataWithComparison) {
+        const dTyped = d as { ma7_ly?: number | null; ma30_ly?: number | null };
+        if (dTyped.ma7_ly != null) {
+          min = Math.min(min, dTyped.ma7_ly);
+          max = Math.max(max, dTyped.ma7_ly);
+        }
+        if (dTyped.ma30_ly != null) {
+          min = Math.min(min, dTyped.ma30_ly);
+          max = Math.max(max, dTyped.ma30_ly);
+        }
+      }
+    }
+
+    // Include visible goal targets in min/max calculation
+    for (const goal of goalTargets) {
+      if (visibleGoalTargets[goal.id]) {
+        min = Math.min(min, goal.target);
+        max = Math.max(max, goal.target);
       }
     }
 
@@ -662,7 +1026,7 @@ export function MetricStatsSheet({
           }
         : (value: number) => String(Math.round(value * 100) / 100),
     };
-  }, [chartData, isCheckbox, metricType]);
+  }, [chartData, chartDataWithComparison, isCheckbox, metricType, goalTargets, visibleGoalTargets, compareLastYear]);
 
   // Get recent values for sparkline (last 30 days of ma7 and raw daily values)
   const sparklineData = useMemo(() => {
@@ -783,9 +1147,10 @@ export function MetricStatsSheet({
             )}
 
             {/* Goals Section - show if there are any goals */}
-            {stats.goals && stats.goals.length > 0 && (
+            {stats.goals && stats.goals.active && stats.goals.active.length > 0 && (
               <GoalsSection
-                goals={stats.goals}
+                goals={stats.goals.active}
+                history={stats.goals.history}
                 metricType={metricType as "checkbox" | "number" | "time" | "hhmm"}
               />
             )}
@@ -918,18 +1283,92 @@ export function MetricStatsSheet({
                     <CardTitle className="text-sm font-medium">
                       Moving Averages
                     </CardTitle>
-                    <div className="flex gap-1">
-                      {(["30d", "90d", "1y", "all"] as const).map((range) => (
+                    <div className="flex items-center gap-2">
+                      {/* Compare with other metrics dropdown */}
+                      <div className="relative">
                         <Button
-                          key={range}
-                          variant={chartRange === range ? "default" : "ghost"}
+                          variant={compareMetricIds.length > 0 ? "default" : "outline"}
                           size="sm"
                           className="h-6 px-2 text-xs"
-                          onClick={() => setChartRange(range)}
+                          onClick={() => setShowCompareDropdown(!showCompareDropdown)}
                         >
-                          {range === "all" ? "All" : range.toUpperCase()}
+                          Compare {compareMetricIds.length > 0 && `(${compareMetricIds.length})`}
                         </Button>
-                      ))}
+                        {showCompareDropdown && (
+                          <div className="absolute right-0 top-7 z-50 bg-popover border rounded-md shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">
+                            <div className="text-xs font-medium text-muted-foreground mb-2">
+                              Select metrics to compare:
+                            </div>
+                            {availableMetrics
+                              .filter((m) => m.id !== metricId)
+                              .map((m) => (
+                                <label
+                                  key={m.id}
+                                  className="flex items-center gap-2 py-1 px-1 hover:bg-accent rounded cursor-pointer"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={compareMetricIds.includes(m.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        if (compareMetricIds.length < 3) {
+                                          setCompareMetricIds([...compareMetricIds, m.id]);
+                                        }
+                                      } else {
+                                        setCompareMetricIds(compareMetricIds.filter((id) => id !== m.id));
+                                      }
+                                    }}
+                                    className="h-3 w-3"
+                                  />
+                                  <span className="text-xs truncate">{m.name}</span>
+                                  <span className="text-xs text-muted-foreground">({m.type})</span>
+                                </label>
+                              ))}
+                            {compareMetricIds.length > 0 && (
+                              <div className="border-t mt-2 pt-2">
+                                <label className="flex items-center gap-2 py-1 px-1 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={normalizeComparison}
+                                    onChange={(e) => setNormalizeComparison(e.target.checked)}
+                                    className="h-3 w-3"
+                                  />
+                                  <span className="text-xs">Normalize scales</span>
+                                </label>
+                              </div>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="w-full h-6 text-xs mt-2"
+                              onClick={() => setShowCompareDropdown(false)}
+                            >
+                              Done
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant={compareLastYear ? "default" : "outline"}
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setCompareLastYear(!compareLastYear)}
+                      >
+                        vs Last Year
+                      </Button>
+                      <div className="flex gap-1">
+                        {(["30d", "90d", "1y", "all"] as const).map((range) => (
+                          <Button
+                            key={range}
+                            variant={chartRange === range ? "default" : "ghost"}
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={() => setChartRange(range)}
+                          >
+                            {range === "all" ? "All" : range.toUpperCase()}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </CardHeader>
@@ -937,7 +1376,7 @@ export function MetricStatsSheet({
                   <div style={{ width: "100%", height: 280 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart
-                        data={chartData}
+                        data={chartDataWithMetricComparison}
                         margin={{ top: 20, right: 10, left: 0, bottom: 5 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
@@ -958,6 +1397,25 @@ export function MetricStatsSheet({
                             }}
                           />
                         ))}
+
+                        {/* Goal target reference lines */}
+                        {goalTargets.map((goal) =>
+                          visibleGoalTargets[goal.id] && (
+                            <ReferenceLine
+                              key={`goal-${goal.id}`}
+                              y={goal.target}
+                              stroke={goal.color}
+                              strokeDasharray="6 4"
+                              strokeWidth={2}
+                              label={{
+                                value: `${goal.name}: ${yAxisConfig.tickFormatter(goal.target)}`,
+                                position: "insideTopRight",
+                                fontSize: 10,
+                                fill: goal.color,
+                              }}
+                            />
+                          )
+                        )}
 
                         <XAxis
                           dataKey="date"
@@ -996,7 +1454,7 @@ export function MetricStatsSheet({
                               { dataKey: "ma180", name: "180-day", color: "#8b5cf6" },
                             ];
                             return (
-                              <div className="flex justify-center gap-4 text-xs">
+                              <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
                                 {orderedItems.map((item) => (
                                   <button
                                     key={item.dataKey}
@@ -1013,6 +1471,60 @@ export function MetricStatsSheet({
                                       style={{ backgroundColor: item.color }}
                                     />
                                     {item.name}
+                                    {compareLastYear && (
+                                      <span
+                                        className="inline-block w-3 h-0.5 ml-0.5 opacity-40"
+                                        style={{
+                                          backgroundColor: item.color,
+                                          backgroundImage: "repeating-linear-gradient(90deg, transparent, transparent 2px, currentColor 2px, currentColor 4px)",
+                                        }}
+                                      />
+                                    )}
+                                  </button>
+                                ))}
+                                {/* Goal target toggles - shown as dashed lines to match chart */}
+                                {goalTargets.map((goal) => (
+                                  <button
+                                    key={goal.id}
+                                    type="button"
+                                    onClick={() => handleGoalTargetClick(goal.id)}
+                                    className="flex items-center gap-1 hover:opacity-80"
+                                    style={{
+                                      opacity: visibleGoalTargets[goal.id] ? 1 : 0.4,
+                                      textDecoration: visibleGoalTargets[goal.id] ? "none" : "line-through",
+                                    }}
+                                  >
+                                    <svg width="12" height="4" className="inline-block">
+                                      <line
+                                        x1="0"
+                                        y1="2"
+                                        x2="12"
+                                        y2="2"
+                                        stroke={goal.color}
+                                        strokeWidth="2"
+                                        strokeDasharray="3 2"
+                                      />
+                                    </svg>
+                                    {goal.name}
+                                  </button>
+                                ))}
+                                {/* Comparison metric legend items */}
+                                {comparisonMetricInfo.map((metric, idx) => (
+                                  <button
+                                    key={`legend-compare-${metric.id}`}
+                                    type="button"
+                                    onClick={() => {
+                                      // Remove this metric from comparison
+                                      setCompareMetricIds(compareMetricIds.filter(id => id !== metric.id));
+                                    }}
+                                    className="flex items-center gap-1 hover:opacity-80"
+                                    title="Click to remove"
+                                  >
+                                    <span
+                                      className="inline-block w-3 h-0.5"
+                                      style={{ backgroundColor: comparisonColors[idx % comparisonColors.length] }}
+                                    />
+                                    {metric.name}
                                   </button>
                                 ))}
                               </div>
@@ -1061,6 +1573,50 @@ export function MetricStatsSheet({
                           connectNulls
                           hide={!visibleLines.ma180}
                         />
+
+                        {/* Last year comparison lines */}
+                        {compareLastYear && (
+                          <>
+                            <Line
+                              type="monotone"
+                              dataKey="ma7_ly"
+                              name="7-day (LY)"
+                              stroke="#3b82f6"
+                              strokeOpacity={0.4}
+                              strokeDasharray="4 4"
+                              dot={false}
+                              strokeWidth={2}
+                              connectNulls
+                              hide={!visibleLines.ma7}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="ma30_ly"
+                              name="30-day (LY)"
+                              stroke="#10b981"
+                              strokeOpacity={0.4}
+                              strokeDasharray="4 4"
+                              dot={false}
+                              strokeWidth={2}
+                              connectNulls
+                              hide={!visibleLines.ma30}
+                            />
+                          </>
+                        )}
+
+                        {/* Comparison metric lines */}
+                        {comparisonMetricInfo.map((metric, idx) => (
+                          <Line
+                            key={`compare-${metric.id}`}
+                            type="monotone"
+                            dataKey={`compare_${metric.id}`}
+                            name={metric.name}
+                            stroke={comparisonColors[idx % comparisonColors.length]}
+                            dot={false}
+                            strokeWidth={2}
+                            connectNulls
+                          />
+                        ))}
                       </LineChart>
                     </ResponsiveContainer>
                   </div>

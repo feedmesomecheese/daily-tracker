@@ -102,8 +102,9 @@ export async function GET(req: Request) {
   }
 
   // Separate metrics for different calculations
+  // Note: count type excluded from trend - it shows checkbox-like frequency stats instead
   const numericMetrics = allMetrics.filter((m) =>
-    ["number", "score", "count", "time", "hhmm"].includes(m.type)
+    ["number", "score", "time", "hhmm"].includes(m.type)
   );
   // All non-text metrics can have streaks
   const streakEligibleMetrics = allMetrics.filter((m) => m.type !== "text");

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 import { getLocalDateString, addDays } from "@/lib/dateUtils";
 import { evaluateCalculatedMetricsV2, MetricDef } from "@/lib/calc";
-import { calculateAllGoalProgress, Goal, GoalProgress } from "@/lib/goals";
+import { calculateAllGoalProgress, calculateGoalHistory, Goal, GoalProgress, GoalHistoricalStats } from "@/lib/goals";
 
 type MetricConfig = {
   metric_id: string;
@@ -103,6 +103,7 @@ type StatsResponse = {
   // Goals data
   goals?: {
     active: GoalProgress[];
+    history: GoalHistoricalStats[];
   };
 };
 
@@ -766,17 +767,17 @@ export async function GET(
   const movingAverages = calculateMovingAverages(logRows, trackingStartDate, today, metricConfig.type);
 
   // Determine if streaks should be shown
-  // For checkbox: always show (unless explicitly disabled)
+  // For checkbox/count: always show (unless explicitly disabled)
   // For number/time: only show if show_streak is true in analytics_config
-  const showStreak = metricConfig.type === "checkbox"
+  const showStreak = (metricConfig.type === "checkbox" || metricConfig.type === "count")
     ? metricConfig.analytics_config?.show_streak !== false
     : metricConfig.analytics_config?.show_streak === true;
 
-  // Number-specific stats
+  // Number-specific stats (not for count type - count uses checkbox-like display)
   let numberStats: StatsResponse["numberStats"] = undefined;
   let dayOfWeekAverages: Record<string, number | null> | undefined = undefined;
 
-  if (["number", "score", "count", "time", "hhmm"].includes(metricConfig.type)) {
+  if (["number", "score", "time", "hhmm"].includes(metricConfig.type)) {
     // Get all valid numeric values
     const validValues = loggedDays.filter(l => l.value !== null).map(l => ({ value: l.value!, date: l.date }));
 
@@ -940,9 +941,9 @@ export async function GET(
     };
   }
 
-  // Calculate averages for comparison periods (number metrics)
+  // Calculate averages for comparison periods (number metrics, not count)
   const calcAvg = (logs: LogRow[]): number | undefined => {
-    if (!["number", "score", "count", "time", "hhmm"].includes(metricConfig.type)) {
+    if (!["number", "score", "time", "hhmm"].includes(metricConfig.type)) {
       return undefined;
     }
     const validLogs = logs.filter(l => l.value !== null);
@@ -951,18 +952,29 @@ export async function GET(
     return Math.round((sum / validLogs.length) * 10) / 10;
   };
 
-  // Calculate goal progress
-  let goalsData: { active: GoalProgress[] } | undefined;
+  // Calculate goal progress and historical stats
+  let goalsData: { active: GoalProgress[]; history: GoalHistoricalStats[] } | undefined;
   if (metricConfig.goals_config?.goals && metricConfig.goals_config.goals.length > 0) {
     const todayLogged = logRows.some(l => l.date === today && l.value !== null);
+    const enabledGoals = metricConfig.goals_config.goals.filter(g => g.enabled);
+
     const goalProgressList = calculateAllGoalProgress(
       metricConfig.goals_config.goals,
       logRows,
       today,
       todayLogged
     );
+
+    // Calculate historical stats for each enabled goal
+    // Use different period counts based on frequency
+    const goalHistoryList = enabledGoals.map(goal => {
+      const periodsToEvaluate = goal.frequency === "daily" ? 30 :
+                                goal.frequency === "weekly" ? 12 : 12; // 12 weeks or 12 months
+      return calculateGoalHistory(goal, logRows, today, periodsToEvaluate);
+    });
+
     if (goalProgressList.length > 0) {
-      goalsData = { active: goalProgressList };
+      goalsData = { active: goalProgressList, history: goalHistoryList };
     }
   }
 
