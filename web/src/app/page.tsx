@@ -1922,7 +1922,7 @@ export default function Home() {
                                 </div>
 
                                 {showCalcDebug && (
-                                  <div className="mt-1 text-xs text-muted-foreground w-72">
+                                  <div className="mt-1 text-xs text-muted-foreground w-full max-w-72">
                                     <div className="font-mono whitespace-pre-wrap">
                                       {m.calc_expr || "(no expr)"}
                                     </div>
@@ -1943,12 +1943,12 @@ export default function Home() {
                               </div>
                             ) : (
                               <div>
-                                <div className="mt-0.5 border border-input bg-zinc-100 dark:bg-zinc-700 text-foreground min-h-[22px] w-72 px-2 py-1 flex items-center rounded-md text-sm">
+                                <div className="mt-0.5 border border-input bg-zinc-100 dark:bg-zinc-700 text-foreground min-h-[22px] w-full max-w-72 px-2 py-1 flex items-center rounded-md text-sm">
                                   {calcDisplay}
                                 </div>
 
                                 {showCalcDebug && (
-                                  <div className="mt-1 text-xs text-muted-foreground w-72">
+                                  <div className="mt-1 text-xs text-muted-foreground w-full max-w-72">
                                     <div className="font-mono whitespace-pre-wrap">
                                       {m.calc_expr || "(no expr)"}
                                     </div>
@@ -2023,7 +2023,7 @@ export default function Home() {
                                   setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
                                 }}
                                 className={cn(
-                                  "w-72",
+                                  "w-full max-w-72",
                                   err && "border-destructive bg-destructive/10"
                                 )}
                               />
@@ -2091,7 +2091,7 @@ export default function Home() {
                                   }
                                 }}
                                 className={cn(
-                                  "w-72",
+                                  "w-full max-w-72",
                                   err && "border-destructive bg-destructive/10",
                                   defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && "border-amber-500 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30"
                                 )}

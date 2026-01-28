@@ -1,12 +1,26 @@
 import "./globals.css";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 export const metadata: Metadata = {
   title: "Daily Tracker",
   description: "Personal tracking app",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Daily Tracker",
+  },
+  other: {
+    "theme-color": "#09090b",
+  },
 };
 
 export default function RootLayout({
@@ -20,7 +34,7 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <header className="border-b bg-background">
-              <nav className="max-w-5xl mx-auto flex items-center gap-4 px-4 py-2 text-sm">
+              <nav className="max-w-5xl mx-auto flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-2 text-sm overflow-x-auto">
                 <span className="font-semibold mr-4">Daily Tracker</span>
                 <Link href="/" className="hover:underline">
                   Today
