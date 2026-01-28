@@ -30,11 +30,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body style={{ fontFamily: "system-ui, sans-serif" }}>
+      <body style={{ fontFamily: "system-ui, sans-serif" }} className="overflow-x-hidden">
         <ThemeProvider>
           <AuthProvider>
             <header className="border-b bg-background">
-              <nav className="max-w-5xl mx-auto flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-2 text-sm overflow-x-auto">
+              <nav className="max-w-5xl mx-auto flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-2 text-sm overflow-x-auto overscroll-x-contain">
                 <span className="font-semibold mr-4">Daily Tracker</span>
                 <Link href="/" className="hover:underline">
                   Today
