@@ -17,6 +17,8 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { MetricStatsSheet } from "@/components/metric-stats-sheet";
 import { MetricHoverTooltip } from "@/components/metric-hover-tooltip";
 import { MultiGoalBadge } from "@/components/ui/goal-progress-badge";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { TimeOfDayPicker, DurationPicker, NumberWheelPicker } from "@/components/ui/mobile-pickers";
 
 type GoalIndicator = {
   goal_id: string;
@@ -187,6 +189,9 @@ export default function Home() {
 
   // Stats sheet state
   const [statsMetric, setStatsMetric] = useState<ConfigRow | null>(null);
+
+  // Mobile detection for picker UI
+  const isMobile = useMediaQuery("(max-width: 639px)");
 
   function toggleGroup(name: string) {
     setCollapsedGroups((prev) => ({
@@ -2063,7 +2068,70 @@ export default function Home() {
 
                               {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
+                          ) : isMobile && m.type === "hhmm" ? (
+                            /* Mobile: Time-of-day wheel picker for hhmm */
+                            <div className="max-w-72">
+                              {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
+                                <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
+                                  default
+                                </Badge>
+                              )}
+                              <TimeOfDayPicker
+                                value={raw ? parseHHMM(raw) : null}
+                                onChange={(mins) => {
+                                  markAsTouched(m.metric_id);
+                                  const formatted = formatHHMM(mins);
+                                  setVal(m.metric_id, formatted);
+                                  setDirty(true);
+                                  setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
+                                }}
+                              />
+                              {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
+                            </div>
+                          ) : isMobile && m.type === "time" ? (
+                            /* Mobile: Duration wheel picker for time */
+                            <div className="max-w-72">
+                              {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
+                                <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
+                                  default
+                                </Badge>
+                              )}
+                              <DurationPicker
+                                value={raw ? parseTimeInput(raw) : null}
+                                onChange={(mins) => {
+                                  markAsTouched(m.metric_id);
+                                  const formatted = formatDurationHHMM(mins);
+                                  setVal(m.metric_id, formatted);
+                                  setDirty(true);
+                                  setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
+                                }}
+                              />
+                              {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
+                            </div>
+                          ) : isMobile && (m.type === "number" || m.type === "score" || m.type === "count") && m.min_value != null && m.max_value != null ? (
+                            /* Mobile: Number wheel picker (only if min/max are defined) */
+                            <div className="max-w-72">
+                              {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
+                                <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
+                                  default
+                                </Badge>
+                              )}
+                              <NumberWheelPicker
+                                value={raw ? Number(raw) : null}
+                                onChange={(num) => {
+                                  markAsTouched(m.metric_id);
+                                  setVal(m.metric_id, String(num));
+                                  setDirty(true);
+                                  setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
+                                }}
+                                min={m.min_value}
+                                max={m.max_value}
+                                disallowedValues={m.disallowed_values}
+                              />
+                              {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
+                            </div>
                           ) : (
+                            /* Desktop or fallback: text input */
                             <div>
                               {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
                                 <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
