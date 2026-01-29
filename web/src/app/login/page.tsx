@@ -18,7 +18,6 @@ export default function LoginPage() {
         email,
         password,
       });
-      console.log("login result:", { data, error });
 
       if (error) {
         setStatus("error");

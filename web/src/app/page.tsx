@@ -195,7 +195,6 @@ export default function Home() {
     }));
   }
 
-  console.log("metrics for form", metrics);
 
   // Check if a metric is visible based on parent's value
   const isMetricVisible = React.useCallback((metric: ConfigRow): boolean => {
@@ -272,7 +271,6 @@ export default function Home() {
 
 
 
-  console.log("DateHints for gap check:", dateHints, "current date:", date);
 
   
   // Ref to hold current save function for keyboard shortcut
@@ -282,7 +280,6 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       const { data, error } = await supabaseBrowser.auth.getSession();
-      console.log("session in Home:", data.session, error);
       if (!data.session) {
         // not logged in → go to login
         window.location.href = "/login";
@@ -433,8 +430,6 @@ export default function Home() {
         const res = await fetch(`/api/indicators?date=${encodeURIComponent(date)}`, { headers });
         if (res.ok) {
           const data = await res.json();
-          console.log("Indicators loaded:", data);
-          console.log("User settings:", userSettings);
           setIndicators(data);
         } else {
           // Log as warning to avoid triggering Next.js error overlay for transient network issues
@@ -825,7 +820,6 @@ export default function Home() {
   ): Record<string, number | null> {
     const map = new Map(rows.map((r) => [r.metric_id, r.value]));
     const ctx: Record<string, number | null> = {};
-    console.log("DEBUG buildNumericContextFromLogRows called", rows.length);
 
     for (const m of metrics) {
       const v = map.get(m.metric_id);
@@ -843,11 +837,6 @@ export default function Home() {
         ctx[m.metric_id] = Number.isFinite(num) ? num : null;
       }
     }
-    console.log(
-      "DEBUG lazy_time row",
-      rows.find(r => r.metric_id === "lazy_time")
-    );
-
     return ctx;
   }
 
@@ -1478,12 +1467,6 @@ export default function Home() {
       const entries = buildEntries();
 
       const headers = await getAuthHeaders();
-      console.log("CLIENT save payload:", {
-        date,
-        metricsCount: metrics.length,
-        entriesCount: entries.length,
-        sample: entries.slice(0, 5),
-      });
 
       const res = await fetch("/api/save-log", {
         method: "POST",

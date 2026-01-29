@@ -1280,8 +1280,6 @@ export default function MetricsPage() {
           return;
         }
 
-        console.log("Delete succeeded:", metricId, j);
-
         // Reload from database to confirm deletion
         await loadMetrics();
       } catch (e) {
