@@ -6,6 +6,7 @@ type Metric = {
   metric_name: string | null;
   type: string;
   private: boolean | null;
+  calculated_config: string | null;
 };
 
 type LogRow = {
@@ -64,10 +65,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const showPrivate = url.searchParams.get("showPrivate") === "true";
 
-  // Get all active metrics
+  // Get all active metrics (including calculated_config to filter redundant correlations)
   const { data: metrics, error: configError } = await supabase
     .from("config")
-    .select("metric_id, metric_name, type, private")
+    .select("metric_id, metric_name, type, private, calculated_config")
     .eq("owner_id", user.id)
     .eq("active", true);
 
@@ -84,8 +85,31 @@ export async function GET(req: Request) {
 
   const checkboxMetrics = allMetrics.filter((m) => m.type === "checkbox");
   const numericMetrics = allMetrics.filter((m) =>
-    ["number", "score", "time", "hhmm", "count"].includes(m.type)
+    ["number", "score", "time", "hhmm", "count", "calculated"].includes(m.type)
   );
+
+  // Build a map of calculated metrics -> their referenced metric IDs
+  // This helps us filter out redundant correlations (e.g., "When A, calculated(A+B) is higher")
+  const calculatedDependencies = new Map<string, Set<string>>();
+  for (const m of allMetrics) {
+    if (m.calculated_config) {
+      try {
+        const config = JSON.parse(m.calculated_config);
+        const refs = new Set<string>();
+        // Extract metric IDs from the formula - they appear as {metric_id}
+        const formula = config.formula || "";
+        const matches = formula.matchAll(/\{([^}]+)\}/g);
+        for (const match of matches) {
+          refs.add(match[1]);
+        }
+        if (refs.size > 0) {
+          calculatedDependencies.set(m.metric_id, refs);
+        }
+      } catch {
+        // Invalid JSON, skip
+      }
+    }
+  }
 
   const metricIds = allMetrics.map((m) => m.metric_id);
 
@@ -99,13 +123,14 @@ export async function GET(req: Request) {
     return NextResponse.json(empty);
   }
 
-  // Load all logs
+  // Load all logs (with high limit to get all historical data)
   const { data: logs, error: logError } = await supabase
     .from("log")
     .select("metric_id, date, value")
     .eq("owner_id", user.id)
     .in("metric_id", metricIds)
-    .order("date", { ascending: true });
+    .order("date", { ascending: true })
+    .limit(50000);
 
   if (logError) {
     return NextResponse.json(
@@ -149,6 +174,10 @@ export async function GET(req: Request) {
     for (const num of numericMetrics) {
       const numData = byMetric.get(num.metric_id);
       if (!numData) continue;
+
+      // Skip if the checkbox is a dependency of this calculated metric (redundant correlation)
+      const deps = calculatedDependencies.get(num.metric_id);
+      if (deps && deps.has(cb.metric_id)) continue;
 
       // Find overlapping dates where both have values
       const valuesWhenTrue: number[] = [];
