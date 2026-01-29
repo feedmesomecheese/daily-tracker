@@ -14,7 +14,10 @@ const fieldButtonClass =
   "w-full max-w-72 h-10 px-3 text-left border rounded-md bg-background hover:bg-accent/50 transition-colors flex items-center justify-between";
 
 /**
- * Analog Clock Face for time-of-day selection (24-hour format)
+ * Material Design-style Clock Face for 24-hour time selection
+ * - Outer ring: 1-12 (AM hours)
+ * - Inner ring: 13-24/00 (PM hours)
+ * - Auto-advances to minute selection after hour is picked
  */
 type ClockFaceProps = {
   hour: number;
@@ -27,84 +30,122 @@ type ClockFaceProps = {
 
 function ClockFace({ hour, minute, mode, onHourChange, onMinuteChange, onModeChange }: ClockFaceProps) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const size = 240;
+  const size = 260;
   const center = size / 2;
-  const radius = size / 2 - 20;
+  const outerRadius = size / 2 - 24;
+  const innerRadius = size / 2 - 64;
 
-  // Convert angle to value
-  const angleToValue = useCallback((angle: number, isHour: boolean) => {
-    // Adjust angle (0 is top, clockwise)
-    let adjustedAngle = (angle + 90) % 360;
-    if (adjustedAngle < 0) adjustedAngle += 360;
-
-    if (isHour) {
-      // 12 hours per circle, each 30 degrees
-      let h = Math.round(adjustedAngle / 30) % 12;
-      return h;
-    } else {
-      // 60 minutes per circle, each 6 degrees
-      let m = Math.round(adjustedAngle / 6) % 60;
-      return m;
-    }
-  }, []);
-
-  // Handle click/touch on clock face
-  const handleInteraction = useCallback((clientX: number, clientY: number) => {
+  // Handle interaction - determine hour/minute from touch position
+  const handleInteraction = useCallback((clientX: number, clientY: number, isEnd: boolean) => {
     if (!svgRef.current) return;
 
     const rect = svgRef.current.getBoundingClientRect();
     const x = clientX - rect.left - center;
     const y = clientY - rect.top - center;
+    const distance = Math.sqrt(x * x + y * y);
 
-    const angle = Math.atan2(y, x) * (180 / Math.PI);
+    // Calculate angle (0 = top, clockwise)
+    let angle = Math.atan2(x, -y) * (180 / Math.PI);
+    if (angle < 0) angle += 360;
 
     if (mode === "hour") {
-      const h = angleToValue(angle, true);
+      // Determine if inner or outer ring based on distance
+      const isInnerRing = distance < (outerRadius + innerRadius) / 2;
+
+      // Each hour is 30 degrees
+      let h = Math.round(angle / 30) % 12;
+
+      if (isInnerRing) {
+        // Inner ring: 0, 13-23
+        h = h === 0 ? 0 : h + 12;
+      } else {
+        // Outer ring: 1-12, but we store as 1-12 (convert 0 to 12)
+        h = h === 0 ? 12 : h;
+      }
+
       onHourChange(h);
+
+      // Auto-advance to minutes on release
+      if (isEnd) {
+        onModeChange("minute");
+      }
     } else {
-      const m = angleToValue(angle, false);
+      // Minutes: each minute is 6 degrees
+      let m = Math.round(angle / 6) % 60;
       onMinuteChange(m);
     }
-  }, [mode, angleToValue, onHourChange, onMinuteChange, center]);
+  }, [mode, onHourChange, onMinuteChange, onModeChange, center, outerRadius, innerRadius]);
 
-  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    handleInteraction(e.clientX, e.clientY);
+  const handleTouchStart = (e: React.TouchEvent<SVGSVGElement>) => {
+    e.preventDefault();
+    handleInteraction(e.touches[0].clientX, e.touches[0].clientY, false);
   };
 
   const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    e.preventDefault();
     if (e.touches.length > 0) {
-      handleInteraction(e.touches[0].clientX, e.touches[0].clientY);
+      handleInteraction(e.touches[0].clientX, e.touches[0].clientY, false);
     }
   };
 
-  // Calculate hand angle
-  const hourAngle = ((hour % 12) / 12) * 360 - 90;
-  const minuteAngle = (minute / 60) * 360 - 90;
-  const activeAngle = mode === "hour" ? hourAngle : minuteAngle;
+  const handleTouchEnd = (e: React.TouchEvent<SVGSVGElement>) => {
+    // Trigger auto-advance on release
+    if (mode === "hour") {
+      onModeChange("minute");
+    }
+  };
 
-  // Generate hour/minute markers
-  const markers = mode === "hour"
-    ? Array.from({ length: 12 }, (_, i) => i)
-    : [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    handleInteraction(e.clientX, e.clientY, true);
+  };
+
+  // Calculate hand angle and length
+  const getHandAngle = () => {
+    if (mode === "hour") {
+      return ((hour % 12) / 12) * 360;
+    }
+    return (minute / 60) * 360;
+  };
+
+  const getHandLength = () => {
+    if (mode === "hour") {
+      // Shorter hand for inner ring (0, 13-23)
+      const isInner = hour === 0 || hour > 12;
+      return isInner ? innerRadius - 16 : outerRadius - 16;
+    }
+    return outerRadius - 16;
+  };
+
+  const handAngle = getHandAngle();
+  const handLength = getHandLength();
+  const handRad = ((handAngle - 90) * Math.PI) / 180;
+
+  // Outer ring hours: 1-12
+  const outerHours = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  // Inner ring hours: 0, 13-23
+  const innerHours = [0, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+  // Minutes (show every 5)
+  const minuteMarkers = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      {/* Mode toggle */}
-      <div className="flex gap-2">
-        <Button
-          variant={mode === "hour" ? "default" : "outline"}
-          size="sm"
+    <div className="flex flex-col items-center gap-3">
+      {/* Time display - tappable to switch modes */}
+      <div className="flex items-center text-3xl font-mono font-semibold">
+        <button
+          type="button"
           onClick={() => onModeChange("hour")}
+          className={`px-2 py-1 rounded ${mode === "hour" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
         >
-          Hour: {String(hour).padStart(2, "0")}
-        </Button>
-        <Button
-          variant={mode === "minute" ? "default" : "outline"}
-          size="sm"
+          {String(hour).padStart(2, "0")}
+        </button>
+        <span>:</span>
+        <button
+          type="button"
           onClick={() => onModeChange("minute")}
+          className={`px-2 py-1 rounded ${mode === "minute" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
         >
-          Min: {String(minute).padStart(2, "0")}
-        </Button>
+          {String(minute).padStart(2, "0")}
+        </button>
       </div>
 
       {/* Clock face */}
@@ -114,94 +155,131 @@ function ClockFace({ hour, minute, mode, onHourChange, onMinuteChange, onModeCha
         height={size}
         className="touch-none select-none"
         onClick={handleClick}
+        onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
-        onTouchStart={(e) => handleInteraction(e.touches[0].clientX, e.touches[0].clientY)}
+        onTouchEnd={handleTouchEnd}
       >
-        {/* Clock circle */}
+        {/* Background circle */}
         <circle
           cx={center}
           cy={center}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="text-border"
+          r={outerRadius + 8}
+          className="fill-muted/30"
         />
 
-        {/* Markers */}
-        {markers.map((val) => {
-          const angle = (mode === "hour" ? (val / 12) * 360 : (val / 60) * 360) - 90;
-          const rad = (angle * Math.PI) / 180;
-          const markerRadius = radius - 25;
-          const x = center + Math.cos(rad) * markerRadius;
-          const y = center + Math.sin(rad) * markerRadius;
-          const isSelected = mode === "hour" ? val === hour % 12 : val === minute;
+        {mode === "hour" ? (
+          <>
+            {/* Outer ring: 1-12 */}
+            {outerHours.map((h, i) => {
+              const angle = (i / 12) * 360 - 90;
+              const rad = (angle * Math.PI) / 180;
+              const x = center + Math.cos(rad) * (outerRadius - 20);
+              const y = center + Math.sin(rad) * (outerRadius - 20);
+              const isSelected = hour === h;
 
-          return (
-            <g key={val}>
-              <circle
-                cx={x}
-                cy={y}
-                r={isSelected ? 18 : 16}
-                className={isSelected ? "fill-primary" : "fill-muted"}
-              />
-              <text
-                x={x}
-                y={y}
-                textAnchor="middle"
-                dominantBaseline="central"
-                className={`text-sm font-medium ${isSelected ? "fill-primary-foreground" : "fill-foreground"}`}
-              >
-                {mode === "hour" ? (val === 0 ? "12" : val) : val}
-              </text>
-            </g>
-          );
-        })}
+              return (
+                <g key={`outer-${h}`}>
+                  {isSelected && (
+                    <circle cx={x} cy={y} r={18} className="fill-primary" />
+                  )}
+                  <text
+                    x={x}
+                    y={y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className={`text-base font-medium ${isSelected ? "fill-primary-foreground" : "fill-foreground"}`}
+                  >
+                    {h}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Inner ring: 0, 13-23 */}
+            {innerHours.map((h, i) => {
+              const angle = (i / 12) * 360 - 90;
+              const rad = (angle * Math.PI) / 180;
+              const x = center + Math.cos(rad) * (innerRadius - 8);
+              const y = center + Math.sin(rad) * (innerRadius - 8);
+              const isSelected = hour === h;
+
+              return (
+                <g key={`inner-${h}`}>
+                  {isSelected && (
+                    <circle cx={x} cy={y} r={16} className="fill-primary" />
+                  )}
+                  <text
+                    x={x}
+                    y={y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className={`text-sm ${isSelected ? "fill-primary-foreground" : "fill-muted-foreground"}`}
+                  >
+                    {String(h).padStart(2, "0")}
+                  </text>
+                </g>
+              );
+            })}
+          </>
+        ) : (
+          <>
+            {/* Minute markers */}
+            {minuteMarkers.map((m, i) => {
+              const angle = (i / 12) * 360 - 90;
+              const rad = (angle * Math.PI) / 180;
+              const x = center + Math.cos(rad) * (outerRadius - 20);
+              const y = center + Math.sin(rad) * (outerRadius - 20);
+              const isSelected = minute === m;
+
+              return (
+                <g key={`min-${m}`}>
+                  {isSelected && (
+                    <circle cx={x} cy={y} r={18} className="fill-primary" />
+                  )}
+                  <text
+                    x={x}
+                    y={y}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className={`text-base font-medium ${isSelected ? "fill-primary-foreground" : "fill-foreground"}`}
+                  >
+                    {String(m).padStart(2, "0")}
+                  </text>
+                </g>
+              );
+            })}
+          </>
+        )}
 
         {/* Clock hand */}
         <line
           x1={center}
           y1={center}
-          x2={center + Math.cos((activeAngle * Math.PI) / 180) * (radius - 45)}
-          y2={center + Math.sin((activeAngle * Math.PI) / 180) * (radius - 45)}
+          x2={center + Math.cos(handRad) * handLength}
+          y2={center + Math.sin(handRad) * handLength}
           stroke="currentColor"
-          strokeWidth="3"
+          strokeWidth="2"
           strokeLinecap="round"
           className="text-primary"
         />
 
+        {/* Hand end circle */}
+        <circle
+          cx={center + Math.cos(handRad) * handLength}
+          cy={center + Math.sin(handRad) * handLength}
+          r={4}
+          className="fill-primary"
+        />
+
         {/* Center dot */}
-        <circle cx={center} cy={center} r={6} className="fill-primary" />
+        <circle cx={center} cy={center} r={4} className="fill-primary" />
       </svg>
-
-      {/* AM/PM toggle for 24h */}
-      <div className="flex gap-2">
-        <Button
-          variant={hour < 12 ? "default" : "outline"}
-          size="sm"
-          onClick={() => onHourChange(hour % 12)}
-        >
-          AM
-        </Button>
-        <Button
-          variant={hour >= 12 ? "default" : "outline"}
-          size="sm"
-          onClick={() => onHourChange((hour % 12) + 12)}
-        >
-          PM
-        </Button>
-      </div>
-
-      {/* Current time display */}
-      <div className="text-2xl font-mono font-semibold">
-        {String(hour).padStart(2, "0")}:{String(minute).padStart(2, "0")}
-      </div>
     </div>
   );
 }
 
 /**
- * TimeOfDayPickerField - tap to open analog clock picker (24-hour)
+ * TimeOfDayPickerField - tap to open Material Design clock picker (24-hour)
  */
 type TimeOfDayPickerFieldProps = {
   value: number | null;
@@ -240,12 +318,12 @@ export function TimeOfDayPicker({ value, onChange, className }: TimeOfDayPickerF
     <>
       <button type="button" onClick={handleOpen} className={`${fieldButtonClass} ${className || ""}`}>
         <span className={value == null ? "text-muted-foreground" : ""}>{displayValue}</span>
-        <span className="text-muted-foreground">🕐</span>
+        <span className="text-muted-foreground text-lg">🕐</span>
       </button>
 
       <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="bottom" className="h-auto max-h-[85vh]">
-          <div className="flex flex-col items-center gap-4 py-4">
+        <SheetContent side="bottom" className="h-auto max-h-[90vh]">
+          <div className="flex flex-col items-center gap-4 py-2">
             <ClockFace
               hour={hour}
               minute={minute}

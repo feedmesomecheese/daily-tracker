@@ -2069,7 +2069,7 @@ export default function Home() {
                               {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
                           ) : isMobile && m.type === "hhmm" ? (
-                            /* Mobile: Time-of-day wheel picker for hhmm */
+                            /* Mobile: Time-of-day clock picker for hhmm */
                             <div className="max-w-72">
                               {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
                                 <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
@@ -2086,6 +2086,26 @@ export default function Home() {
                                   setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
                                 }}
                               />
+                              {parsePresets(m).length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {parsePresets(m).map((p) => (
+                                    <Button
+                                      key={p.raw}
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => applyPresetValue(m, p)}
+                                      title={p.display}
+                                      className={cn(
+                                        "h-7 px-2 text-xs max-w-[100px] truncate",
+                                        p.raw === raw && "bg-amber-100 dark:bg-amber-800/50 border-amber-300 dark:border-amber-600"
+                                      )}
+                                    >
+                                      {p.display}
+                                    </Button>
+                                  ))}
+                                </div>
+                              )}
                               {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
                           ) : isMobile && m.type === "time" ? (
@@ -2106,6 +2126,26 @@ export default function Home() {
                                   setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
                                 }}
                               />
+                              {parsePresets(m).length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {parsePresets(m).map((p) => (
+                                    <Button
+                                      key={p.raw}
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => applyPresetValue(m, p)}
+                                      title={p.display}
+                                      className={cn(
+                                        "h-7 px-2 text-xs max-w-[100px] truncate",
+                                        p.raw === raw && "bg-amber-100 dark:bg-amber-800/50 border-amber-300 dark:border-amber-600"
+                                      )}
+                                    >
+                                      {p.display}
+                                    </Button>
+                                  ))}
+                                </div>
+                              )}
                               {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
                           ) : isMobile && (m.type === "number" || m.type === "score" || m.type === "count") && m.min_value != null && m.max_value != null ? (
@@ -2128,6 +2168,26 @@ export default function Home() {
                                 max={m.max_value}
                                 disallowedValues={m.disallowed_values}
                               />
+                              {parsePresets(m).length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {parsePresets(m).map((p) => (
+                                    <Button
+                                      key={p.raw}
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => applyPresetValue(m, p)}
+                                      title={p.display}
+                                      className={cn(
+                                        "h-7 px-2 text-xs max-w-[100px] truncate",
+                                        p.raw === raw && "bg-amber-100 dark:bg-amber-800/50 border-amber-300 dark:border-amber-600"
+                                      )}
+                                    >
+                                      {p.display}
+                                    </Button>
+                                  ))}
+                                </div>
+                              )}
                               {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
                           ) : (
