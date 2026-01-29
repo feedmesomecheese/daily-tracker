@@ -10,6 +10,7 @@ const links = [
   { href: "/wide", label: "Wide" },
   { href: "/ma", label: "Moving Avg" },
   { href: "/stats", label: "Stats" },
+  { href: "/insights", label: "Insights" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/settings", label: "Settings" },
 ];
