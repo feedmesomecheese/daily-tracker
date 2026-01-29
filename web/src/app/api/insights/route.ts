@@ -6,7 +6,8 @@ type Metric = {
   metric_name: string | null;
   type: string;
   private: boolean | null;
-  calculated_config: string | null;
+  is_calculated: boolean | null;
+  calc_expr: string | null;
 };
 
 type LogRow = {
@@ -65,10 +66,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const showPrivate = url.searchParams.get("showPrivate") === "true";
 
-  // Get all active metrics (including calculated_config to filter redundant correlations)
+  // Get all active metrics (including calc_expr to filter redundant correlations)
   const { data: metrics, error: configError } = await supabase
     .from("config")
-    .select("metric_id, metric_name, type, private, calculated_config")
+    .select("metric_id, metric_name, type, private, is_calculated, calc_expr")
     .eq("owner_id", user.id)
     .eq("active", true);
 
@@ -92,21 +93,16 @@ export async function GET(req: Request) {
   // This helps us filter out redundant correlations (e.g., "When A, calculated(A+B) is higher")
   const calculatedDependencies = new Map<string, Set<string>>();
   for (const m of allMetrics) {
-    if (m.calculated_config) {
-      try {
-        const config = JSON.parse(m.calculated_config);
-        const refs = new Set<string>();
-        // Extract metric IDs from the formula - they appear as {metric_id}
-        const formula = config.formula || "";
-        const matches = formula.matchAll(/\{([^}]+)\}/g);
-        for (const match of matches) {
-          refs.add(match[1]);
-        }
-        if (refs.size > 0) {
-          calculatedDependencies.set(m.metric_id, refs);
-        }
-      } catch {
-        // Invalid JSON, skip
+    if (m.is_calculated && m.calc_expr) {
+      const refs = new Set<string>();
+      // Extract metric IDs from the formula - they appear as {metric_id}
+      const regex = /\{([^}]+)\}/g;
+      let match;
+      while ((match = regex.exec(m.calc_expr)) !== null) {
+        refs.add(match[1]);
+      }
+      if (refs.size > 0) {
+        calculatedDependencies.set(m.metric_id, refs);
       }
     }
   }
