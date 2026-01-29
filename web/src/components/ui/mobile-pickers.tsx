@@ -1,102 +1,287 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import Picker from "react-mobile-picker";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
 
-// Shared styles for the picker container
-const pickerContainerClass = "border rounded-lg bg-background overflow-hidden";
-const pickerColumnClass = "text-center";
+// Shared styles
 const pickerItemClass = "text-base py-1";
 const pickerItemSelectedClass = "font-semibold text-foreground";
 const pickerItemUnselectedClass = "text-muted-foreground";
 
+const fieldButtonClass =
+  "w-full max-w-72 h-10 px-3 text-left border rounded-md bg-background hover:bg-accent/50 transition-colors flex items-center justify-between";
+
 /**
- * TimeOfDayPicker - for hhmm type metrics (24-hour format)
- * Two wheels: hours (0-23) and minutes (0-59)
+ * Analog Clock Face for time-of-day selection (24-hour format)
  */
-type TimeOfDayPickerProps = {
-  /** Value in minutes since midnight (e.g., 510 = 8:30) */
-  value: number | null;
-  onChange: (minutes: number) => void;
+type ClockFaceProps = {
+  hour: number;
+  minute: number;
+  mode: "hour" | "minute";
+  onHourChange: (h: number) => void;
+  onMinuteChange: (m: number) => void;
+  onModeChange: (mode: "hour" | "minute") => void;
 };
 
-export function TimeOfDayPicker({ value, onChange }: TimeOfDayPickerProps) {
-  const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
-  const minutes = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
+function ClockFace({ hour, minute, mode, onHourChange, onMinuteChange, onModeChange }: ClockFaceProps) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const size = 240;
+  const center = size / 2;
+  const radius = size / 2 - 20;
 
-  // Parse value into hours and minutes
-  const currentHour = value != null ? Math.floor(value / 60) % 24 : 8;
-  const currentMinute = value != null ? value % 60 : 0;
+  // Convert angle to value
+  const angleToValue = useCallback((angle: number, isHour: boolean) => {
+    // Adjust angle (0 is top, clockwise)
+    let adjustedAngle = (angle + 90) % 360;
+    if (adjustedAngle < 0) adjustedAngle += 360;
 
-  const [pickerValue, setPickerValue] = useState({
-    hour: currentHour,
-    minute: currentMinute,
-  });
+    if (isHour) {
+      // 12 hours per circle, each 30 degrees
+      let h = Math.round(adjustedAngle / 30) % 12;
+      return h;
+    } else {
+      // 60 minutes per circle, each 6 degrees
+      let m = Math.round(adjustedAngle / 6) % 60;
+      return m;
+    }
+  }, []);
 
-  const handleChange = (newValue: { hour: number; minute: number }) => {
-    setPickerValue(newValue);
-    onChange(newValue.hour * 60 + newValue.minute);
+  // Handle click/touch on clock face
+  const handleInteraction = useCallback((clientX: number, clientY: number) => {
+    if (!svgRef.current) return;
+
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = clientX - rect.left - center;
+    const y = clientY - rect.top - center;
+
+    const angle = Math.atan2(y, x) * (180 / Math.PI);
+
+    if (mode === "hour") {
+      const h = angleToValue(angle, true);
+      onHourChange(h);
+    } else {
+      const m = angleToValue(angle, false);
+      onMinuteChange(m);
+    }
+  }, [mode, angleToValue, onHourChange, onMinuteChange, center]);
+
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    handleInteraction(e.clientX, e.clientY);
   };
 
+  const handleTouchMove = (e: React.TouchEvent<SVGSVGElement>) => {
+    if (e.touches.length > 0) {
+      handleInteraction(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  };
+
+  // Calculate hand angle
+  const hourAngle = ((hour % 12) / 12) * 360 - 90;
+  const minuteAngle = (minute / 60) * 360 - 90;
+  const activeAngle = mode === "hour" ? hourAngle : minuteAngle;
+
+  // Generate hour/minute markers
+  const markers = mode === "hour"
+    ? Array.from({ length: 12 }, (_, i) => i)
+    : [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+
   return (
-    <div className={pickerContainerClass}>
-      <Picker
-        value={pickerValue}
-        onChange={handleChange}
-        wheelMode="natural"
-        height={150}
+    <div className="flex flex-col items-center gap-4">
+      {/* Mode toggle */}
+      <div className="flex gap-2">
+        <Button
+          variant={mode === "hour" ? "default" : "outline"}
+          size="sm"
+          onClick={() => onModeChange("hour")}
+        >
+          Hour: {String(hour).padStart(2, "0")}
+        </Button>
+        <Button
+          variant={mode === "minute" ? "default" : "outline"}
+          size="sm"
+          onClick={() => onModeChange("minute")}
+        >
+          Min: {String(minute).padStart(2, "0")}
+        </Button>
+      </div>
+
+      {/* Clock face */}
+      <svg
+        ref={svgRef}
+        width={size}
+        height={size}
+        className="touch-none select-none"
+        onClick={handleClick}
+        onTouchMove={handleTouchMove}
+        onTouchStart={(e) => handleInteraction(e.touches[0].clientX, e.touches[0].clientY)}
       >
-        <Picker.Column name="hour">
-          {hours.map((h) => (
-            <Picker.Item key={h} value={h}>
-              {({ selected }) => (
-                <div
-                  className={`${pickerItemClass} ${
-                    selected ? pickerItemSelectedClass : pickerItemUnselectedClass
-                  }`}
-                >
-                  {String(h).padStart(2, "0")}
-                </div>
-              )}
-            </Picker.Item>
-          ))}
-        </Picker.Column>
-        <Picker.Column name="minute">
-          {minutes.map((m) => (
-            <Picker.Item key={m} value={m}>
-              {({ selected }) => (
-                <div
-                  className={`${pickerItemClass} ${
-                    selected ? pickerItemSelectedClass : pickerItemUnselectedClass
-                  }`}
-                >
-                  {String(m).padStart(2, "0")}
-                </div>
-              )}
-            </Picker.Item>
-          ))}
-        </Picker.Column>
-      </Picker>
-      <div className="text-center text-xs text-muted-foreground pb-2">
-        {String(pickerValue.hour).padStart(2, "0")}:{String(pickerValue.minute).padStart(2, "0")}
+        {/* Clock circle */}
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          className="text-border"
+        />
+
+        {/* Markers */}
+        {markers.map((val) => {
+          const angle = (mode === "hour" ? (val / 12) * 360 : (val / 60) * 360) - 90;
+          const rad = (angle * Math.PI) / 180;
+          const markerRadius = radius - 25;
+          const x = center + Math.cos(rad) * markerRadius;
+          const y = center + Math.sin(rad) * markerRadius;
+          const isSelected = mode === "hour" ? val === hour % 12 : val === minute;
+
+          return (
+            <g key={val}>
+              <circle
+                cx={x}
+                cy={y}
+                r={isSelected ? 18 : 16}
+                className={isSelected ? "fill-primary" : "fill-muted"}
+              />
+              <text
+                x={x}
+                y={y}
+                textAnchor="middle"
+                dominantBaseline="central"
+                className={`text-sm font-medium ${isSelected ? "fill-primary-foreground" : "fill-foreground"}`}
+              >
+                {mode === "hour" ? (val === 0 ? "12" : val) : val}
+              </text>
+            </g>
+          );
+        })}
+
+        {/* Clock hand */}
+        <line
+          x1={center}
+          y1={center}
+          x2={center + Math.cos((activeAngle * Math.PI) / 180) * (radius - 45)}
+          y2={center + Math.sin((activeAngle * Math.PI) / 180) * (radius - 45)}
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          className="text-primary"
+        />
+
+        {/* Center dot */}
+        <circle cx={center} cy={center} r={6} className="fill-primary" />
+      </svg>
+
+      {/* AM/PM toggle for 24h */}
+      <div className="flex gap-2">
+        <Button
+          variant={hour < 12 ? "default" : "outline"}
+          size="sm"
+          onClick={() => onHourChange(hour % 12)}
+        >
+          AM
+        </Button>
+        <Button
+          variant={hour >= 12 ? "default" : "outline"}
+          size="sm"
+          onClick={() => onHourChange((hour % 12) + 12)}
+        >
+          PM
+        </Button>
+      </div>
+
+      {/* Current time display */}
+      <div className="text-2xl font-mono font-semibold">
+        {String(hour).padStart(2, "0")}:{String(minute).padStart(2, "0")}
       </div>
     </div>
   );
 }
 
 /**
- * DurationPicker - for time type metrics (duration in minutes)
- * Two wheels: hours (0-23) and minutes (0-59)
+ * TimeOfDayPickerField - tap to open analog clock picker (24-hour)
  */
-type DurationPickerProps = {
-  /** Value in total minutes */
+type TimeOfDayPickerFieldProps = {
   value: number | null;
   onChange: (minutes: number) => void;
-  /** Max hours to show (default 23) */
-  maxHours?: number;
+  className?: string;
 };
 
-export function DurationPicker({ value, onChange, maxHours = 23 }: DurationPickerProps) {
+export function TimeOfDayPicker({ value, onChange, className }: TimeOfDayPickerFieldProps) {
+  const [open, setOpen] = useState(false);
+
+  const currentHour = value != null ? Math.floor(value / 60) % 24 : 8;
+  const currentMinute = value != null ? value % 60 : 0;
+
+  const [hour, setHour] = useState(currentHour);
+  const [minute, setMinute] = useState(currentMinute);
+  const [mode, setMode] = useState<"hour" | "minute">("hour");
+
+  // Reset to current value when opening
+  const handleOpen = () => {
+    setHour(currentHour);
+    setMinute(currentMinute);
+    setMode("hour");
+    setOpen(true);
+  };
+
+  const handleConfirm = () => {
+    onChange(hour * 60 + minute);
+    setOpen(false);
+  };
+
+  const displayValue = value != null
+    ? `${String(Math.floor(value / 60) % 24).padStart(2, "0")}:${String(value % 60).padStart(2, "0")}`
+    : "Set time";
+
+  return (
+    <>
+      <button type="button" onClick={handleOpen} className={`${fieldButtonClass} ${className || ""}`}>
+        <span className={value == null ? "text-muted-foreground" : ""}>{displayValue}</span>
+        <span className="text-muted-foreground">🕐</span>
+      </button>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="bottom" className="h-auto max-h-[85vh]">
+          <div className="flex flex-col items-center gap-4 py-4">
+            <ClockFace
+              hour={hour}
+              minute={minute}
+              mode={mode}
+              onHourChange={setHour}
+              onMinuteChange={setMinute}
+              onModeChange={setMode}
+            />
+            <div className="flex gap-2 w-full max-w-xs">
+              <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleConfirm}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+/**
+ * DurationPickerField - tap to open duration wheel picker
+ */
+type DurationPickerFieldProps = {
+  value: number | null;
+  onChange: (minutes: number) => void;
+  maxHours?: number;
+  className?: string;
+};
+
+export function DurationPicker({ value, onChange, maxHours = 23, className }: DurationPickerFieldProps) {
+  const [open, setOpen] = useState(false);
+
   const hours = useMemo(() => Array.from({ length: maxHours + 1 }, (_, i) => i), [maxHours]);
   const minutes = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
 
@@ -108,70 +293,99 @@ export function DurationPicker({ value, onChange, maxHours = 23 }: DurationPicke
     minute: currentMinute,
   });
 
-  const handleChange = (newValue: { hour: number; minute: number }) => {
-    setPickerValue(newValue);
-    onChange(newValue.hour * 60 + newValue.minute);
+  // Reset to current value when opening
+  const handleOpen = () => {
+    setPickerValue({
+      hour: currentHour,
+      minute: currentMinute,
+    });
+    setOpen(true);
+  };
+
+  const handleConfirm = () => {
+    onChange(pickerValue.hour * 60 + pickerValue.minute);
+    setOpen(false);
   };
 
   const totalMinutes = pickerValue.hour * 60 + pickerValue.minute;
 
+  const displayValue = value != null
+    ? `${Math.floor(value / 60)}h ${value % 60}m`
+    : "Set duration";
+
   return (
-    <div className={pickerContainerClass}>
-      <Picker
-        value={pickerValue}
-        onChange={handleChange}
-        wheelMode="natural"
-        height={150}
-      >
-        <Picker.Column name="hour">
-          {hours.map((h) => (
-            <Picker.Item key={h} value={h}>
-              {({ selected }) => (
-                <div
-                  className={`${pickerItemClass} ${
-                    selected ? pickerItemSelectedClass : pickerItemUnselectedClass
-                  }`}
-                >
-                  {h}h
-                </div>
-              )}
-            </Picker.Item>
-          ))}
-        </Picker.Column>
-        <Picker.Column name="minute">
-          {minutes.map((m) => (
-            <Picker.Item key={m} value={m}>
-              {({ selected }) => (
-                <div
-                  className={`${pickerItemClass} ${
-                    selected ? pickerItemSelectedClass : pickerItemUnselectedClass
-                  }`}
-                >
-                  {m}m
-                </div>
-              )}
-            </Picker.Item>
-          ))}
-        </Picker.Column>
-      </Picker>
-      <div className="text-center text-xs text-muted-foreground pb-2">
-        {pickerValue.hour > 0 ? `${pickerValue.hour}h ` : ""}{pickerValue.minute}m ({totalMinutes} min)
-      </div>
-    </div>
+    <>
+      <button type="button" onClick={handleOpen} className={`${fieldButtonClass} ${className || ""}`}>
+        <span className={value == null ? "text-muted-foreground" : ""}>{displayValue}</span>
+        <span className="text-muted-foreground">⏱️</span>
+      </button>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="bottom" className="h-auto max-h-[85vh]">
+          <div className="flex flex-col items-center gap-4 py-4">
+            <div className="text-lg font-medium">Duration</div>
+
+            <div className="border rounded-lg bg-background overflow-hidden">
+              <Picker
+                value={pickerValue}
+                onChange={setPickerValue}
+                wheelMode="natural"
+                height={180}
+              >
+                <Picker.Column name="hour">
+                  {hours.map((h) => (
+                    <Picker.Item key={h} value={h}>
+                      {({ selected }) => (
+                        <div className={`${pickerItemClass} ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
+                          {h}h
+                        </div>
+                      )}
+                    </Picker.Item>
+                  ))}
+                </Picker.Column>
+                <Picker.Column name="minute">
+                  {minutes.map((m) => (
+                    <Picker.Item key={m} value={m}>
+                      {({ selected }) => (
+                        <div className={`${pickerItemClass} ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
+                          {m}m
+                        </div>
+                      )}
+                    </Picker.Item>
+                  ))}
+                </Picker.Column>
+              </Picker>
+            </div>
+
+            <div className="text-sm text-muted-foreground">
+              Total: {totalMinutes} minutes
+            </div>
+
+            <div className="flex gap-2 w-full max-w-xs">
+              <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleConfirm}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 
 /**
- * NumberWheelPicker - for number/score/count type metrics
- * Single wheel bounded by min/max, excludes disallowed values
+ * NumberWheelPickerField - tap to open number wheel picker
  */
-type NumberWheelPickerProps = {
+type NumberWheelPickerFieldProps = {
   value: number | null;
   onChange: (value: number) => void;
   min?: number;
   max?: number;
-  /** Comma-separated string of disallowed values */
   disallowedValues?: string | null;
+  className?: string;
 };
 
 export function NumberWheelPicker({
@@ -180,7 +394,10 @@ export function NumberWheelPicker({
   min = 0,
   max = 100,
   disallowedValues,
-}: NumberWheelPickerProps) {
+  className,
+}: NumberWheelPickerFieldProps) {
+  const [open, setOpen] = useState(false);
+
   // Parse disallowed values
   const disallowedSet = useMemo(() => {
     if (!disallowedValues) return new Set<number>();
@@ -209,7 +426,6 @@ export function NumberWheelPicker({
   const closestAllowed = useMemo(() => {
     if (value == null || numbers.length === 0) return numbers[0] ?? min;
     if (numbers.includes(value)) return value;
-    // Find closest
     let closest = numbers[0];
     let closestDist = Math.abs(value - closest);
     for (const n of numbers) {
@@ -222,39 +438,65 @@ export function NumberWheelPicker({
     return closest;
   }, [value, numbers, min]);
 
-  const [pickerValue, setPickerValue] = useState({
-    num: closestAllowed,
-  });
+  const [pickerValue, setPickerValue] = useState({ num: closestAllowed });
 
-  const handleChange = (newValue: { num: number }) => {
-    setPickerValue(newValue);
-    onChange(newValue.num);
+  // Reset to current value when opening
+  const handleOpen = () => {
+    setPickerValue({ num: closestAllowed });
+    setOpen(true);
   };
 
+  const handleConfirm = () => {
+    onChange(pickerValue.num);
+    setOpen(false);
+  };
+
+  const displayValue = value != null ? String(value) : "Set value";
+
   return (
-    <div className={pickerContainerClass}>
-      <Picker
-        value={pickerValue}
-        onChange={handleChange}
-        wheelMode="natural"
-        height={150}
-      >
-        <Picker.Column name="num">
-          {numbers.map((n) => (
-            <Picker.Item key={n} value={n}>
-              {({ selected }) => (
-                <div
-                  className={`${pickerItemClass} ${
-                    selected ? pickerItemSelectedClass : pickerItemUnselectedClass
-                  }`}
-                >
-                  {n}
-                </div>
-              )}
-            </Picker.Item>
-          ))}
-        </Picker.Column>
-      </Picker>
-    </div>
+    <>
+      <button type="button" onClick={handleOpen} className={`${fieldButtonClass} ${className || ""}`}>
+        <span className={value == null ? "text-muted-foreground" : ""}>{displayValue}</span>
+        <span className="text-muted-foreground">#</span>
+      </button>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="bottom" className="h-auto max-h-[85vh]">
+          <div className="flex flex-col items-center gap-4 py-4">
+            <div className="text-lg font-medium">Select Value</div>
+
+            <div className="border rounded-lg bg-background overflow-hidden">
+              <Picker
+                value={pickerValue}
+                onChange={setPickerValue}
+                wheelMode="natural"
+                height={180}
+              >
+                <Picker.Column name="num">
+                  {numbers.map((n) => (
+                    <Picker.Item key={n} value={n}>
+                      {({ selected }) => (
+                        <div className={`${pickerItemClass} text-lg ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
+                          {n}
+                        </div>
+                      )}
+                    </Picker.Item>
+                  ))}
+                </Picker.Column>
+              </Picker>
+            </div>
+
+            <div className="flex gap-2 w-full max-w-xs">
+              <Button variant="outline" className="flex-1" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1" onClick={handleConfirm}>
+                Done
+              </Button>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
