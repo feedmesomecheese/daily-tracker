@@ -89,17 +89,25 @@ export async function GET(req: Request) {
     ["number", "score", "time", "hhmm", "count", "calculated"].includes(m.type)
   );
 
+  // Build a set of all metric IDs for validation
+  const allMetricIds = new Set(allMetrics.map((m) => m.metric_id));
+
   // Build a map of calculated metrics -> their referenced metric IDs
   // This helps us filter out redundant correlations (e.g., "When A, calculated(A+B) is higher")
   const calculatedDependencies = new Map<string, Set<string>>();
   for (const m of allMetrics) {
     if (m.is_calculated && m.calc_expr) {
       const refs = new Set<string>();
-      // Extract metric IDs from the formula - they appear as {metric_id}
-      const regex = /\{([^}]+)\}/g;
+      // Extract identifiers from the formula - metric IDs are used directly like: sleep_hours + mood
+      // Identifier pattern: starts with letter/underscore, followed by letters/numbers/underscores
+      const regex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
       let match;
       while ((match = regex.exec(m.calc_expr)) !== null) {
-        refs.add(match[1]);
+        const id = match[0];
+        // Only add if it's an actual metric ID (not a function name like "prev", "diff", "avg", etc.)
+        if (allMetricIds.has(id) && id !== m.metric_id) {
+          refs.add(id);
+        }
       }
       if (refs.size > 0) {
         calculatedDependencies.set(m.metric_id, refs);
@@ -119,23 +127,41 @@ export async function GET(req: Request) {
     return NextResponse.json(empty);
   }
 
-  // Load all logs (with high limit to get all historical data)
-  const { data: logs, error: logError } = await supabase
-    .from("log")
-    .select("metric_id, date, value")
-    .eq("owner_id", user.id)
-    .in("metric_id", metricIds)
-    .order("date", { ascending: true })
-    .limit(50000);
+  // Load all logs (fetch all for this user, filter by metric in code)
+  // Using range() to paginate and get all data
+  const allLogs: LogRow[] = [];
+  const PAGE_SIZE = 1000;
+  let offset = 0;
+  let hasMore = true;
 
-  if (logError) {
-    return NextResponse.json(
-      { error: `Failed to load logs: ${logError.message}` },
-      { status: 500 }
-    );
+  while (hasMore) {
+    const { data: logs, error: logError } = await supabase
+      .from("log")
+      .select("metric_id, date, value")
+      .eq("owner_id", user.id)
+      .order("date", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (logError) {
+      return NextResponse.json(
+        { error: `Failed to load logs: ${logError.message}` },
+        { status: 500 }
+      );
+    }
+
+    const rows = (logs ?? []) as LogRow[];
+    // Filter to only metrics we care about
+    const filtered = rows.filter((r) => metricIds.includes(r.metric_id));
+    allLogs.push(...filtered);
+
+    hasMore = rows.length === PAGE_SIZE;
+    offset += PAGE_SIZE;
+
+    // Safety limit to prevent infinite loops
+    if (offset > 500000) break;
   }
 
-  const logRows = (logs ?? []) as LogRow[];
+  const logRows = allLogs;
 
   // Build maps
   const byMetric = new Map<string, Map<string, number | null>>();
