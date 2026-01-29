@@ -2148,8 +2148,8 @@ export default function Home() {
                               )}
                               {err && <p className="text-xs text-destructive mt-1 px-1">{err}</p>}
                             </div>
-                          ) : isMobile && (m.type === "number" || m.type === "score" || m.type === "count") && m.min_value != null && m.max_value != null ? (
-                            /* Mobile: Number wheel picker (only if min/max are defined) */
+                          ) : isMobile && ((m.type === "number" || m.type === "score") && m.min_value != null && m.max_value != null || m.type === "count") ? (
+                            /* Mobile: Number wheel picker (count defaults to 0-99, number/score require explicit bounds) */
                             <div className="max-w-72">
                               {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
                                 <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
@@ -2164,8 +2164,8 @@ export default function Home() {
                                   setDirty(true);
                                   setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
                                 }}
-                                min={m.min_value}
-                                max={m.max_value}
+                                min={m.min_value ?? 0}
+                                max={m.max_value ?? 99}
                                 disallowedValues={m.disallowed_values}
                               />
                               {parsePresets(m).length > 0 && (
