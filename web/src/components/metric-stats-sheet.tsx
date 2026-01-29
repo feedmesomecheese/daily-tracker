@@ -507,46 +507,51 @@ export function MetricStatsSheet({
   // Mobile detection
   const isMobile = useMediaQuery("(max-width: 639px)");
 
-  // Left-edge swipe to close (like iOS back gesture)
-  const touchStartX = useRef<number | null>(null);
-  const touchDeltaX = useRef(0);
-  const edgeSwipe = useRef(false);
+  // Swipe-down-to-close — only active when scrolled to the very top
+  const touchStartY = useRef<number | null>(null);
+  const touchDeltaY = useRef(0);
+  const swipeActive = useRef(false);
   const sheetContentRef = useRef<HTMLDivElement>(null);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const x = e.touches[0].clientX;
-    touchStartX.current = x;
-    touchDeltaX.current = 0;
-    // Only treat as edge swipe if starting within 30px of the left edge
-    edgeSwipe.current = x <= 30;
+    touchStartY.current = e.touches[0].clientY;
+    touchDeltaY.current = 0;
+    // Only allow swipe-to-close when the sheet is scrolled to the top
+    const el = sheetContentRef.current;
+    swipeActive.current = el ? el.scrollTop <= 0 : false;
   }, []);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (touchStartX.current === null || !edgeSwipe.current) return;
-    const delta = e.touches[0].clientX - touchStartX.current;
-    touchDeltaX.current = delta;
+    if (touchStartY.current === null || !swipeActive.current) return;
+    const delta = e.touches[0].clientY - touchStartY.current;
+    touchDeltaY.current = delta;
 
-    // Visual feedback: translate right as user swipes
+    // Only show visual feedback for downward pull (delta > 0)
     if (delta > 0 && sheetContentRef.current) {
-      sheetContentRef.current.style.transform = `translateX(${delta}px)`;
-      sheetContentRef.current.style.opacity = String(Math.max(0.2, 1 - delta / 300));
+      // Prevent the sheet from scrolling while we're pulling down
+      e.preventDefault();
+      sheetContentRef.current.style.transform = `translateY(${delta}px)`;
+    } else {
+      // User started scrolling up — cancel the swipe gesture
+      swipeActive.current = false;
+      if (sheetContentRef.current) {
+        sheetContentRef.current.style.transform = "";
+      }
     }
   }, []);
 
   const handleTouchEnd = useCallback(() => {
     if (sheetContentRef.current) {
       sheetContentRef.current.style.transform = "";
-      sheetContentRef.current.style.opacity = "";
     }
 
-    // Close if swiped right far enough from the left edge
-    if (edgeSwipe.current && touchDeltaX.current > 80) {
+    if (swipeActive.current && touchDeltaY.current > 100) {
       onOpenChange(false);
     }
 
-    touchStartX.current = null;
-    touchDeltaX.current = 0;
-    edgeSwipe.current = false;
+    touchStartY.current = null;
+    touchDeltaY.current = 0;
+    swipeActive.current = false;
   }, [onOpenChange]);
 
   // Reset chart settings when sheet closes
@@ -1100,6 +1105,12 @@ export function MetricStatsSheet({
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
+        {/* Drag handle — pull down to close when scrolled to the top */}
+        {isMobile && (
+          <div className="flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+          </div>
+        )}
         <SheetHeader className="pb-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             {metricName || metricId}
