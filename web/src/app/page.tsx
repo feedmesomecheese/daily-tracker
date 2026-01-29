@@ -1624,30 +1624,92 @@ export default function Home() {
     );
   }
 
+  const untouchedDefaultCount = defaultPopulated.size > 0
+    ? Array.from(defaultPopulated).filter(id => !touchedMetrics.has(id)).length
+    : 0;
+
+  const acceptDefaultsBtn = untouchedDefaultCount > 0 ? (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={() => {
+        setTouchedMetrics(prev => {
+          const next = new Set(prev);
+          defaultPopulated.forEach(id => next.add(id));
+          return next;
+        });
+      }}
+    >
+      Accept Defaults ({untouchedDefaultCount})
+    </Button>
+  ) : null;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Sticky Header with Date & Save */}
-      <header className="sticky top-0 z-40 bg-background border-b shadow-sm">
-        <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <DatePicker
-              value={date}
-              onChange={handleDateChange}
-              maxDate={todayISO}
-              availableYears={availableYears}
-            />
-            {/* Today button */}
-            {date !== todayISO && (
+      <header className="sticky top-[41px] z-40 bg-background border-b shadow-sm">
+        <div className="max-w-3xl mx-auto px-3 sm:px-6 py-2 sm:py-3">
+          {/* Row 1: DatePicker + Today + (desktop: Private, Unsaved, Days) + Save */}
+          <div className="flex items-center justify-between gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <DatePicker
+                value={date}
+                onChange={handleDateChange}
+                maxDate={todayISO}
+                availableYears={availableYears}
+              />
+              {/* Today button */}
+              {date !== todayISO && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleDateChange(todayISO)}
+                  className="h-8 px-2 text-xs"
+                >
+                  Today
+                </Button>
+              )}
+              {/* Desktop-only: Private toggle */}
+              <label className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={showPrivate}
+                  onChange={(e) => setShowPrivate(e.target.checked)}
+                  className="h-3.5 w-3.5 rounded"
+                />
+                Private
+              </label>
+              {/* Desktop-only: Unsaved changes */}
+              {dirty && (
+                <span className="hidden sm:inline text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-200 dark:border-amber-700">
+                  Unsaved changes
+                </span>
+              )}
+              {/* Days counter - hidden on mobile */}
+              {dateHints && dateHints.required_days_possible > 0 && (
+                <span className="hidden sm:inline text-xs text-gray-500">
+                  {dateHints.required_days_completed}/{dateHints.required_days_possible} days
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Desktop-only: Accept Defaults */}
+              <div className="hidden sm:block">
+                {acceptDefaultsBtn}
+              </div>
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleDateChange(todayISO)}
-                className="h-8 px-2 text-xs"
+                onClick={save}
+                disabled={saving || metrics.length === 0 || !dirty}
+                variant={dirty ? "default" : "outline"}
               >
-                Today
+                {saving ? "Saving..." : "Save Day"}
               </Button>
-            )}
-            {/* Show private metrics checkbox */}
+              <span className="hidden sm:inline text-xs text-muted-foreground">Ctrl+Enter</span>
+            </div>
+          </div>
+
+          {/* Row 2: Mobile-only — Private + Accept Defaults + Unsaved */}
+          <div className="flex sm:hidden items-center gap-3 mt-2">
             <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
               <input
                 type="checkbox"
@@ -1657,45 +1719,12 @@ export default function Home() {
               />
               Private
             </label>
+            {acceptDefaultsBtn}
             {dirty && (
               <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded border border-amber-200 dark:border-amber-700">
                 Unsaved changes
               </span>
             )}
-            {dateHints && dateHints.required_days_possible > 0 && (
-              <span className="text-xs text-gray-500">
-                {dateHints.required_days_completed}/{dateHints.required_days_possible} days
-              </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Show Accept All Defaults button if there are untouched defaults */}
-            {defaultPopulated.size > 0 && (() => {
-              const untouchedCount = Array.from(defaultPopulated).filter(id => !touchedMetrics.has(id)).length;
-              return untouchedCount > 0 ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    setTouchedMetrics(prev => {
-                      const next = new Set(prev);
-                      defaultPopulated.forEach(id => next.add(id));
-                      return next;
-                    });
-                  }}
-                >
-                  Accept Defaults ({untouchedCount})
-                </Button>
-              ) : null;
-            })()}
-            <Button
-              onClick={save}
-              disabled={saving || metrics.length === 0 || !dirty}
-              variant={dirty ? "default" : "outline"}
-            >
-              {saving ? "Saving..." : "Save Day"}
-            </Button>
-            <span className="text-xs text-muted-foreground">Ctrl+Enter</span>
           </div>
         </div>
       </header>

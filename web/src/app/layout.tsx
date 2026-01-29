@@ -1,8 +1,8 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import Link from "next/link";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
+import { NavMenu } from "@/components/nav-menu";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -33,30 +33,9 @@ export default function RootLayout({
       <body style={{ fontFamily: "system-ui, sans-serif" }} className="overflow-x-hidden">
         <ThemeProvider>
           <AuthProvider>
-            <header className="border-b bg-background">
-              <nav className="max-w-5xl mx-auto flex items-center gap-3 sm:gap-4 px-3 sm:px-4 py-2 text-sm overflow-x-auto overscroll-x-contain">
-                <span className="font-semibold mr-4">Daily Tracker</span>
-                <Link href="/" className="hover:underline">
-                  Today
-                </Link>
-                <Link href="/metrics" className="hover:underline">
-                  Metrics
-                </Link>
-                <Link href="/wide" className="hover:underline">
-                  Wide
-                </Link>
-                <Link href="/ma" className="hover:underline">
-                  Moving Avg
-                </Link>
-                <Link href="/stats" className="hover:underline">
-                  Stats
-                </Link>
-                <Link href="/dashboard" className="px-2 text-sm hover:underline">
-                  Dashboard
-                </Link>
-                <Link href="/settings" className="hover:underline">
-                  Settings
-                </Link>
+            <header className="sticky top-0 z-50 border-b bg-background">
+              <nav className="max-w-5xl mx-auto px-3 sm:px-4 py-2">
+                <NavMenu />
               </nav>
             </header>
             <main className="max-w-5xl mx-auto px-4 py-4">{children}</main>

@@ -136,7 +136,14 @@ export function MetricHoverTooltip({
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fetchedRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number; above: boolean } | null>(null);
+
+  // Detect touch device on mount
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  useEffect(() => {
+    setIsTouchDevice("ontouchstart" in window);
+  }, []);
 
   // Fetch quick stats from the full stats endpoint
   const fetchQuickStats = useCallback(async () => {
@@ -249,6 +256,57 @@ export function MetricHoverTooltip({
     };
   }, []);
 
+  // Click-outside listener for touch devices
+  useEffect(() => {
+    if (!isTouchDevice || !showTooltip) return;
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (
+        containerRef.current && !containerRef.current.contains(e.target as Node) &&
+        tooltipRef.current && !tooltipRef.current.contains(e.target as Node)
+      ) {
+        setShowTooltip(false);
+      }
+    };
+
+    document.addEventListener("click", handleOutsideClick, true);
+    return () => document.removeEventListener("click", handleOutsideClick, true);
+  }, [isTouchDevice, showTooltip]);
+
+  // Handle tap on touch devices
+  const handleTouchClick = useCallback((e: React.MouseEvent) => {
+    if (!isTouchDevice) {
+      // Desktop: always open full sheet
+      onClick();
+      return;
+    }
+
+    // Touch device: first tap shows tooltip, second tap opens sheet
+    if (!showTooltip) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Position and show tooltip
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const positionAbove = spaceBelow < 250;
+
+        setTooltipPosition({
+          left: rect.left,
+          top: positionAbove ? rect.top : rect.bottom,
+          above: positionAbove,
+        });
+      }
+      setShowTooltip(true);
+      fetchQuickStats();
+    } else {
+      // Tooltip is already showing — open the full sheet
+      setShowTooltip(false);
+      onClick();
+    }
+  }, [isTouchDevice, showTooltip, onClick, fetchQuickStats]);
+
   // Don't show tooltip for text metrics
   if (metricType === "text") {
     return (
@@ -262,12 +320,12 @@ export function MetricHoverTooltip({
     <div
       ref={containerRef}
       className="relative inline-block"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onMouseEnter={isTouchDevice ? undefined : handleMouseEnter}
+      onMouseLeave={isTouchDevice ? undefined : handleMouseLeave}
     >
       <button
         type="button"
-        onClick={onClick}
+        onClick={handleTouchClick}
         className={cn(
           "hover:text-primary hover:underline underline-offset-2 transition-colors text-left",
           className
@@ -279,6 +337,7 @@ export function MetricHoverTooltip({
       {/* Tooltip - rendered via portal to avoid overflow clipping */}
       {showTooltip && tooltipPosition && createPortal(
         <div
+          ref={tooltipRef}
           className={cn(
             "fixed z-[9999]",
             "bg-popover text-popover-foreground",
@@ -398,9 +457,23 @@ export function MetricHoverTooltip({
                 </div>
               )}
 
-              <div className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
-                Click for full details
-              </div>
+              {isTouchDevice ? (
+                <button
+                  type="button"
+                  className="w-full text-xs text-primary font-medium pt-1.5 border-t mt-2 text-left"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowTooltip(false);
+                    onClick();
+                  }}
+                >
+                  View Details &rarr;
+                </button>
+              ) : (
+                <div className="text-[10px] text-muted-foreground pt-1 border-t mt-2">
+                  Click for full details
+                </div>
+              )}
             </div>
           )}
         </div>,

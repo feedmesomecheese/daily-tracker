@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   Sheet,
   SheetContent,
@@ -502,6 +503,51 @@ export function MetricStatsSheet({
   const [compareMetricsData, setCompareMetricsData] = useState<Record<string, StatsResponse>>({});
   const [normalizeComparison, setNormalizeComparison] = useState(true);
   const [showCompareDropdown, setShowCompareDropdown] = useState(false);
+
+  // Mobile detection
+  const isMobile = useMediaQuery("(max-width: 639px)");
+
+  // Left-edge swipe to close (like iOS back gesture)
+  const touchStartX = useRef<number | null>(null);
+  const touchDeltaX = useRef(0);
+  const edgeSwipe = useRef(false);
+  const sheetContentRef = useRef<HTMLDivElement>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const x = e.touches[0].clientX;
+    touchStartX.current = x;
+    touchDeltaX.current = 0;
+    // Only treat as edge swipe if starting within 30px of the left edge
+    edgeSwipe.current = x <= 30;
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (touchStartX.current === null || !edgeSwipe.current) return;
+    const delta = e.touches[0].clientX - touchStartX.current;
+    touchDeltaX.current = delta;
+
+    // Visual feedback: translate right as user swipes
+    if (delta > 0 && sheetContentRef.current) {
+      sheetContentRef.current.style.transform = `translateX(${delta}px)`;
+      sheetContentRef.current.style.opacity = String(Math.max(0.2, 1 - delta / 300));
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (sheetContentRef.current) {
+      sheetContentRef.current.style.transform = "";
+      sheetContentRef.current.style.opacity = "";
+    }
+
+    // Close if swiped right far enough from the left edge
+    if (edgeSwipe.current && touchDeltaX.current > 80) {
+      onOpenChange(false);
+    }
+
+    touchStartX.current = null;
+    touchDeltaX.current = 0;
+    edgeSwipe.current = false;
+  }, [onOpenChange]);
 
   // Reset chart settings when sheet closes
   useEffect(() => {
@@ -1043,8 +1089,16 @@ export function MetricStatsSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side="right"
-        className="w-full sm:max-w-[50vw] overflow-y-auto"
+        ref={sheetContentRef}
+        side={isMobile ? "bottom" : "right"}
+        className={
+          isMobile
+            ? "h-full overflow-y-auto overflow-x-hidden"
+            : "w-full sm:max-w-[50vw] overflow-y-auto"
+        }
+        onTouchStart={isMobile ? handleTouchStart : undefined}
+        onTouchMove={isMobile ? handleTouchMove : undefined}
+        onTouchEnd={isMobile ? handleTouchEnd : undefined}
       >
         <SheetHeader className="pb-4 border-b">
           <SheetTitle className="flex items-center gap-2">
@@ -1279,11 +1333,11 @@ export function MetricStatsSheet({
             {chartData.length > 0 && (
               <Card>
                 <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <CardTitle className="text-sm font-medium">
                       Moving Averages
                     </CardTitle>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
                       {/* Compare with other metrics dropdown */}
                       <div className="relative">
                         <Button
@@ -1372,12 +1426,12 @@ export function MetricStatsSheet({
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-2 sm:px-6">
                   <div style={{ width: "100%", height: 280 }}>
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart
                         data={chartDataWithMetricComparison}
-                        margin={{ top: 20, right: 10, left: 0, bottom: 5 }}
+                        margin={{ top: 20, right: 5, left: -10, bottom: 5 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
 
