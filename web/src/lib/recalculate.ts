@@ -11,7 +11,7 @@ type LogRow = {
 
 type ConfigRow = {
   metric_id: string;
-  type: "checkbox" | "number" | "time" | "hhmm" | "text";
+  type: "checkbox" | "number" | "score" | "count" | "time" | "hhmm" | "text";
   is_calculated: boolean;
   calc_expr: string | null;
 };
@@ -137,32 +137,44 @@ export async function recalculateFromDate(
   const configs = (configData || []) as ConfigRow[];
   const calculatedConfigs = configs.filter((c) => c.is_calculated && c.calc_expr);
 
-  // If no calculated metrics use prev(), nothing to recalculate
-  if (!hasAnyPrevDependency(configs)) {
+  // If no calculated metrics exist, nothing to do
+  if (calculatedConfigs.length === 0) {
     return { success: true, daysProcessed: 0, errors: [] };
   }
 
-  const maxN = getMaxPrevDays(configs);
+  const maxN = hasAnyPrevDependency(configs) ? getMaxPrevDays(configs) : 0;
 
   // Calculate date range for log data we need to fetch
   // We need from (fromDate - maxN) to today for prev() lookups
   const dataStartDate = addDays(fromDate, -maxN);
   const startDate = addDays(fromDate, 1); // Start recalculating from day after saved date
 
-  // Load all log data in the range
-  const { data: logData, error: logError } = await supabase
-    .from("log")
-    .select("date, metric_id, value")
-    .eq("owner_id", ownerId)
-    .gte("date", dataStartDate)
-    .lte("date", today)
-    .order("date", { ascending: true });
+  // Load all log data in the range (paginated to avoid Supabase row limits)
+  const logs: LogRow[] = [];
+  const PAGE_SIZE = 1000;
+  let logOffset = 0;
+  let hasMoreLogs = true;
 
-  if (logError) {
-    return { success: false, daysProcessed: 0, errors: [logError.message] };
+  while (hasMoreLogs) {
+    const { data: logData, error: logError } = await supabase
+      .from("log")
+      .select("date, metric_id, value")
+      .eq("owner_id", ownerId)
+      .gte("date", dataStartDate)
+      .lte("date", today)
+      .order("date", { ascending: true })
+      .range(logOffset, logOffset + PAGE_SIZE - 1);
+
+    if (logError) {
+      return { success: false, daysProcessed: 0, errors: [logError.message] };
+    }
+
+    const rows = (logData || []) as LogRow[];
+    logs.push(...rows);
+    hasMoreLogs = rows.length === PAGE_SIZE;
+    logOffset += PAGE_SIZE;
+    if (logOffset > 500000) break;
   }
-
-  const logs = (logData || []) as LogRow[];
 
   // Get all unique dates that have data and need recalculation
   const datesToProcess: string[] = [];
@@ -181,6 +193,36 @@ export async function recalculateFromDate(
   }));
 
   let daysProcessed = 0;
+  const BATCH_SIZE = 10;
+  let pendingUpserts: { owner_id: string; date: string; metric_id: string; value: number | null }[] = [];
+  let pendingDeletes: { date: string; metricIds: string[] }[] = [];
+
+  // Flush pending DB writes
+  const flushWrites = async () => {
+    if (pendingUpserts.length > 0) {
+      const { error: upsertError } = await supabase
+        .from("log")
+        .upsert(pendingUpserts, { onConflict: "owner_id,date,metric_id" });
+      if (upsertError) {
+        errors.push(`batch upsert: ${upsertError.message}`);
+      }
+      pendingUpserts = [];
+    }
+    for (const del of pendingDeletes) {
+      if (del.metricIds.length > 0) {
+        const { error: deleteError } = await supabase
+          .from("log")
+          .delete()
+          .eq("owner_id", ownerId)
+          .eq("date", del.date)
+          .in("metric_id", del.metricIds);
+        if (deleteError) {
+          errors.push(`${del.date} delete: ${deleteError.message}`);
+        }
+      }
+    }
+    pendingDeletes = [];
+  };
 
   // Process each date
   for (const date of datesToProcess) {
@@ -188,7 +230,7 @@ export async function recalculateFromDate(
     const ctxToday = buildContextFromRows(configs, logs, date);
 
     // Build prevByN for this date
-    const prevByN = buildPrevByN(configs, logs, date, maxN);
+    const prevByN = maxN > 0 ? buildPrevByN(configs, logs, date, maxN) : {};
 
     // Run calculation engine
     const { values, errors: calcErrors } = evaluateCalculatedMetricsV2(
@@ -204,74 +246,53 @@ export async function recalculateFromDate(
       }
     }
 
-    // Prepare upserts for calculated values
-    const upserts: { owner_id: string; date: string; metric_id: string; value: number | null }[] = [];
-    const deletes: string[] = [];
+    const dateDeletes: string[] = [];
 
     for (const c of calculatedConfigs) {
       const newValue = values[c.metric_id];
 
       if (newValue != null) {
-        upserts.push({
+        pendingUpserts.push({
           owner_id: ownerId,
           date,
           metric_id: c.metric_id,
           value: newValue,
         });
+        // Update local logs array immediately for subsequent days' prev() lookups
+        const idx = logs.findIndex((l) => l.date === date && l.metric_id === c.metric_id);
+        if (idx >= 0) {
+          logs[idx].value = newValue;
+        } else {
+          logs.push({ date, metric_id: c.metric_id, value: newValue });
+        }
       } else {
-        // If calculated value is null, we might want to delete the row
-        deletes.push(c.metric_id);
+        dateDeletes.push(c.metric_id);
       }
     }
 
-    // Upsert calculated values
-    if (upserts.length > 0) {
-      const { error: upsertError } = await supabase
-        .from("log")
-        .upsert(upserts, { onConflict: "owner_id,date,metric_id" });
-
-      if (upsertError) {
-        errors.push(`${date} upsert: ${upsertError.message}`);
-      }
-    }
-
-    // Delete null calculated values
-    if (deletes.length > 0) {
-      const { error: deleteError } = await supabase
-        .from("log")
-        .delete()
-        .eq("owner_id", ownerId)
-        .eq("date", date)
-        .in("metric_id", deletes);
-
-      if (deleteError) {
-        errors.push(`${date} delete: ${deleteError.message}`);
-      }
-    }
-
-    // Update our local logs array with the new calculated values for subsequent days
-    for (const u of upserts) {
-      // Remove old entry if exists
-      const idx = logs.findIndex((l) => l.date === u.date && l.metric_id === u.metric_id);
-      if (idx >= 0) {
-        logs[idx].value = u.value;
-      } else {
-        logs.push({ date: u.date, metric_id: u.metric_id, value: u.value });
-      }
+    if (dateDeletes.length > 0) {
+      pendingDeletes.push({ date, metricIds: dateDeletes });
     }
 
     daysProcessed++;
 
-    // Report progress
-    if (onProgress) {
-      onProgress({
-        current: daysProcessed,
-        total: datesToProcess.length,
-        date,
-        percent: Math.round((daysProcessed / datesToProcess.length) * 100),
-      });
+    // Flush writes and report progress every BATCH_SIZE dates
+    if (daysProcessed % BATCH_SIZE === 0 || daysProcessed === datesToProcess.length) {
+      await flushWrites();
+
+      if (onProgress) {
+        onProgress({
+          current: daysProcessed,
+          total: datesToProcess.length,
+          date,
+          percent: Math.round((daysProcessed / datesToProcess.length) * 100),
+        });
+      }
     }
   }
+
+  // Final flush
+  await flushWrites();
 
   return {
     success: errors.length === 0,

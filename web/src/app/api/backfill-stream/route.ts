@@ -1,5 +1,8 @@
-import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { recalculateFromDate, backfillAllCalculations } from "@/lib/recalculate";
+
+// Allow long-running backfill operations
+export const maxDuration = 300;
 
 /**
  * GET /api/backfill-stream?all=true
@@ -8,7 +11,8 @@ import { recalculateFromDate, backfillAllCalculations } from "@/lib/recalculate"
  * Streams progress updates via Server-Sent Events
  */
 export async function GET(req: Request) {
-  const supabase = supabaseServerFromRequest(req);
+  // Use cookie-based auth since EventSource doesn't support custom headers
+  const supabase = await createSupabaseServerClient();
 
   // Auth
   const {
