@@ -14,6 +14,7 @@ export type CalendarHeatmapProps = {
   metricType?: "number" | "checkbox" | "hhmm" | "time" | "score" | "count" | "text";
   direction?: "increase" | "decrease" | "neutral";
   year?: number;
+  selectedDate?: string | null;
   onHover?: (cell: { date: string; value: number } | null) => void;
   onCellClick?: (date: string, value: number) => void;
 };
@@ -40,6 +41,7 @@ export function CalendarHeatmap({
   metricType = "number",
   direction = "increase",
   year,
+  selectedDate,
   onHover,
   onCellClick,
 }: CalendarHeatmapProps) {
@@ -189,6 +191,7 @@ export function CalendarHeatmap({
                   if (!cell) return <div key={`e${i}`} />;
                   const hasValue = cell.value !== undefined;
                   const isGoalMet = goalMetMap.get(cell.date);
+                  const isSelected = selectedDate === cell.date;
 
                   // For checkbox, only color if checked
                   const showColor = hasValue && (metricType !== "checkbox" || cell.value! >= 0.5);
@@ -196,9 +199,9 @@ export function CalendarHeatmap({
                   return (
                     <div
                       key={cell.date}
-                      className={`aspect-square rounded-[2px] flex items-center justify-center text-[7px] transition-transform relative ${
-                        hasValue ? "cursor-pointer hover:scale-150 hover:z-10 hover:ring-2 hover:ring-foreground/50" : "cursor-default"
-                      }`}
+                      className={`aspect-square rounded-[2px] flex items-center justify-center text-[7px] transition-all relative ${
+                        hasValue ? "cursor-pointer hover:scale-125 hover:z-10" : "cursor-default"
+                      } ${isSelected ? "scale-150 z-20 ring-2 ring-foreground shadow-lg" : ""}`}
                       style={{
                         backgroundColor: showColor ? getColor(cell.value!) : "var(--muted)",
                         opacity: hasValue ? 1 : 0.2,

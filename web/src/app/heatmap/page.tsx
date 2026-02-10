@@ -452,6 +452,7 @@ export default function HeatmapPage() {
             year={selectedYear}
             metricType={metricType}
             direction={direction}
+            selectedDate={hoveredCell?.date}
             onHover={handleHover}
             onCellClick={handleCellClick}
           />

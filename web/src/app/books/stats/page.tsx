@@ -61,23 +61,24 @@ type Stats = {
   fastestRead: { title: string; pagesPerDay: number } | null;
 };
 
+// Modern color palette - cohesive and accessible
 const FORMAT_COLORS = {
-  ebook: "#f59e0b",    // Yellow/amber
-  physical: "#ef4444", // Red
-  audio: "#3b82f6",    // Blue
+  ebook: "#6366f1",    // Indigo
+  physical: "#f97316", // Orange
+  audio: "#06b6d4",    // Cyan
 };
 
 const GENRE_COLORS = [
-  "#3b82f6", // blue - fiction
-  "#22c55e", // green - non fiction
-  "#f59e0b", // amber - personal development
-  "#ef4444", // red - sci-fi
-  "#8b5cf6", // purple - memoir
-  "#06b6d4", // cyan - finance
-  "#ec4899", // pink - health
-  "#84cc16", // lime - biography
-  "#f97316", // orange
   "#6366f1", // indigo
+  "#8b5cf6", // violet
+  "#a855f7", // purple
+  "#d946ef", // fuchsia
+  "#ec4899", // pink
+  "#f43f5e", // rose
+  "#f97316", // orange
+  "#eab308", // yellow
+  "#22c55e", // green
+  "#06b6d4", // cyan
 ];
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -439,14 +440,13 @@ export default function BooksStatsPage() {
                   <Pie
                     data={genreData}
                     cx="50%"
-                    cy="50%"
-                    outerRadius="80%"
-                    innerRadius="30%"
+                    cy="45%"
+                    outerRadius="70%"
+                    innerRadius="35%"
                     dataKey="value"
                     onClick={(data) => handleGenreClick(data.name)}
                     style={{ cursor: "pointer" }}
-                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                    labelLine={false}
+                    paddingAngle={2}
                   >
                     {genreData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={GENRE_COLORS[index % GENRE_COLORS.length]} />
@@ -458,6 +458,13 @@ export default function BooksStatsPage() {
                       const pct = ((value / total) * 100).toFixed(1);
                       return [`${value} (${pct}%)`, name];
                     }}
+                  />
+                  <Legend
+                    layout="horizontal"
+                    align="center"
+                    verticalAlign="bottom"
+                    wrapperStyle={{ fontSize: 11, cursor: "pointer", paddingTop: 10 }}
+                    onClick={(data) => data.value && handleGenreClick(data.value)}
                   />
                 </PieChart>
               </ResponsiveContainer>
