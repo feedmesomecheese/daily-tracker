@@ -3,6 +3,21 @@ import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
 type PeriodType = "week" | "month" | "quarter" | "year";
 
+type LogEntry = {
+  date: string;
+  metric_id: string;
+  value: number;
+};
+
+type ConfigEntry = {
+  metric_id: string;
+  metric_name: string;
+  type: string;
+  analytics_config: { direction?: string; higher_is_better?: boolean } | null;
+  active: boolean;
+  private: boolean | null;
+};
+
 function getLocalDateString(d: Date = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
@@ -133,8 +148,8 @@ export async function GET(req: Request) {
   const currentLogs = currentLogsResult.data;
   const prevLogs = prevLogsResult.data;
 
-  const configMap = new Map(
-    (configData || []).map((c) => [
+  const configMap = new Map<string, { metric_name: string; type: string; direction: string }>(
+    (configData || []).map((c: ConfigEntry) => [
       c.metric_id,
       {
         metric_name: c.metric_name,
@@ -145,9 +160,8 @@ export async function GET(req: Request) {
   );
 
   // Get all-time extremes per metric (max for increase, min for decrease)
-  const metricsWithData = [...new Set((currentLogs || []).map((l) => l.metric_id))].filter(
-    (id) => configMap.has(id)
-  );
+  const allMetricIds: string[] = (currentLogs || []).map((l: LogEntry) => l.metric_id);
+  const metricsWithData = Array.from(new Set(allMetricIds)).filter((id) => configMap.has(id));
   const allTimeExtremeMap = new Map<string, { max: number; min: number }>();
 
   if (metricsWithData.length > 0) {
@@ -216,7 +230,7 @@ export async function GET(req: Request) {
     records: { is_period_high: boolean; is_all_time_high: boolean; is_period_low: boolean; is_all_time_low: boolean };
   }[] = [];
 
-  for (const [metricId, config] of configMap) {
+  for (const [metricId, config] of Array.from(configMap.entries())) {
     const currentStats = calculateStats(currentLogs, metricId);
     const prevStats = calculateStats(prevLogs, metricId);
 
@@ -281,7 +295,9 @@ export async function GET(req: Request) {
   }
 
   const daysWithLogs = new Set(
-    (currentLogs || []).filter((l) => configMap.has(l.metric_id)).map((l) => l.date)
+    ((currentLogs || []) as LogEntry[])
+      .filter((l: LogEntry) => configMap.has(l.metric_id))
+      .map((l: LogEntry) => l.date)
   );
 
   // Notable achievements in this period - respect direction
@@ -289,8 +305,8 @@ export async function GET(req: Request) {
   for (const m of metrics) {
     // For "increase" direction, show all-time highs
     if (m.direction === "increase" && m.records.is_all_time_high) {
-      const dayWithMax = (currentLogs || []).find(
-        (l) => l.metric_id === m.metric_id && l.value === m.max
+      const dayWithMax = ((currentLogs || []) as LogEntry[]).find(
+        (l: LogEntry) => l.metric_id === m.metric_id && l.value === m.max
       );
       achievements.push({
         type: "all_time_high",
@@ -302,8 +318,8 @@ export async function GET(req: Request) {
     }
     // For "decrease" direction, show all-time lows (which is good)
     if (m.direction === "decrease" && m.records.is_all_time_low) {
-      const dayWithMin = (currentLogs || []).find(
-        (l) => l.metric_id === m.metric_id && l.value === m.min
+      const dayWithMin = ((currentLogs || []) as LogEntry[]).find(
+        (l: LogEntry) => l.metric_id === m.metric_id && l.value === m.min
       );
       achievements.push({
         type: "all_time_low",

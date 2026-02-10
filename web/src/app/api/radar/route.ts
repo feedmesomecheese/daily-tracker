@@ -11,6 +11,17 @@ type MetricStats = {
   higher_is_better: boolean;
 };
 
+type ConfigEntry = {
+  metric_id: string;
+  metric_name: string;
+  analytics_config: { higher_is_better?: boolean } | null;
+};
+
+type MetricConfig = {
+  metric_name: string;
+  higher_is_better: boolean;
+};
+
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
 
@@ -77,8 +88,8 @@ export async function GET(req: Request) {
   const configData = configResult.data;
   const logData = logResult.data;
 
-  const configMap = new Map(
-    (configData || []).map((c) => [
+  const configMap = new Map<string, MetricConfig>(
+    (configData || []).map((c: ConfigEntry) => [
       c.metric_id,
       {
         metric_name: c.metric_name,
@@ -176,16 +187,16 @@ export async function GET(req: Request) {
         break;
 
       case "7d":
-        value = getAverageForPeriod(stats, 7, date);
+        value = getAverageForPeriod(stats, 7, date ?? undefined);
         if (compareDate) {
-          compareValue = getAverageForPeriod(stats, 7, compareDate);
+          compareValue = getAverageForPeriod(stats, 7, compareDate ?? undefined);
         }
         break;
 
       case "30d":
-        value = getAverageForPeriod(stats, 30, date);
+        value = getAverageForPeriod(stats, 30, date ?? undefined);
         if (compareDate) {
-          compareValue = getAverageForPeriod(stats, 30, compareDate);
+          compareValue = getAverageForPeriod(stats, 30, compareDate ?? undefined);
         }
         break;
 

@@ -1,6 +1,27 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
+type Book = {
+  id: string;
+  title: string;
+  author: string;
+  pages: number | null;
+  genre: string | null;
+  cover_url: string | null;
+  format: string | null;
+  source: string | null;
+  status: string;
+  priority: number | null;
+  added_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  rating: number | null;
+  notes: string | null;
+  would_reread: boolean;
+  reading_number: number;
+  sort_order: number | null;
+};
+
 async function getAuthedClient(req: Request) {
   const supabase = supabaseServerFromRequest(req);
   const {
@@ -35,30 +56,30 @@ export async function GET(req: Request) {
 
   // Overall stats
   const totalBooks = books.length;
-  const completedBooks = books.filter((b) => b.status === "completed");
-  const readingBooks = books.filter((b) => b.status === "reading");
-  const toReadBooks = books.filter((b) => b.status === "to_read");
-  const dnfBooks = books.filter((b) => b.status === "dnf");
+  const completedBooks = (books as Book[]).filter((b: Book) => b.status === "completed");
+  const readingBooks = (books as Book[]).filter((b: Book) => b.status === "reading");
+  const toReadBooks = (books as Book[]).filter((b: Book) => b.status === "to_read");
+  const dnfBooks = (books as Book[]).filter((b: Book) => b.status === "dnf");
 
   // Pages stats - exclude audiobooks from average (they often have 0 pages)
-  const completedWithPages = completedBooks.filter((b) => b.format !== "audio" && b.pages && b.pages > 0);
-  const totalPages = completedBooks.reduce((sum, b) => sum + (b.pages || 0), 0);
+  const completedWithPages = completedBooks.filter((b: Book) => b.format !== "audio" && b.pages && b.pages > 0);
+  const totalPages = completedBooks.reduce((sum: number, b: Book) => sum + (b.pages || 0), 0);
   const avgPages = completedWithPages.length > 0
-    ? Math.round(completedWithPages.reduce((sum, b) => sum + (b.pages || 0), 0) / completedWithPages.length)
+    ? Math.round(completedWithPages.reduce((sum: number, b: Book) => sum + (b.pages || 0), 0) / completedWithPages.length)
     : 0;
 
   // Rating stats
-  const ratedBooks = completedBooks.filter((b) => b.rating != null);
+  const ratedBooks = completedBooks.filter((b: Book) => b.rating != null);
   const avgRating = ratedBooks.length > 0
-    ? Math.round((ratedBooks.reduce((sum, b) => sum + b.rating, 0) / ratedBooks.length) * 10) / 10
+    ? Math.round((ratedBooks.reduce((sum: number, b: Book) => sum + (b.rating || 0), 0) / ratedBooks.length) * 10) / 10
     : null;
 
   // Current year stats
-  const booksThisYear = completedBooks.filter((b) => {
+  const booksThisYear = completedBooks.filter((b: Book) => {
     if (!b.finished_at) return false;
     return new Date(b.finished_at).getFullYear() === currentYear;
   });
-  const pagesThisYear = booksThisYear.reduce((sum, b) => sum + (b.pages || 0), 0);
+  const pagesThisYear = booksThisYear.reduce((sum: number, b: Book) => sum + (b.pages || 0), 0);
 
   // Books by year with format breakdown
   const booksByYear: Record<number, { count: number; pages: number; physical: number; ebook: number; audio: number }> = {};
@@ -172,10 +193,10 @@ export async function GET(req: Request) {
     .slice(0, 10);
 
   // Re-reads
-  const rereadBooks = books.filter((b) => b.reading_number > 1);
+  const rereadBooks = (books as Book[]).filter((b: Book) => b.reading_number > 1);
 
   // Would reread
-  const wouldRereadBooks = completedBooks.filter((b) => b.would_reread);
+  const wouldRereadBooks = completedBooks.filter((b: Book) => b.would_reread);
 
   // Get all unique genres for the genre by year chart (sorted by total count)
   const allGenres = topGenres.map((g) => g.genre);
@@ -183,13 +204,13 @@ export async function GET(req: Request) {
   // Additional stats
 
   // Average time to read/listen (days) - broken down by format
-  const booksWithReadTime = completedBooks.filter((b) => b.started_at && b.finished_at);
+  const booksWithReadTime = completedBooks.filter((b: Book) => b.started_at && b.finished_at);
 
   // Reading (physical + ebook)
-  const readBooks = booksWithReadTime.filter((b) => b.format !== "audio");
-  const totalReadTime = readBooks.reduce((sum, b) => {
-    const start = new Date(b.started_at);
-    const end = new Date(b.finished_at);
+  const readBooks = booksWithReadTime.filter((b: Book) => b.format !== "audio");
+  const totalReadTime = readBooks.reduce((sum: number, b: Book) => {
+    const start = new Date(b.started_at!);
+    const end = new Date(b.finished_at!);
     return sum + Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   }, 0);
   const avgTimeToRead = readBooks.length > 0
@@ -197,10 +218,10 @@ export async function GET(req: Request) {
     : null;
 
   // Listening (audiobooks)
-  const listenBooks = booksWithReadTime.filter((b) => b.format === "audio");
-  const totalListenTime = listenBooks.reduce((sum, b) => {
-    const start = new Date(b.started_at);
-    const end = new Date(b.finished_at);
+  const listenBooks = booksWithReadTime.filter((b: Book) => b.format === "audio");
+  const totalListenTime = listenBooks.reduce((sum: number, b: Book) => {
+    const start = new Date(b.started_at!);
+    const end = new Date(b.finished_at!);
     return sum + Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
   }, 0);
   const avgTimeToListen = listenBooks.length > 0
@@ -208,12 +229,12 @@ export async function GET(req: Request) {
     : null;
 
   // Longest and shortest books
-  const booksWithPages = completedBooks.filter((b) => b.pages && b.pages > 0);
+  const booksWithPages = completedBooks.filter((b: Book) => b.pages && b.pages > 0);
   const longestBook = booksWithPages.length > 0
-    ? booksWithPages.reduce((max, b) => (b.pages! > max.pages! ? b : max))
+    ? booksWithPages.reduce((max: Book, b: Book) => (b.pages! > max.pages! ? b : max))
     : null;
   const shortestBook = booksWithPages.length > 0
-    ? booksWithPages.reduce((min, b) => (b.pages! < min.pages! ? b : min))
+    ? booksWithPages.reduce((min: Book, b: Book) => (b.pages! < min.pages! ? b : min))
     : null;
 
   // Most prolific month (all time)
@@ -247,14 +268,14 @@ export async function GET(req: Request) {
 
   // Fastest read (with pages)
   const fastestRead = booksWithReadTime
-    .filter((b) => b.pages && b.pages > 0)
-    .map((b) => {
-      const start = new Date(b.started_at);
-      const end = new Date(b.finished_at);
+    .filter((b: Book) => b.pages && b.pages > 0)
+    .map((b: Book) => {
+      const start = new Date(b.started_at!);
+      const end = new Date(b.finished_at!);
       const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
-      return { ...b, pagesPerDay: Math.round(b.pages / days) };
+      return { ...b, pagesPerDay: Math.round(b.pages! / days) };
     })
-    .sort((a, b) => b.pagesPerDay - a.pagesPerDay)[0] || null;
+    .sort((a: Book & { pagesPerDay: number }, b: Book & { pagesPerDay: number }) => b.pagesPerDay - a.pagesPerDay)[0] || null;
 
   return NextResponse.json({
     overview: {

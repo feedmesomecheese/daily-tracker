@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
+type Photo = {
+  id: string;
+  storage_path: string;
+  thumbnail_path: string | null;
+  caption: string | null;
+  date: string;
+  metric_id: string | null;
+  created_at: string;
+};
+
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
 
@@ -39,7 +49,7 @@ export async function GET(req: Request) {
 
   // Get signed URLs for all photos
   const photosWithUrls = await Promise.all(
-    (photos || []).map(async (photo) => {
+    ((photos || []) as Photo[]).map(async (photo: Photo) => {
       const { data: urlData } = await supabase.storage
         .from("daily-tracker-photos")
         .createSignedUrl(photo.storage_path, 3600);

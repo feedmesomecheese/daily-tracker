@@ -137,8 +137,8 @@ export async function POST(req: Request) {
     metricsToCheck = metricConfig.has(metric_id) ? [metric_id] : [];
   } else {
     // Check all non-neutral metrics that have logs
-    const loggedMetrics = [...new Set((logs || []).map((l: LogEntry) => l.metric_id))];
-    metricsToCheck = loggedMetrics.filter((m) => metricConfig.has(m));
+    const loggedMetrics: string[] = Array.from(new Set((logs || []).map((l: LogEntry) => l.metric_id)));
+    metricsToCheck = loggedMetrics.filter((m: string) => metricConfig.has(m));
   }
 
   const newAchievements: AchievementCheck[] = [];

@@ -1,6 +1,30 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
+type AchievementDef = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  tier: number;
+  threshold: number | null;
+};
+
+type EarnedAchievement = {
+  id: string;
+  achievement_id: string;
+  metric_id: string | null;
+  earned_at: string;
+  value: Record<string, unknown> | null;
+  notified: boolean;
+};
+
+type ConfigEntry = {
+  metric_id: string;
+  metric_name: string;
+};
+
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
 
@@ -45,7 +69,7 @@ export async function GET(req: Request) {
   }
 
   // Get metric names for context
-  const metricIds = [...new Set((earned || []).map((e) => e.metric_id).filter(Boolean))];
+  const metricIds = Array.from(new Set((earned || []).map((e: { metric_id: string | null }) => e.metric_id).filter(Boolean)));
   let metricNames: Record<string, string> = {};
 
   if (metricIds.length > 0) {
@@ -56,17 +80,17 @@ export async function GET(req: Request) {
       .in("metric_id", metricIds);
 
     metricNames = Object.fromEntries(
-      (configs || []).map((c) => [c.metric_id, c.metric_name])
+      (configs || []).map((c: ConfigEntry) => [c.metric_id, c.metric_name])
     );
   }
 
   // Merge definitions with earned status
-  const achievementMap = new Map(
-    (definitions || []).map((d) => [d.id, d])
+  const achievementMap = new Map<string, AchievementDef>(
+    (definitions || []).map((d: AchievementDef) => [d.id, d])
   );
 
-  const earnedMap = new Map<string, typeof earned>();
-  for (const e of earned || []) {
+  const earnedMap = new Map<string, EarnedAchievement[]>();
+  for (const e of (earned || []) as EarnedAchievement[]) {
     const key = e.metric_id ? `${e.achievement_id}:${e.metric_id}` : e.achievement_id;
     if (!earnedMap.has(key)) {
       earnedMap.set(key, []);
@@ -75,21 +99,23 @@ export async function GET(req: Request) {
   }
 
   // Build response with all achievements
-  const allAchievements = (definitions || []).map((def) => ({
+  const allAchievements = (definitions || []).map((def: AchievementDef) => ({
     ...def,
-    earned: (earned || []).filter((e) => e.achievement_id === def.id).map((e) => ({
-      ...e,
-      metric_name: e.metric_id ? metricNames[e.metric_id] : null,
-    })),
+    earned: ((earned || []) as EarnedAchievement[])
+      .filter((e: EarnedAchievement) => e.achievement_id === def.id)
+      .map((e: EarnedAchievement) => ({
+        ...e,
+        metric_name: e.metric_id ? metricNames[e.metric_id] : null,
+      })),
   }));
 
   // Recent achievements (last 30 days)
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const recentAchievements = (earned || [])
-    .filter((e) => new Date(e.earned_at) > thirtyDaysAgo)
-    .map((e) => {
+  const recentAchievements = ((earned || []) as EarnedAchievement[])
+    .filter((e: EarnedAchievement) => new Date(e.earned_at) > thirtyDaysAgo)
+    .map((e: EarnedAchievement) => {
       const def = achievementMap.get(e.achievement_id);
       return {
         ...e,
@@ -101,8 +127,8 @@ export async function GET(req: Request) {
   // Stats
   const totalEarned = (earned || []).length;
   const totalPossible = (definitions || []).length;
-  const tierCounts = (earned || []).reduce(
-    (acc, e) => {
+  const tierCounts = ((earned || []) as EarnedAchievement[]).reduce(
+    (acc: Record<number, number>, e: EarnedAchievement) => {
       const def = achievementMap.get(e.achievement_id);
       if (def) {
         acc[def.tier] = (acc[def.tier] || 0) + 1;
@@ -120,7 +146,7 @@ export async function GET(req: Request) {
       total_possible: totalPossible,
       by_tier: tierCounts,
     },
-    unnotified: (earned || []).filter((e) => !e.notified),
+    unnotified: ((earned || []) as EarnedAchievement[]).filter((e: EarnedAchievement) => !e.notified),
   });
 }
 

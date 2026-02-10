@@ -286,7 +286,7 @@ export default function BooksStatsPage() {
                     name="E-Book"
                     onClick={(data, _, e) => {
                       e.stopPropagation();
-                      handleYearClick(data.year, "ebook");
+                      handleYearClick((data as unknown as { year: number }).year, "ebook");
                     }}
                   />
                   <Bar
@@ -296,7 +296,7 @@ export default function BooksStatsPage() {
                     name="Physical"
                     onClick={(data, _, e) => {
                       e.stopPropagation();
-                      handleYearClick(data.year, "physical");
+                      handleYearClick((data as unknown as { year: number }).year, "physical");
                     }}
                   />
                   <Bar
@@ -306,7 +306,7 @@ export default function BooksStatsPage() {
                     name="Audiobook"
                     onClick={(data, _, e) => {
                       e.stopPropagation();
-                      handleYearClick(data.year, "audio");
+                      handleYearClick((data as unknown as { year: number }).year, "audio");
                     }}
                   />
                 </BarChart>
@@ -349,7 +349,7 @@ export default function BooksStatsPage() {
                       name={genre}
                       onClick={(data, _, e) => {
                         e.stopPropagation();
-                        handleGenreClick(genre, data.year);
+                        handleGenreClick(genre, (data as unknown as { year: number }).year);
                       }}
                     />
                   ))}
@@ -395,7 +395,7 @@ export default function BooksStatsPage() {
                     name="E-Book"
                     onClick={(data, _, e) => {
                       e.stopPropagation();
-                      handleMonthClick(data.monthNum, "ebook");
+                      handleMonthClick((data as unknown as { monthNum: number }).monthNum, "ebook");
                     }}
                   />
                   <Bar
@@ -405,7 +405,7 @@ export default function BooksStatsPage() {
                     name="Physical"
                     onClick={(data, _, e) => {
                       e.stopPropagation();
-                      handleMonthClick(data.monthNum, "physical");
+                      handleMonthClick((data as unknown as { monthNum: number }).monthNum, "physical");
                     }}
                   />
                   <Bar
@@ -415,7 +415,7 @@ export default function BooksStatsPage() {
                     name="Audiobook"
                     onClick={(data, _, e) => {
                       e.stopPropagation();
-                      handleMonthClick(data.monthNum, "audio");
+                      handleMonthClick((data as unknown as { monthNum: number }).monthNum, "audio");
                     }}
                   />
                 </BarChart>
@@ -461,7 +461,7 @@ export default function BooksStatsPage() {
                     align="right"
                     verticalAlign="middle"
                     wrapperStyle={{ fontSize: 11, paddingLeft: 10, cursor: "pointer" }}
-                    onClick={(data) => handleGenreClick(data.value)}
+                    onClick={(data) => data.value && handleGenreClick(data.value)}
                     formatter={(value: string) => {
                       const total = genreData.reduce((sum, g) => sum + g.value, 0);
                       const item = genreData.find((g) => g.name === value);

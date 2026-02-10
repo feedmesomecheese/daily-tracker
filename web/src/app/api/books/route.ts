@@ -2,6 +2,27 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
+type Book = {
+  id: string;
+  title: string;
+  author: string;
+  pages: number | null;
+  genre: string | null;
+  cover_url: string | null;
+  format: string | null;
+  source: string | null;
+  status: string;
+  priority: number | null;
+  added_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  rating: number | null;
+  notes: string | null;
+  would_reread: boolean;
+  reading_number: number;
+  sort_order: number | null;
+};
+
 const BookSchema = z.object({
   title: z.string().min(1),
   author: z.string().min(1),
@@ -115,21 +136,21 @@ export async function GET(req: Request) {
   let filteredData = data;
   if (finishedYear) {
     const year = parseInt(finishedYear);
-    filteredData = filteredData.filter((b) => {
+    filteredData = filteredData.filter((b: Book) => {
       if (!b.finished_at) return false;
       return new Date(b.finished_at).getFullYear() === year;
     });
   }
   if (finishedMonth) {
     const month = parseInt(finishedMonth);
-    filteredData = filteredData.filter((b) => {
+    filteredData = filteredData.filter((b: Book) => {
       if (!b.finished_at) return false;
       return new Date(b.finished_at).getMonth() + 1 === month;
     });
   }
 
   // Calculate time_to_read for each book (in days)
-  const booksWithTimeToRead = filteredData.map((book) => {
+  const booksWithTimeToRead = filteredData.map((book: Book) => {
     let timeToRead: number | null = null;
     if (book.started_at && book.finished_at) {
       const start = new Date(book.started_at);
@@ -141,7 +162,7 @@ export async function GET(req: Request) {
 
   // If sorting by time_to_read, do it client-side since it's a computed field
   if (sortBy === "time_to_read") {
-    booksWithTimeToRead.sort((a, b) => {
+    booksWithTimeToRead.sort((a: Book & { time_to_read: number | null }, b: Book & { time_to_read: number | null }) => {
       if (a.time_to_read === null) return sortDir === "asc" ? 1 : -1;
       if (b.time_to_read === null) return sortDir === "asc" ? -1 : 1;
       return sortDir === "asc"

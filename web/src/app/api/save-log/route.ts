@@ -190,7 +190,7 @@ export async function POST(req: Request) {
                     },
                     { onConflict: "owner_id,achievement_id,metric_id", ignoreDuplicates: true }
                   )
-                  .then(({ data }) => {
+                  .then(({ data }: { data: unknown }) => {
                     if (data) {
                       newAchievements.push({ achievement_id: sa.id, metric_id });
                     }
