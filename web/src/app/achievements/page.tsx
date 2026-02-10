@@ -92,8 +92,8 @@ export default function AchievementsPage() {
   }, []);
 
   // Group achievements by category
-  const groupedAchievements = useMemo(() => {
-    if (!data) return new Map();
+  const groupedAchievements = useMemo((): Map<string, Achievement[]> => {
+    if (!data) return new Map<string, Achievement[]>();
 
     const groups = new Map<string, Achievement[]>();
     for (const a of data.achievements) {
@@ -105,7 +105,7 @@ export default function AchievementsPage() {
   }, [data]);
 
   // Filter based on active tab
-  const filteredAchievements = useMemo(() => {
+  const filteredAchievements = useMemo((): Achievement[] => {
     if (!data) return [];
 
     if (activeTab === "all") {
