@@ -194,7 +194,8 @@ async function main() {
   const bookCounts = new Map<string, number>();
 
   // Transform records
-  const books = records.map((row: Record<string, string>) => {
+  const typedRecords = records as Record<string, string>[];
+  const books = typedRecords.map((row) => {
     const title = row[cols.title!]?.trim() || "";
     const author = row[cols.author!]?.trim() || "";
 
