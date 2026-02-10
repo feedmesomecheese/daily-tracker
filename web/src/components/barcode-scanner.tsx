@@ -18,18 +18,11 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [isInitialized, setIsInitialized] = useState(false);
-  const [debugLog, setDebugLog] = useState<string[]>(["Initializing..."]);
-
-  const addLog = (msg: string) => {
-    setDebugLog((prev) => [...prev.slice(-4), msg]);
-  };
 
   // Get available cameras on mount - request permission first
   useEffect(() => {
     const init = async () => {
       try {
-        addLog("Requesting camera permission...");
-
         // Request permission first - this triggers the permission prompt
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" }
@@ -37,11 +30,9 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
 
         // Stop the temporary stream
         stream.getTracks().forEach(track => track.stop());
-        addLog("Permission granted");
 
         // Now list devices (we'll have access to deviceIds after permission)
         const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-        addLog(`Found ${devices.length} camera(s)`);
         setCameras(devices);
 
         // Prefer back camera on mobile
@@ -53,12 +44,10 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
         );
         const selected = backCamera?.deviceId || devices[0]?.deviceId || "";
         setSelectedCamera(selected);
-        addLog(selected ? `Selected: ${backCamera ? "back" : "front"} camera` : "Using default camera");
         setIsInitialized(true);
       } catch (err) {
         console.error("Camera init failed:", err);
         const errMsg = err instanceof Error ? err.message : String(err);
-        addLog(`Error: ${errMsg}`);
         setError(`Camera access denied: ${errMsg}`);
       }
     };
@@ -82,7 +71,6 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
     const startScanning = async () => {
       try {
         setError(null);
-        addLog("Starting camera stream...");
 
         // Use selectedCamera if available, otherwise undefined for default
         const controls = await reader.decodeFromVideoDevice(
@@ -93,13 +81,11 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
 
             if (result) {
               const text = result.getText();
-              addLog(`Scanned: ${text}`);
               // ISBN-13 starts with 978 or 979, ISBN-10 is 10 digits
               const isValidISBN =
                 /^97[89]\d{10}$/.test(text) || /^\d{10}$/.test(text);
 
               if (isValidISBN) {
-                addLog(`Valid ISBN found!`);
                 setScanning(false);
                 controls.stop();
                 onScan(text);
@@ -108,17 +94,14 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
 
             if (err && !(err instanceof NotFoundException)) {
               console.error("Scan error:", err);
-              addLog(`Scan error: ${err}`);
             }
           }
         );
 
-        addLog("Camera active, scanning...");
         controlsRef.current = controls;
       } catch (err) {
         console.error("Failed to start scanning:", err);
         const errMsg = err instanceof Error ? err.message : String(err);
-        addLog(`Camera error: ${errMsg}`);
         if (active) {
           setError(`Failed to start camera: ${errMsg}`);
         }
@@ -205,13 +188,6 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
             Switch Camera
           </Button>
         )}
-
-        {/* Debug log */}
-        <div className="bg-black/60 rounded p-2 text-xs font-mono text-green-400 space-y-0.5">
-          {debugLog.map((log, i) => (
-            <div key={i}>{log}</div>
-          ))}
-        </div>
       </div>
     </div>
   );
