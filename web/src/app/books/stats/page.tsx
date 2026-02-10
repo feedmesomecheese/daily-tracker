@@ -432,18 +432,21 @@ export default function BooksStatsPage() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Genre Distribution</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-2 sm:px-6">
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart margin={{ top: 0, right: 10, bottom: 0, left: 10 }}>
+                <PieChart margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
                   <Pie
                     data={genreData}
-                    cx="40%"
+                    cx="50%"
                     cy="50%"
-                    outerRadius={70}
+                    outerRadius="80%"
+                    innerRadius="30%"
                     dataKey="value"
                     onClick={(data) => handleGenreClick(data.name)}
                     style={{ cursor: "pointer" }}
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                    labelLine={false}
                   >
                     {genreData.map((_, index) => (
                       <Cell key={`cell-${index}`} fill={GENRE_COLORS[index % GENRE_COLORS.length]} />
@@ -454,19 +457,6 @@ export default function BooksStatsPage() {
                       const total = genreData.reduce((sum, g) => sum + g.value, 0);
                       const pct = ((value / total) * 100).toFixed(1);
                       return [`${value} (${pct}%)`, name];
-                    }}
-                  />
-                  <Legend
-                    layout="vertical"
-                    align="right"
-                    verticalAlign="middle"
-                    wrapperStyle={{ fontSize: 11, paddingLeft: 10, cursor: "pointer" }}
-                    onClick={(data) => data.value && handleGenreClick(data.value)}
-                    formatter={(value: string) => {
-                      const total = genreData.reduce((sum, g) => sum + g.value, 0);
-                      const item = genreData.find((g) => g.name === value);
-                      const pct = item ? ((item.value / total) * 100).toFixed(0) : 0;
-                      return `${value} (${pct}%)`;
                     }}
                   />
                 </PieChart>

@@ -290,16 +290,16 @@ export default function HeatmapPage() {
   const showMinMax = metricType !== "checkbox";
 
   return (
-    <main className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <h1 className="text-2xl font-semibold">Calendar Heatmap</h1>
+    <main className="px-3 sm:px-6 py-4 sm:py-6 max-w-6xl mx-auto space-y-4 overflow-x-hidden">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-semibold">Calendar Heatmap</h1>
 
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
           {/* Metric selector */}
           <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">Metric:</label>
+            <label className="text-sm text-muted-foreground hidden sm:inline">Metric:</label>
             <Select value={selectedMetric ?? ""} onValueChange={setSelectedMetric}>
-              <SelectTrigger className="w-[200px]">
+              <SelectTrigger className="w-[140px] sm:w-[180px]">
                 <SelectValue placeholder="Select metric" />
               </SelectTrigger>
               <SelectContent>
@@ -313,157 +313,126 @@ export default function HeatmapPage() {
           </div>
 
           {/* Year selector */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-muted-foreground">Year:</label>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedYear((y) => y - 1)}
-                disabled={selectedYear <= 2015}
-              >
-                &lt;
-              </Button>
-              <Select
-                value={String(selectedYear)}
-                onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
-              >
-                <SelectTrigger className="w-[100px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableYears.map((year) => (
-                    <SelectItem key={year} value={String(year)}>
-                      {year}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedYear((y) => y + 1)}
-                disabled={selectedYear >= new Date().getFullYear()}
-              >
-                &gt;
-              </Button>
-            </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedYear((y) => y - 1)}
+              disabled={selectedYear <= 2015}
+            >
+              &lt;
+            </Button>
+            <Select
+              value={String(selectedYear)}
+              onValueChange={(v) => setSelectedYear(parseInt(v, 10))}
+            >
+              <SelectTrigger className="w-[80px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {availableYears.map((year) => (
+                  <SelectItem key={year} value={String(year)}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedYear((y) => y + 1)}
+              disabled={selectedYear >= new Date().getFullYear()}
+            >
+              &gt;
+            </Button>
           </div>
         </div>
       </div>
 
-      {/* Stats card with legend and hover info */}
+      {/* Stats card with legend and tap info */}
       <Card>
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            {/* Stats */}
-            <div className="flex items-center gap-6 text-sm">
-              {yearStats && (
-                <>
-                  <div className="text-center">
-                    <div className="font-mono text-lg">{yearStats.count}</div>
-                    <div className="text-muted-foreground text-xs">days</div>
-                  </div>
-                  {showAvg && (
-                    <div className="text-center">
-                      <div className="font-mono text-lg">
-                        {formatValue(yearStats.avg, metricType)}
-                      </div>
-                      <div className="text-muted-foreground text-xs">average</div>
-                    </div>
-                  )}
-                  {showTotal && (
-                    <div className="text-center">
-                      <div className="font-mono text-lg">
-                        {formatValue(yearStats.sum, metricType)}
-                      </div>
-                      <div className="text-muted-foreground text-xs">total</div>
-                    </div>
-                  )}
-                  {showMinMax && (
-                    <>
-                      <div className="text-center">
-                        <div className="font-mono text-lg">
-                          {formatValue(yearStats.min, metricType)}
-                        </div>
-                        <div className="text-muted-foreground text-xs">min</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="font-mono text-lg">
-                          {formatValue(yearStats.max, metricType)}
-                        </div>
-                        <div className="text-muted-foreground text-xs">max</div>
-                      </div>
-                    </>
-                  )}
-                  {dailyGoal && yearStats.goalMetCount > 0 && (
-                    <div className="text-center">
-                      <div className="font-mono text-lg">
-                        {yearStats.goalMetCount} 🏆
-                      </div>
-                      <div className="text-muted-foreground text-xs">goals met</div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* Hover/tap info - fixed width to prevent shifting */}
-              <div className="text-center min-w-[120px]">
+        <CardContent className="py-3 px-3 sm:px-6">
+          <div className="flex flex-col gap-3">
+            {/* Top row: Selected day info */}
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
                 {hoveredCell ? (
-                  <>
-                    <div className="font-mono text-lg">
+                  <span>
+                    <span className="font-mono font-medium">
                       {formatValue(hoveredCell.value, metricType)}
-                    </div>
-                    <div className="text-muted-foreground text-xs">{hoveredCell.date}</div>
-                  </>
+                    </span>
+                    <span className="text-muted-foreground ml-2">{hoveredCell.date}</span>
+                  </span>
                 ) : (
-                  <>
-                    <div className="font-mono text-lg text-muted-foreground/30">—</div>
-                    <div className="text-muted-foreground/30 text-xs">tap a day</div>
-                  </>
+                  <span className="text-muted-foreground">Tap a day to see details</span>
                 )}
               </div>
+              {/* Legend - compact */}
+              {legendColors && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="hidden sm:inline">{direction === "decrease" ? "High" : "Low"}</span>
+                  <div className="flex gap-0.5">
+                    {legendColors.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm"
+                        style={{ backgroundColor: item.color }}
+                      />
+                    ))}
+                  </div>
+                  <span className="hidden sm:inline">{direction === "decrease" ? "Low" : "High"}</span>
+                </div>
+              )}
+              {metricType === "checkbox" && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <div
+                    className="w-3 h-3 rounded-sm"
+                    style={{
+                      backgroundColor: direction === "decrease" ? "rgb(239, 68, 68)" : "rgb(34, 197, 94)",
+                    }}
+                  />
+                  <span>Done</span>
+                </div>
+              )}
             </div>
 
-            {/* Legend */}
-            {legendColors && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span>{direction === "decrease" ? "High" : "Low"}</span>
-                <div className="flex gap-0.5">
-                  {legendColors.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="w-4 h-4 rounded-sm"
-                      style={{ backgroundColor: item.color }}
-                      title={formatValue(item.value, metricType)}
-                    />
-                  ))}
+            {/* Bottom row: Year stats */}
+            {yearStats && (
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                <div>
+                  <span className="font-mono">{yearStats.count}</span>
+                  <span className="text-muted-foreground ml-1">days</span>
                 </div>
-                <span>{direction === "decrease" ? "Low" : "High"}</span>
-                {dailyGoal && (
+                {showAvg && (
+                  <div>
+                    <span className="font-mono">{formatValue(yearStats.avg, metricType)}</span>
+                    <span className="text-muted-foreground ml-1">avg</span>
+                  </div>
+                )}
+                {showTotal && (
+                  <div>
+                    <span className="font-mono">{formatValue(yearStats.sum, metricType)}</span>
+                    <span className="text-muted-foreground ml-1">total</span>
+                  </div>
+                )}
+                {showMinMax && (
                   <>
-                    <span className="ml-2">🏆</span>
-                    <span>Goal met</span>
+                    <div>
+                      <span className="font-mono">{formatValue(yearStats.min, metricType)}</span>
+                      <span className="text-muted-foreground ml-1">min</span>
+                    </div>
+                    <div>
+                      <span className="font-mono">{formatValue(yearStats.max, metricType)}</span>
+                      <span className="text-muted-foreground ml-1">max</span>
+                    </div>
                   </>
                 )}
-              </div>
-            )}
-
-            {/* Checkbox legend */}
-            {metricType === "checkbox" && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <div
-                  className="w-4 h-4 rounded-sm"
-                  style={{
-                    backgroundColor: direction === "decrease" ? "rgb(239, 68, 68)" : "rgb(34, 197, 94)",
-                  }}
-                />
-                <span>Checked</span>
-                <div
-                  className="w-4 h-4 rounded-sm ml-2"
-                  style={{ backgroundColor: "var(--muted)" }}
-                />
-                <span>Not checked</span>
+                {dailyGoal && yearStats.goalMetCount > 0 && (
+                  <div>
+                    <span className="font-mono">{yearStats.goalMetCount}</span>
+                    <span className="text-muted-foreground ml-1">🏆 goals</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
