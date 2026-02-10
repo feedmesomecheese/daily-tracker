@@ -171,7 +171,8 @@ async function main() {
   console.log(`Found ${records.length} records`);
 
   // Detect column mapping
-  const headers = Object.keys(records[0]);
+  const firstRecord = records[0] as Record<string, unknown>;
+  const headers = Object.keys(firstRecord);
   console.log("\nDetected columns:", headers.join(", "));
 
   const cols: Record<string, string | null> = {};
