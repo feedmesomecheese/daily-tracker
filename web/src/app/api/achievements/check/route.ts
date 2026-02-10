@@ -7,6 +7,22 @@ type AchievementCheck = {
   value?: Record<string, unknown>;
 };
 
+type LogEntry = {
+  date: string;
+  metric_id: string;
+  value: unknown;
+};
+
+type AchievementDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: string;
+  tier: number;
+  threshold: number | null;
+};
+
 export async function POST(req: Request) {
   const supabase = supabaseServerFromRequest(req);
 
@@ -106,9 +122,13 @@ export async function POST(req: Request) {
     .eq("owner_id", user.id)
     .not("value", "is", null);
 
-  const totalUniqueDays = new Set((allDatesData || []).map((d) => d.date)).size;
+  const totalUniqueDays = new Set(
+    (allDatesData || []).map((d: { date: string }) => d.date)
+  ).size;
 
-  const defMap = new Map((definitions || []).map((d) => [d.id, d]));
+  const defMap = new Map(
+    (definitions || []).map((d: AchievementDefinition) => [d.id, d])
+  );
 
   // Calculate metrics to check - only non-neutral metrics
   let metricsToCheck: string[];
@@ -117,7 +137,7 @@ export async function POST(req: Request) {
     metricsToCheck = metricConfig.has(metric_id) ? [metric_id] : [];
   } else {
     // Check all non-neutral metrics that have logs
-    const loggedMetrics = [...new Set((logs || []).map((l) => l.metric_id))];
+    const loggedMetrics = [...new Set((logs || []).map((l: LogEntry) => l.metric_id))];
     metricsToCheck = loggedMetrics.filter((m) => metricConfig.has(m));
   }
 
@@ -126,8 +146,8 @@ export async function POST(req: Request) {
   // Helper: calculate streak for a metric
   function calculateStreak(metricId: string): number {
     const metricLogs = (logs || [])
-      .filter((l) => l.metric_id === metricId)
-      .map((l) => l.date)
+      .filter((l: LogEntry) => l.metric_id === metricId)
+      .map((l: LogEntry) => l.date)
       .sort()
       .reverse();
 
