@@ -4,6 +4,7 @@ import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 type MetricStats = {
   metric_id: string;
   metric_name: string;
+  metric_type: string;
   min: number;
   max: number;
   avg: number;
@@ -14,13 +15,34 @@ type MetricStats = {
 type ConfigEntry = {
   metric_id: string;
   metric_name: string;
+  type: string;
   analytics_config: { higher_is_better?: boolean } | null;
 };
 
 type MetricConfig = {
   metric_name: string;
+  metric_type: string;
   higher_is_better: boolean;
 };
+
+// Format hhmm value as H:MM
+function formatHHMM(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes)) return "0:00";
+  const minutes = Math.max(0, Math.min(23 * 60 + 59, Math.round(totalMinutes)));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+// Format duration as H:MM or Xm
+function formatDuration(totalMinutes: number): string {
+  if (!Number.isFinite(totalMinutes)) return "0m";
+  const minutes = Math.max(0, Math.round(totalMinutes));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
 
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
@@ -58,7 +80,7 @@ export async function GET(req: Request) {
     // Get metric config
     supabase
       .from("config")
-      .select("metric_id, metric_name, analytics_config")
+      .select("metric_id, metric_name, type, analytics_config")
       .eq("owner_id", user.id)
       .in("metric_id", metricIds),
     // Get log data for selected metrics (with date filter if applicable)
@@ -93,6 +115,7 @@ export async function GET(req: Request) {
       c.metric_id,
       {
         metric_name: c.metric_name,
+        metric_type: c.type || "number",
         higher_is_better: c.analytics_config?.higher_is_better ?? true,
       },
     ])
@@ -114,14 +137,24 @@ export async function GET(req: Request) {
 
     if (logs.length === 0) continue;
 
+    const metricType = config?.metric_type || "number";
     const values = logs.map((l) => l.value);
     const min = Math.min(...values);
     const max = Math.max(...values);
-    const avg = values.reduce((a, b) => a + b, 0) / values.length;
+
+    // For checkbox, avg is % of days checked
+    let avg: number;
+    if (metricType === "checkbox") {
+      const checkedCount = values.filter((v) => v >= 0.5).length;
+      avg = (checkedCount / values.length) * 100;
+    } else {
+      avg = values.reduce((a, b) => a + b, 0) / values.length;
+    }
 
     metricStats.push({
       metric_id: metricId,
       metric_name: config?.metric_name || metricId,
+      metric_type: metricType,
       min,
       max,
       avg,
@@ -130,15 +163,50 @@ export async function GET(req: Request) {
     });
   }
 
-  // Calculate normalized values based on view
+  // Calculate normalized values based on metric type
   function normalizeValue(value: number, stats: MetricStats): number {
-    const range = stats.max - stats.min || 1;
-    let normalized = ((value - stats.min) / range) * 100;
-    // Invert if lower is better
-    if (!stats.higher_is_better) {
+    let normalized: number;
+
+    switch (stats.metric_type) {
+      case "checkbox":
+        // For checkbox, value is already a percentage (0-100 of days checked)
+        normalized = value;
+        break;
+
+      case "score":
+        // Score types use 0-10 range (or 1-10, treat as 0-10 for normalization)
+        normalized = (value / 10) * 100;
+        break;
+
+      case "hhmm":
+      case "time":
+        // For time types, use actual data range since there's no fixed "good" range
+        // Fall through to default behavior
+      default:
+        // Use actual data range
+        const range = stats.max - stats.min || 1;
+        normalized = ((value - stats.min) / range) * 100;
+        break;
+    }
+
+    // Invert if lower is better (except checkbox which is already a %)
+    if (!stats.higher_is_better && stats.metric_type !== "checkbox") {
       normalized = 100 - normalized;
     }
+
     return Math.round(normalized * 10) / 10;
+  }
+
+  // Format value for display based on type
+  function formatDisplayValue(value: number, metricType: string): string | number {
+    switch (metricType) {
+      case "hhmm":
+        return formatHHMM(value);
+      case "time":
+        return formatDuration(value);
+      default:
+        return Math.round(value * 100) / 100;
+    }
   }
 
   function getAverageForPeriod(stats: MetricStats, days: number, endDate?: string): number {
@@ -154,6 +222,13 @@ export async function GET(req: Request) {
       .map((v) => v.value);
 
     if (periodValues.length === 0) return 0;
+
+    // For checkbox, return % of days checked (count of 1s / days in period)
+    if (stats.metric_type === "checkbox") {
+      const checkedCount = periodValues.filter((v) => v >= 0.5).length;
+      return (checkedCount / days) * 100;
+    }
+
     return periodValues.reduce((a, b) => a + b, 0) / periodValues.length;
   }
 
@@ -161,9 +236,12 @@ export async function GET(req: Request) {
   type RadarPoint = {
     metric: string;
     metric_id: string;
+    metric_type: string;
     value: number;
+    display_value: string | number;
     normalized: number;
     compare_value?: number;
+    compare_display_value?: string | number;
     compare_normalized?: number;
   };
 
@@ -179,10 +257,19 @@ export async function GET(req: Request) {
           return NextResponse.json({ error: "date required for day view" }, { status: 400 });
         }
         const dayLog = stats.values.find((v) => v.date === date);
-        value = dayLog?.value ?? 0;
+        // For checkbox, convert 0/1 to 0/100%
+        if (stats.metric_type === "checkbox") {
+          value = dayLog && dayLog.value >= 0.5 ? 100 : 0;
+        } else {
+          value = dayLog?.value ?? 0;
+        }
         if (compareDate) {
           const compareDayLog = stats.values.find((v) => v.date === compareDate);
-          compareValue = compareDayLog?.value;
+          if (stats.metric_type === "checkbox") {
+            compareValue = compareDayLog && compareDayLog.value >= 0.5 ? 100 : 0;
+          } else {
+            compareValue = compareDayLog?.value;
+          }
         }
         break;
 
@@ -206,15 +293,20 @@ export async function GET(req: Request) {
         break;
     }
 
+    const roundedValue = Math.round(value * 100) / 100;
     const point: RadarPoint = {
       metric: stats.metric_name,
       metric_id: stats.metric_id,
-      value: Math.round(value * 100) / 100,
+      metric_type: stats.metric_type,
+      value: roundedValue,
+      display_value: formatDisplayValue(roundedValue, stats.metric_type),
       normalized: normalizeValue(value, stats),
     };
 
     if (compareValue !== undefined) {
-      point.compare_value = Math.round(compareValue * 100) / 100;
+      const roundedCompare = Math.round(compareValue * 100) / 100;
+      point.compare_value = roundedCompare;
+      point.compare_display_value = formatDisplayValue(roundedCompare, stats.metric_type);
       point.compare_normalized = normalizeValue(compareValue, stats);
     }
 
@@ -229,9 +321,10 @@ export async function GET(req: Request) {
     stats: metricStats.map((s) => ({
       metric_id: s.metric_id,
       metric_name: s.metric_name,
-      min: s.min,
-      max: s.max,
-      avg: Math.round(s.avg * 100) / 100,
+      metric_type: s.metric_type,
+      min: s.metric_type === "hhmm" ? formatHHMM(s.min) : s.metric_type === "time" ? formatDuration(s.min) : s.min,
+      max: s.metric_type === "hhmm" ? formatHHMM(s.max) : s.metric_type === "time" ? formatDuration(s.max) : s.max,
+      avg: s.metric_type === "hhmm" ? formatHHMM(s.avg) : s.metric_type === "time" ? formatDuration(s.avg) : Math.round(s.avg * 100) / 100,
       higher_is_better: s.higher_is_better,
     })),
   });

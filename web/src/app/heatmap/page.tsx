@@ -252,6 +252,11 @@ export default function HeatmapPage() {
     setHoveredCell(cell);
   }, []);
 
+  // Handle cell click (for mobile - tap to select)
+  const handleCellClick = useCallback((date: string, value: number) => {
+    setHoveredCell({ date, value });
+  }, []);
+
   if (loading) {
     return (
       <main className="p-6 max-w-6xl mx-auto">
@@ -402,7 +407,7 @@ export default function HeatmapPage() {
                 </>
               )}
 
-              {/* Hover info - fixed width to prevent shifting */}
+              {/* Hover/tap info - fixed width to prevent shifting */}
               <div className="text-center min-w-[120px]">
                 {hoveredCell ? (
                   <>
@@ -414,7 +419,7 @@ export default function HeatmapPage() {
                 ) : (
                   <>
                     <div className="font-mono text-lg text-muted-foreground/30">—</div>
-                    <div className="text-muted-foreground/30 text-xs">hover for details</div>
+                    <div className="text-muted-foreground/30 text-xs">tap a day</div>
                   </>
                 )}
               </div>
@@ -479,6 +484,7 @@ export default function HeatmapPage() {
             metricType={metricType}
             direction={direction}
             onHover={handleHover}
+            onCellClick={handleCellClick}
           />
         </CardContent>
       </Card>

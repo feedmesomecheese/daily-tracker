@@ -14,9 +14,12 @@ import {
 export type RadarDataPoint = {
   metric: string;
   metric_id: string;
+  metric_type?: string;
   value: number;
+  display_value?: string | number;
   normalized: number;
   compare_value?: number;
+  compare_display_value?: string | number;
   compare_normalized?: number;
 };
 
@@ -45,14 +48,15 @@ export function RadarChart({
   const chartData = data.map((d) => ({
     metric: d.metric,
     value: d.normalized,
-    rawValue: d.value,
+    rawValue: d.display_value ?? d.value,
     compare: d.compare_normalized,
-    rawCompare: d.compare_value,
+    rawCompare: d.compare_display_value ?? d.compare_value,
+    metricType: d.metric_type,
   }));
 
   return (
     <ResponsiveContainer width="100%" height={400}>
-      <RechartsRadarChart data={chartData} cx="50%" cy="50%" outerRadius="80%">
+      <RechartsRadarChart data={chartData} cx="50%" cy="50%" outerRadius="65%">
         <PolarGrid />
         <PolarAngleAxis
           dataKey="metric"
@@ -67,17 +71,32 @@ export function RadarChart({
           content={({ active, payload }) => {
             if (!active || !payload?.length) return null;
             const item = payload[0].payload;
+            const isCheckbox = item.metricType === "checkbox";
             return (
               <div className="bg-background border rounded-lg shadow-lg p-3 text-sm">
                 <div className="font-medium mb-1">{item.metric}</div>
                 <div className="text-muted-foreground">
-                  {primaryLabel}: <span className="font-mono">{item.rawValue}</span>{" "}
-                  <span className="text-xs">({item.value}%)</span>
+                  {primaryLabel}:{" "}
+                  {isCheckbox ? (
+                    <span className="font-mono">{item.value}%</span>
+                  ) : (
+                    <>
+                      <span className="font-mono">{item.rawValue}</span>{" "}
+                      <span className="text-xs">({item.value}%)</span>
+                    </>
+                  )}
                 </div>
                 {showComparison && item.rawCompare !== undefined && (
                   <div className="text-muted-foreground">
-                    {compareLabel}: <span className="font-mono">{item.rawCompare}</span>{" "}
-                    <span className="text-xs">({item.compare}%)</span>
+                    {compareLabel}:{" "}
+                    {isCheckbox ? (
+                      <span className="font-mono">{item.compare}%</span>
+                    ) : (
+                      <>
+                        <span className="font-mono">{item.rawCompare}</span>{" "}
+                        <span className="text-xs">({item.compare}%)</span>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

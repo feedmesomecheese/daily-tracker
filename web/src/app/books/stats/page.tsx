@@ -210,7 +210,7 @@ export default function BooksStatsPage() {
   if (!stats) return null;
 
   return (
-    <main className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+    <main className="px-2 sm:px-4 md:px-6 py-4 sm:py-6 max-w-7xl mx-auto space-y-6">
       <h1 className="text-2xl font-semibold">Book Stats</h1>
 
       {/* Top Row: Summary + Books per Year */}
@@ -435,12 +435,12 @@ export default function BooksStatsPage() {
           <CardContent>
             <div className="h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 0, right: 10, bottom: 0, left: 10 }}>
                   <Pie
                     data={genreData}
-                    cx="35%"
+                    cx="40%"
                     cy="50%"
-                    outerRadius={80}
+                    outerRadius={70}
                     dataKey="value"
                     onClick={(data) => handleGenreClick(data.name)}
                     style={{ cursor: "pointer" }}
