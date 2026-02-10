@@ -67,7 +67,8 @@ export async function POST(req: Request) {
 
   const existingSet = new Set(
     (existingAchievements || []).map(
-      (a) => `${a.achievement_id}:${a.metric_id || ""}`
+      (a: { achievement_id: string; metric_id: string | null }) =>
+        `${a.achievement_id}:${a.metric_id || ""}`
     )
   );
 
