@@ -18,11 +18,18 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
   const [isInitialized, setIsInitialized] = useState(false);
+  const [debugLog, setDebugLog] = useState<string[]>(["Initializing..."]);
+
+  const addLog = (msg: string) => {
+    setDebugLog((prev) => [...prev.slice(-4), msg]);
+  };
 
   // Get available cameras on mount
   useEffect(() => {
+    addLog("Requesting camera list...");
     BrowserMultiFormatReader.listVideoInputDevices()
       .then((devices: MediaDeviceInfo[]) => {
+        addLog(`Found ${devices.length} camera(s)`);
         setCameras(devices);
         // Prefer back camera on mobile
         const backCamera = devices.find(
@@ -31,11 +38,14 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
             d.label.toLowerCase().includes("rear") ||
             d.label.toLowerCase().includes("environment")
         );
-        setSelectedCamera(backCamera?.deviceId || devices[0]?.deviceId || "");
+        const selected = backCamera?.deviceId || devices[0]?.deviceId || "";
+        setSelectedCamera(selected);
+        addLog(selected ? `Selected: ${backCamera ? "back" : "front"} camera` : "No camera found");
         setIsInitialized(true);
       })
       .catch((err: Error) => {
         console.error("Failed to list cameras:", err);
+        addLog(`Error: ${err.message || err}`);
         setError("Unable to access camera. Please check permissions.");
       });
 
@@ -57,6 +67,7 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
     const startScanning = async () => {
       try {
         setError(null);
+        addLog("Starting camera stream...");
 
         const controls = await reader.decodeFromVideoDevice(
           selectedCamera,
@@ -66,11 +77,13 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
 
             if (result) {
               const text = result.getText();
+              addLog(`Scanned: ${text}`);
               // ISBN-13 starts with 978 or 979, ISBN-10 is 10 digits
               const isValidISBN =
                 /^97[89]\d{10}$/.test(text) || /^\d{10}$/.test(text);
 
               if (isValidISBN) {
+                addLog(`Valid ISBN found!`);
                 setScanning(false);
                 controls.stop();
                 onScan(text);
@@ -79,15 +92,19 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
 
             if (err && !(err instanceof NotFoundException)) {
               console.error("Scan error:", err);
+              addLog(`Scan error: ${err}`);
             }
           }
         );
 
+        addLog("Camera active, scanning...");
         controlsRef.current = controls;
       } catch (err) {
         console.error("Failed to start scanning:", err);
+        const errMsg = err instanceof Error ? err.message : String(err);
+        addLog(`Camera error: ${errMsg}`);
         if (active) {
-          setError("Failed to start camera. Please try again.");
+          setError(`Failed to start camera: ${errMsg}`);
         }
       }
     };
@@ -172,6 +189,13 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
             Switch Camera
           </Button>
         )}
+
+        {/* Debug log */}
+        <div className="bg-black/60 rounded p-2 text-xs font-mono text-green-400 space-y-0.5">
+          {debugLog.map((log, i) => (
+            <div key={i}>{log}</div>
+          ))}
+        </div>
       </div>
     </div>
   );
