@@ -5,8 +5,26 @@ import { getAuthHeaders } from "@/lib/authHeaders";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { InsightDetailSheet } from "@/components/insight-detail-sheet";
+import { CustomInsightBuilder } from "@/components/custom-insight-builder";
+import { CustomInsightCard } from "@/components/custom-insight-card";
+import type {
+  CorrelationInsight,
+  CheckboxCheckboxInsight,
+  NumericNumericInsight,
+  TimeLaggedInsight,
+  DayOfWeekInsight,
+  TrendInsight,
+  HistogramInsight,
+  CumulativeInsight,
+  YearOverYearInsight,
+  StreakTimelineInsight,
+  CandlestickInsight,
+  InsightsResponse,
+  CustomInsightConfig,
+} from "@/types/insights";
 
 const DISMISSED_KEY = "insights:dismissed";
+const CUSTOM_KEY = "insights:custom";
 
 function getDismissed(): Set<string> {
   try {
@@ -21,112 +39,18 @@ function saveDismissed(ids: Set<string>) {
   localStorage.setItem(DISMISSED_KEY, JSON.stringify(Array.from(ids)));
 }
 
-type CorrelationInsight = {
-  type: "checkbox_numeric";
-  id: string;
-  checkboxMetricId: string;
-  checkboxMetricName: string;
-  numericMetricId: string;
-  numericMetricName: string;
-  avgWhenTrue: number;
-  avgWhenFalse: number;
-  percentDiff: number;
-  daysTrue: number;
-  daysFalse: number;
-  direction: "higher" | "lower";
-  involvesPrivate: boolean;
-  numericHigherIsBetter: boolean;
-};
+function getCustomInsights(): CustomInsightConfig[] {
+  try {
+    const raw = localStorage.getItem(CUSTOM_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
 
-type CheckboxCheckboxInsight = {
-  type: "checkbox_checkbox";
-  id: string;
-  metricAId: string;
-  metricAName: string;
-  metricBId: string;
-  metricBName: string;
-  rateWhenATrue: number;
-  rateWhenAFalse: number;
-  percentDiff: number;
-  daysATrue: number;
-  daysAFalse: number;
-  involvesPrivate: boolean;
-};
-
-type NumericNumericInsight = {
-  type: "numeric_numeric";
-  id: string;
-  metricAId: string;
-  metricAName: string;
-  metricBId: string;
-  metricBName: string;
-  correlation: number;
-  direction: "positive" | "negative";
-  daysOverlap: number;
-  involvesPrivate: boolean;
-  metricAHigherIsBetter: boolean;
-  metricBHigherIsBetter: boolean;
-};
-
-type TimeLaggedInsight = {
-  type: "time_lagged";
-  id: string;
-  triggerMetricId: string;
-  triggerMetricName: string;
-  outcomeMetricId: string;
-  outcomeMetricName: string;
-  avgNextDayWhenTrue: number;
-  avgNextDayWhenFalse: number;
-  percentDiff: number;
-  direction: "higher" | "lower";
-  daysTrue: number;
-  daysFalse: number;
-  involvesPrivate: boolean;
-  outcomeHigherIsBetter: boolean;
-};
-
-type DayOfWeekInsight = {
-  type: "day_of_week";
-  id: string;
-  metricId: string;
-  metricName: string;
-  metricType: string;
-  bestDay: string;
-  worstDay: string;
-  bestAvg: number;
-  worstAvg: number;
-  overallAvg: number;
-  dayAverages: { day: string; avg: number }[];
-  involvesPrivate: boolean;
-  higherIsBetter: boolean;
-};
-
-type TrendInsight = {
-  type: "trend";
-  id: string;
-  metricId: string;
-  metricName: string;
-  metricType: string;
-  recentAvg: number;
-  priorAvg: number;
-  percentChange: number;
-  direction: "up" | "down";
-  recentDays: number;
-  priorDays: number;
-  involvesPrivate: boolean;
-  higherIsBetter: boolean;
-};
-
-type InsightsResponse = {
-  checkboxNumeric: CorrelationInsight[];
-  checkboxCheckbox: CheckboxCheckboxInsight[];
-  numericNumeric: NumericNumericInsight[];
-  timeLagged: TimeLaggedInsight[];
-  dayOfWeek: DayOfWeekInsight[];
-  trends: TrendInsight[];
-  totalDays: number;
-  dateRange: { first: string; last: string } | null;
-};
+function saveCustomInsights(configs: CustomInsightConfig[]) {
+  localStorage.setItem(CUSTOM_KEY, JSON.stringify(configs));
+}
 
 function formatPercent(val: number): string {
   const sign = val > 0 ? "+" : "";
@@ -143,7 +67,6 @@ function formatValue(val: number, metricType?: string): string {
   return String(Math.round(val * 100) / 100);
 }
 
-// Dismiss button - always stops propagation
 function DismissBtn({ id, onDismiss }: { id: string; onDismiss: (id: string) => void }) {
   return (
     <button
@@ -156,7 +79,6 @@ function DismissBtn({ id, onDismiss }: { id: string; onDismiss: (id: string) => 
   );
 }
 
-// Chevron icon for collapsible sections
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
@@ -174,7 +96,6 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-// Private border class helper
 function privateBorder(involvesPrivate: boolean): string {
   return involvesPrivate ? "border-purple-300/50 dark:border-purple-700/50" : "";
 }
@@ -445,12 +366,7 @@ function DayOfWeekCard({
   onDismiss: (id: string) => void;
   onClick: () => void;
 }) {
-  const hib = insight.higherIsBetter !== false;
   const maxAvg = Math.max(...insight.dayAverages.map((d) => d.avg));
-
-  // With higherIsBetter=false, "best" is lowest and "worst" is highest
-  const bestLabel = hib ? "Best" : "Best";
-  const worstLabel = hib ? "Worst" : "Worst";
 
   return (
     <Card
@@ -462,11 +378,11 @@ function DayOfWeekCard({
           <div>
             <p className="font-semibold">{insight.metricName}</p>
             <p className="text-sm text-muted-foreground mt-1">
-              {bestLabel}:{" "}
+              Best:{" "}
               <span className="text-green-600 dark:text-green-400 font-medium">
                 {insight.bestDay} ({formatValue(insight.bestAvg, insight.metricType)})
               </span>
-              {" "}&middot; {worstLabel}:{" "}
+              {" "}&middot; Worst:{" "}
               <span className="text-red-600 dark:text-red-400 font-medium">
                 {insight.worstDay} ({formatValue(insight.worstAvg, insight.metricType)})
               </span>
@@ -568,7 +484,224 @@ function TrendCard({
   );
 }
 
-// Section header with collapsible toggle
+function HistogramCard({
+  insight,
+  onDismiss,
+  onClick,
+}: {
+  insight: HistogramInsight;
+  onDismiss: (id: string) => void;
+  onClick: () => void;
+}) {
+  return (
+    <Card
+      className={`cursor-pointer hover:shadow-md transition-shadow ${privateBorder(insight.involvesPrivate)}`}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <p className="font-semibold">{insight.metricName}</p>
+            <p className="text-sm text-muted-foreground mt-1">Distribution</p>
+          </div>
+          <DismissBtn id={insight.id} onDismiss={onDismiss} />
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
+          <div>
+            <p className="text-muted-foreground text-xs">Mean</p>
+            <p className="font-mono font-semibold">{formatValue(insight.mean, insight.metricType)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Std Dev</p>
+            <p className="font-mono font-semibold">{formatValue(insight.stdDev, insight.metricType)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Count</p>
+            <p className="font-mono font-semibold">{insight.count}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CumulativeCard({
+  insight,
+  onDismiss,
+  onClick,
+}: {
+  insight: CumulativeInsight;
+  onDismiss: (id: string) => void;
+  onClick: () => void;
+}) {
+  return (
+    <Card
+      className={`cursor-pointer hover:shadow-md transition-shadow ${privateBorder(insight.involvesPrivate)}`}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <p className="font-semibold">{insight.metricName}</p>
+            <p className="text-sm text-muted-foreground mt-1">Running Total</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <DismissBtn id={insight.id} onDismiss={onDismiss} />
+            <p className="text-2xl font-bold font-mono">
+              {formatValue(insight.currentTotal, insight.metricType)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-muted-foreground text-xs">Daily Rate</p>
+            <p className="font-mono font-semibold">{formatValue(insight.dailyRate, insight.metricType)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Year-End Est.</p>
+            <p className="font-mono font-semibold">{formatValue(insight.projectedYearEnd, insight.metricType)}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function YearOverYearCard({
+  insight,
+  onDismiss,
+  onClick,
+}: {
+  insight: YearOverYearInsight;
+  onDismiss: (id: string) => void;
+  onClick: () => void;
+}) {
+  const hib = insight.higherIsBetter !== false;
+  const isUp = insight.percentChange > 0;
+  const isGood = hib ? isUp : !isUp;
+  const color = isGood
+    ? "text-green-600 dark:text-green-400"
+    : "text-red-600 dark:text-red-400";
+
+  return (
+    <Card
+      className={`cursor-pointer hover:shadow-md transition-shadow ${privateBorder(insight.involvesPrivate)}`}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <p className="font-semibold">{insight.metricName}</p>
+            <p className="text-sm text-muted-foreground mt-1">{insight.yearRange}</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <DismissBtn id={insight.id} onDismiss={onDismiss} />
+            <p className={`text-2xl font-bold ${color}`}>
+              {formatPercent(insight.percentChange)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-muted-foreground text-xs">Current Year</p>
+            <p className="font-mono font-semibold">{formatValue(insight.currentYearAvg, insight.metricType)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Prior Year</p>
+            <p className="font-mono font-semibold">{formatValue(insight.priorYearAvg, insight.metricType)}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StreakTimelineCard({
+  insight,
+  onDismiss,
+  onClick,
+}: {
+  insight: StreakTimelineInsight;
+  onDismiss: (id: string) => void;
+  onClick: () => void;
+}) {
+  return (
+    <Card
+      className={`cursor-pointer hover:shadow-md transition-shadow ${privateBorder(insight.involvesPrivate)}`}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <p className="font-semibold">{insight.metricName}</p>
+            <p className="text-sm text-muted-foreground mt-1">Streak Analysis</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <DismissBtn id={insight.id} onDismiss={onDismiss} />
+            <p className="text-2xl font-bold font-mono">
+              {insight.currentStreak}
+              <span className="text-sm font-normal text-muted-foreground ml-1">current</span>
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-muted-foreground text-xs">Longest</p>
+            <p className="font-mono font-semibold">{insight.longestStreak} days</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Average</p>
+            <p className="font-mono font-semibold">{insight.averageStreak} days</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CandlestickCard({
+  insight,
+  onDismiss,
+  onClick,
+}: {
+  insight: CandlestickInsight;
+  onDismiss: (id: string) => void;
+  onClick: () => void;
+}) {
+  return (
+    <Card
+      className={`cursor-pointer hover:shadow-md transition-shadow ${privateBorder(insight.involvesPrivate)}`}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <p className="font-semibold">{insight.metricName}</p>
+            <p className="text-sm text-muted-foreground mt-1">Volatility</p>
+          </div>
+          <div className="flex flex-col items-end gap-2">
+            <DismissBtn id={insight.id} onDismiss={onDismiss} />
+            <p className="text-2xl font-bold font-mono">
+              {(insight.volatility * 100).toFixed(0)}%
+              <span className="text-sm font-normal text-muted-foreground ml-1">CV</span>
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <p className="text-muted-foreground text-xs">Recent Range</p>
+            <p className="font-mono font-semibold">{formatValue(insight.recentRange, insight.metricType)}</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Recent Close</p>
+            <p className="font-mono font-semibold">{formatValue(insight.recentClose, insight.metricType)}</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function SectionHeader({
   title,
   subtitle,
@@ -605,12 +738,20 @@ export default function InsightsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showPrivate, setShowPrivate] = useState(false);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [customInsights, setCustomInsights] = useState<CustomInsightConfig[]>([]);
+  const [builderOpen, setBuilderOpen] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<CustomInsightConfig | null>(null);
 
-  // Collapsible sections
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
+    custom: true,
     trends: true,
+    cumulative: true,
     dayOfWeek: true,
+    histograms: true,
+    candlesticks: true,
+    streakTimelines: true,
     numericNumeric: true,
+    yearOverYear: true,
     timeLagged: true,
     checkboxNumeric: true,
     checkboxCheckbox: true,
@@ -620,7 +761,6 @@ export default function InsightsPage() {
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  // Detail sheet state
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedInsight, setSelectedInsight] = useState<{
     type: string;
@@ -639,6 +779,7 @@ export default function InsightsPage() {
 
   useEffect(() => {
     setDismissed(getDismissed());
+    setCustomInsights(getCustomInsights());
   }, []);
 
   const dismiss = useCallback(
@@ -654,6 +795,35 @@ export default function InsightsPage() {
   const resetDismissed = useCallback(() => {
     setDismissed(new Set());
     saveDismissed(new Set());
+  }, []);
+
+  const handleSaveCustom = useCallback((config: CustomInsightConfig) => {
+    setCustomInsights((prev) => {
+      const existing = prev.findIndex((c) => c.id === config.id);
+      let next: CustomInsightConfig[];
+      if (existing >= 0) {
+        next = [...prev];
+        next[existing] = config;
+      } else {
+        next = [...prev, config];
+      }
+      saveCustomInsights(next);
+      return next;
+    });
+    setEditingConfig(null);
+  }, []);
+
+  const handleDeleteCustom = useCallback((id: string) => {
+    setCustomInsights((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      saveCustomInsights(next);
+      return next;
+    });
+  }, []);
+
+  const handleEditCustom = useCallback((config: CustomInsightConfig) => {
+    setEditingConfig(config);
+    setBuilderOpen(true);
   }, []);
 
   useEffect(() => {
@@ -706,13 +876,30 @@ export default function InsightsPage() {
   const visibleTimeLagged =
     data?.timeLagged?.filter((i) => !dismissed.has(i.id)) ?? [];
   const visibleNumeric =
-    data?.checkboxNumeric.filter((i) => !dismissed.has(i.id)) ?? [];
+    data?.checkboxNumeric?.filter((i) => !dismissed.has(i.id)) ?? [];
   const visibleCheckbox =
-    data?.checkboxCheckbox.filter((i) => !dismissed.has(i.id)) ?? [];
+    data?.checkboxCheckbox?.filter((i) => !dismissed.has(i.id)) ?? [];
+  const visibleHistograms =
+    data?.histograms?.filter((i) => !dismissed.has(i.id)) ?? [];
+  const visibleCumulative =
+    data?.cumulative?.filter((i) => !dismissed.has(i.id)) ?? [];
+  const visibleYoY =
+    data?.yearOverYear?.filter((i) => !dismissed.has(i.id)) ?? [];
+  const visibleStreaks =
+    data?.streakTimelines?.filter((i) => !dismissed.has(i.id)) ?? [];
+  const visibleCandlesticks =
+    data?.candlesticks?.filter((i) => !dismissed.has(i.id)) ?? [];
+
   const hasInsights =
+    customInsights.length > 0 ||
     visibleTrends.length > 0 ||
+    visibleCumulative.length > 0 ||
     visibleDOW.length > 0 ||
+    visibleHistograms.length > 0 ||
+    visibleCandlesticks.length > 0 ||
+    visibleStreaks.length > 0 ||
     visibleNN.length > 0 ||
+    visibleYoY.length > 0 ||
     visibleTimeLagged.length > 0 ||
     visibleNumeric.length > 0 ||
     visibleCheckbox.length > 0;
@@ -761,11 +948,63 @@ export default function InsightsPage() {
               Keep tracking! Insights require sufficient data and meaningful
               differences to appear.
             </p>
+            <button
+              onClick={() => setBuilderOpen(true)}
+              className="mt-4 text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              + Create a custom insight
+            </button>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-8">
-          {/* 1. Recent Trends */}
+          {/* 1. Custom Insights - always visible */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={() => toggleSection("custom")}
+                className="flex items-center gap-2 text-left"
+              >
+                <ChevronIcon expanded={expanded.custom} />
+                <h2 className="text-lg font-semibold">Custom Insights</h2>
+              </button>
+              <button
+                onClick={() => { setEditingConfig(null); setBuilderOpen(true); }}
+                className="ml-2 px-2 py-0.5 rounded text-sm border border-dashed border-muted-foreground/40 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+              >
+                + New
+              </button>
+              {customInsights.length > 0 && (
+                <Badge variant="secondary">{customInsights.length}</Badge>
+              )}
+            </div>
+            {expanded.custom && (
+              <>
+                {customInsights.length === 0 ? (
+                  <p className="text-sm text-muted-foreground ml-6 mb-4">
+                    Create custom charts for any metric. Click &quot;+ New&quot; to get started.
+                  </p>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {customInsights.map((config) => (
+                      <CustomInsightCard
+                        key={config.id}
+                        config={config}
+                        showPrivate={showPrivate}
+                        onEdit={() => handleEditCustom(config)}
+                        onDelete={() => handleDeleteCustom(config.id)}
+                        onClick={() =>
+                          openDetail(config.chartType, config.id, [config.metricId], [config.metricName])
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
+          {/* 2. Recent Trends */}
           {visibleTrends.length > 0 && (
             <section>
               <SectionHeader
@@ -792,7 +1031,34 @@ export default function InsightsPage() {
             </section>
           )}
 
-          {/* 2. Weekly Patterns */}
+          {/* 3. Cumulative Totals */}
+          {visibleCumulative.length > 0 && (
+            <section>
+              <SectionHeader
+                title="Cumulative Totals"
+                subtitle="Running totals and year-end projections"
+                count={visibleCumulative.length}
+                expanded={expanded.cumulative}
+                onToggle={() => toggleSection("cumulative")}
+              />
+              {expanded.cumulative && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {visibleCumulative.map((insight) => (
+                    <CumulativeCard
+                      key={insight.id}
+                      insight={insight}
+                      onDismiss={dismiss}
+                      onClick={() =>
+                        openDetail("cumulative", insight.id, [insight.metricId], [insight.metricName])
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 4. Weekly Patterns */}
           {visibleDOW.length > 0 && (
             <section>
               <SectionHeader
@@ -819,7 +1085,88 @@ export default function InsightsPage() {
             </section>
           )}
 
-          {/* 3. Metric Correlations */}
+          {/* 5. Value Distribution (histogram) */}
+          {visibleHistograms.length > 0 && (
+            <section>
+              <SectionHeader
+                title="Value Distribution"
+                subtitle="How your metric values are distributed"
+                count={visibleHistograms.length}
+                expanded={expanded.histograms}
+                onToggle={() => toggleSection("histograms")}
+              />
+              {expanded.histograms && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {visibleHistograms.map((insight) => (
+                    <HistogramCard
+                      key={insight.id}
+                      insight={insight}
+                      onDismiss={dismiss}
+                      onClick={() =>
+                        openDetail("histogram", insight.id, [insight.metricId], [insight.metricName])
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 6. Volatility (candlestick) */}
+          {visibleCandlesticks.length > 0 && (
+            <section>
+              <SectionHeader
+                title="Volatility"
+                subtitle="Metrics with high variation over time"
+                count={visibleCandlesticks.length}
+                expanded={expanded.candlesticks}
+                onToggle={() => toggleSection("candlesticks")}
+              />
+              {expanded.candlesticks && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {visibleCandlesticks.map((insight) => (
+                    <CandlestickCard
+                      key={insight.id}
+                      insight={insight}
+                      onDismiss={dismiss}
+                      onClick={() =>
+                        openDetail("candlestick", insight.id, [insight.metricId], [insight.metricName])
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 7. Streak Analysis */}
+          {visibleStreaks.length > 0 && (
+            <section>
+              <SectionHeader
+                title="Streak Analysis"
+                subtitle="Consecutive day patterns in your metrics"
+                count={visibleStreaks.length}
+                expanded={expanded.streakTimelines}
+                onToggle={() => toggleSection("streakTimelines")}
+              />
+              {expanded.streakTimelines && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {visibleStreaks.map((insight) => (
+                    <StreakTimelineCard
+                      key={insight.id}
+                      insight={insight}
+                      onDismiss={dismiss}
+                      onClick={() =>
+                        openDetail("streak_timeline", insight.id, [insight.metricId], [insight.metricName])
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 8. Metric Correlations */}
           {visibleNN.length > 0 && (
             <section>
               <SectionHeader
@@ -851,7 +1198,34 @@ export default function InsightsPage() {
             </section>
           )}
 
-          {/* 4. Next-Day Effects */}
+          {/* 9. Year-over-Year */}
+          {visibleYoY.length > 0 && (
+            <section>
+              <SectionHeader
+                title="Year-over-Year"
+                subtitle="How metrics compare across calendar years"
+                count={visibleYoY.length}
+                expanded={expanded.yearOverYear}
+                onToggle={() => toggleSection("yearOverYear")}
+              />
+              {expanded.yearOverYear && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {visibleYoY.map((insight) => (
+                    <YearOverYearCard
+                      key={insight.id}
+                      insight={insight}
+                      onDismiss={dismiss}
+                      onClick={() =>
+                        openDetail("year_over_year", insight.id, [insight.metricId], [insight.metricName])
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* 10. Next-Day Effects */}
           {visibleTimeLagged.length > 0 && (
             <section>
               <SectionHeader
@@ -883,7 +1257,7 @@ export default function InsightsPage() {
             </section>
           )}
 
-          {/* 5. Habits -> Metrics */}
+          {/* 11. Habits -> Metrics */}
           {visibleNumeric.length > 0 && (
             <section>
               <SectionHeader
@@ -915,7 +1289,7 @@ export default function InsightsPage() {
             </section>
           )}
 
-          {/* 6. Habit Pairs */}
+          {/* 12. Habit Pairs */}
           {visibleCheckbox.length > 0 && (
             <section>
               <SectionHeader
@@ -958,12 +1332,32 @@ export default function InsightsPage() {
             prior 30 days.
           </li>
           <li>
+            <strong>Cumulative Totals:</strong> Running totals with daily rate
+            and year-end projections.
+          </li>
+          <li>
             <strong>Weekly Patterns:</strong> Compares each day&apos;s average
             to the overall average (needs 4+ data points per day).
           </li>
           <li>
+            <strong>Value Distribution:</strong> Histogram showing how metric
+            values are spread (needs 30+ data points).
+          </li>
+          <li>
+            <strong>Volatility:</strong> Candlestick charts showing weekly/monthly
+            open-high-low-close patterns.
+          </li>
+          <li>
+            <strong>Streak Analysis:</strong> Consecutive day patterns showing
+            current, longest, and average streaks.
+          </li>
+          <li>
             <strong>Metric Correlations:</strong> Pearson correlation between
             numeric metrics. Values near +1 or -1 indicate strong relationships.
+          </li>
+          <li>
+            <strong>Year-over-Year:</strong> Compares metric averages across
+            calendar years (needs 60+ days per year).
           </li>
           <li>
             <strong>Next-Day Effects:</strong> Compares tomorrow&apos;s metric
@@ -992,6 +1386,16 @@ export default function InsightsPage() {
         metricIds={selectedInsight?.metricIds ?? []}
         metricNames={selectedInsight?.metricNames ?? []}
         showPrivate={showPrivate}
+      />
+
+      <CustomInsightBuilder
+        open={builderOpen}
+        onOpenChange={(open) => {
+          setBuilderOpen(open);
+          if (!open) setEditingConfig(null);
+        }}
+        onSave={handleSaveCustom}
+        editingConfig={editingConfig}
       />
     </main>
   );

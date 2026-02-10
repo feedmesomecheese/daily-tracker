@@ -4,78 +4,176 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
-  { href: "/", label: "Today" },
-  { href: "/metrics", label: "Metrics" },
-  { href: "/wide", label: "Wide" },
-  { href: "/ma", label: "Moving Avg" },
-  { href: "/stats", label: "Stats" },
-  { href: "/insights", label: "Insights" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/settings", label: "Settings" },
+type NavModule = {
+  name: string;
+  links: { href: string; label: string }[];
+};
+
+const modules: NavModule[] = [
+  {
+    name: "Tracker",
+    links: [
+      { href: "/", label: "Today" },
+      { href: "/metrics", label: "Metrics" },
+      { href: "/wide", label: "Wide" },
+      { href: "/ma", label: "Moving Avg" },
+      { href: "/stats", label: "Stats" },
+      { href: "/insights", label: "Insights" },
+      { href: "/heatmap", label: "Heatmap" },
+      { href: "/radar", label: "Radar" },
+      { href: "/summary", label: "Summary" },
+      { href: "/search", label: "Search" },
+      { href: "/dashboard", label: "Dashboard" },
+      { href: "/achievements", label: "Achievements" },
+      { href: "/integrations", label: "Integrations" },
+    ],
+  },
+  {
+    name: "Books",
+    links: [
+      { href: "/books", label: "Library" },
+      { href: "/books/stats", label: "Stats" },
+    ],
+  },
 ];
 
+const settingsLink = { href: "/settings", label: "Settings" };
+
 export function NavMenu() {
-  const [open, setOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
 
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
+  // Determine which module is active based on current path
+  const activeModule = modules.find((m) =>
+    m.links.some((l) => l.href === pathname || (l.href !== "/" && pathname.startsWith(l.href)))
+  );
 
+  // Close dropdowns on outside click
+  useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        setOpenDropdown(null);
+        setMobileOpen(false);
       }
     }
 
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
+  }, []);
 
   // Close when route changes
   useEffect(() => {
-    setOpen(false);
+    setOpenDropdown(null);
+    setMobileOpen(false);
   }, [pathname]);
+
+  const toggleDropdown = (name: string) => {
+    setOpenDropdown((prev) => (prev === name ? null : name));
+  };
 
   return (
     <div ref={menuRef} className="w-full">
-      {/* Desktop: horizontal link bar */}
-      <div className="hidden sm:flex items-center gap-4 text-sm">
-        <span className="font-semibold mr-4">Daily Tracker</span>
-        {links.map((link) => (
-          <Link key={link.href} href={link.href} className="hover:underline">
-            {link.label}
-          </Link>
+      {/* Desktop: module dropdowns */}
+      <div className="hidden sm:flex items-center gap-1 text-sm">
+        {modules.map((module) => (
+          <div key={module.name} className="relative">
+            <button
+              onClick={() => toggleDropdown(module.name)}
+              className={`px-3 py-1.5 rounded-md font-medium transition-colors flex items-center gap-1 ${
+                activeModule?.name === module.name
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-accent"
+              }`}
+            >
+              {module.name}
+              <svg
+                className={`w-3.5 h-3.5 transition-transform ${openDropdown === module.name ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {openDropdown === module.name && (
+              <div className="absolute top-full left-0 mt-1 bg-popover border rounded-md shadow-lg py-1 min-w-[160px] z-50">
+                {module.links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`block px-3 py-1.5 hover:bg-accent transition-colors ${
+                      pathname === link.href ? "bg-accent font-medium" : ""
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         ))}
+
+        <div className="mx-2 h-4 w-px bg-border" />
+
+        <Link
+          href={settingsLink.href}
+          className={`px-3 py-1.5 rounded-md transition-colors ${
+            pathname === settingsLink.href ? "bg-accent font-medium" : "hover:bg-accent"
+          }`}
+        >
+          {settingsLink.label}
+        </Link>
       </div>
 
-      {/* Mobile: title + hamburger */}
+      {/* Mobile: hamburger menu */}
       <div className="flex sm:hidden items-center justify-between text-sm">
-        <span className="font-semibold">Daily Tracker</span>
+        <span className="font-semibold">
+          {activeModule?.name === "Books" ? "Books" : "Daily Tracker"}
+        </span>
         <button
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => setMobileOpen((v) => !v)}
           className="p-1 -mr-1 text-lg leading-none"
           aria-label="Toggle navigation menu"
         >
-          {open ? "\u2715" : "\u2630"}
+          {mobileOpen ? "\u2715" : "\u2630"}
         </button>
       </div>
 
       {/* Mobile dropdown */}
-      {open && (
+      {mobileOpen && (
         <div className="sm:hidden flex flex-col gap-1 pt-2 pb-1 text-sm border-t mt-2">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="py-1.5 px-1 hover:bg-accent rounded"
-              onClick={() => setOpen(false)}
-            >
-              {link.label}
-            </Link>
+          {modules.map((module) => (
+            <div key={module.name}>
+              <div className="px-1 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                {module.name}
+              </div>
+              {module.links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`py-1.5 px-3 hover:bg-accent rounded block ${
+                    pathname === link.href ? "bg-accent font-medium" : ""
+                  }`}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
           ))}
+          <div className="border-t my-1" />
+          <Link
+            href={settingsLink.href}
+            className={`py-1.5 px-3 hover:bg-accent rounded block ${
+              pathname === settingsLink.href ? "bg-accent font-medium" : ""
+            }`}
+            onClick={() => setMobileOpen(false)}
+          >
+            {settingsLink.label}
+          </Link>
         </div>
       )}
     </div>

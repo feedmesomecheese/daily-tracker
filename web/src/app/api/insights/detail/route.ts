@@ -146,6 +146,16 @@ export async function GET(req: Request) {
       return handleTimeLagged(metricIds, configMap, byMetric, sortedDates);
     case "checkbox_checkbox":
       return handleCheckboxCheckbox(metricIds, configMap, byMetric, sortedDates);
+    case "histogram":
+      return handleHistogram(metricIds[0], configMap, byMetric, sortedDates);
+    case "cumulative":
+      return handleCumulative(metricIds[0], configMap, byMetric, sortedDates);
+    case "year_over_year":
+      return handleYearOverYear(metricIds[0], configMap, byMetric, sortedDates);
+    case "streak_timeline":
+      return handleStreakTimeline(metricIds[0], configMap, byMetric, sortedDates);
+    case "candlestick":
+      return handleCandlestick(metricIds[0], configMap, byMetric, sortedDates, url.searchParams.get("period") || "weekly");
     default:
       return NextResponse.json({ error: "Unknown insight type" }, { status: 400 });
   }
@@ -214,7 +224,6 @@ function handleTrend(
   let total = 0;
 
   if (metricType === "count" && sortedDates.length > 0) {
-    // For count metrics, fill missing dates with 0
     const start = new Date(sortedDates[0] + "T00:00:00");
     const end = new Date(sortedDates[sortedDates.length - 1] + "T00:00:00");
     for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -445,4 +454,386 @@ function handleCheckboxCheckbox(
     metricAName: cfgA.metric_name || idA,
     metricBName: cfgB.metric_name || idB,
   });
+}
+
+function handleHistogram(
+  metricId: string,
+  configMap: Map<string, MetricConfig>,
+  byMetric: Map<string, Map<string, number | null>>,
+  sortedDates: string[]
+) {
+  const data = byMetric.get(metricId);
+  const cfg = configMap.get(metricId)!;
+
+  const values: number[] = [];
+  for (const date of sortedDates) {
+    const val = data?.get(date);
+    if (val != null) values.push(val);
+  }
+
+  if (values.length === 0) {
+    return NextResponse.json({ bins: [], stats: null, metricName: cfg.metric_name || metricId, metricType: cfg.type, higherIsBetter: cfg.analytics_config?.higher_is_better !== false });
+  }
+
+  const n = values.length;
+  const sorted = [...values].sort((a, b) => a - b);
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  const mean = values.reduce((a, b) => a + b, 0) / n;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const stdDev = Math.sqrt(variance);
+  const median = n % 2 === 0 ? (sorted[n / 2 - 1] + sorted[n / 2]) / 2 : sorted[Math.floor(n / 2)];
+  const p25 = sorted[Math.floor(n * 0.25)];
+  const p75 = sorted[Math.floor(n * 0.75)];
+
+  // Skewness
+  const skewness = n > 2
+    ? (values.reduce((a, b) => a + ((b - mean) / (stdDev || 1)) ** 3, 0) * n) / ((n - 1) * (n - 2))
+    : 0;
+
+  // Sturges' rule for bin count, capped at 15
+  let binCount = Math.ceil(1 + 3.322 * Math.log10(n));
+  binCount = Math.min(binCount, 15);
+  binCount = Math.max(binCount, 3);
+
+  const range = max - min;
+  const binWidth = range > 0 ? range / binCount : 1;
+
+  const bins: { binStart: number; binEnd: number; count: number; label: string }[] = [];
+  for (let i = 0; i < binCount; i++) {
+    const binStart = min + i * binWidth;
+    const binEnd = i === binCount - 1 ? max + 0.001 : min + (i + 1) * binWidth;
+    bins.push({
+      binStart: Math.round(binStart * 100) / 100,
+      binEnd: Math.round(binEnd * 100) / 100,
+      count: 0,
+      label: `${Math.round(binStart * 10) / 10}-${Math.round(binEnd * 10) / 10}`,
+    });
+  }
+
+  for (const v of values) {
+    let idx = range > 0 ? Math.floor((v - min) / binWidth) : 0;
+    if (idx >= binCount) idx = binCount - 1;
+    if (idx < 0) idx = 0;
+    bins[idx].count++;
+  }
+
+  return NextResponse.json({
+    bins,
+    stats: {
+      mean: Math.round(mean * 100) / 100,
+      median: Math.round(median * 100) / 100,
+      stdDev: Math.round(stdDev * 100) / 100,
+      min: Math.round(min * 100) / 100,
+      max: Math.round(max * 100) / 100,
+      count: n,
+      skewness: Math.round(skewness * 100) / 100,
+      p25: Math.round(p25 * 100) / 100,
+      p75: Math.round(p75 * 100) / 100,
+    },
+    metricName: cfg.metric_name || metricId,
+    metricType: cfg.type,
+    higherIsBetter: cfg.analytics_config?.higher_is_better !== false,
+  });
+}
+
+function handleCumulative(
+  metricId: string,
+  configMap: Map<string, MetricConfig>,
+  byMetric: Map<string, Map<string, number | null>>,
+  sortedDates: string[]
+) {
+  const data = byMetric.get(metricId);
+  const cfg = configMap.get(metricId)!;
+  const isCount = cfg.type === "count";
+
+  const points: { date: string; dailyValue: number; cumulativeTotal: number }[] = [];
+  let cumulative = 0;
+
+  if (isCount && sortedDates.length > 0) {
+    // Fill missing dates with 0 for count metrics
+    const start = new Date(sortedDates[0] + "T00:00:00");
+    const end = new Date(sortedDates[sortedDates.length - 1] + "T00:00:00");
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const ds = d.toISOString().slice(0, 10);
+      const val = data?.get(ds) ?? 0;
+      cumulative += val;
+      points.push({ date: ds, dailyValue: val, cumulativeTotal: Math.round(cumulative * 100) / 100 });
+    }
+  } else {
+    for (const date of sortedDates) {
+      const val = data?.get(date);
+      if (val != null) {
+        cumulative += val;
+        points.push({ date, dailyValue: val, cumulativeTotal: Math.round(cumulative * 100) / 100 });
+      }
+    }
+  }
+
+  // Calculate daily rate and year-end projection
+  const currentTotal = cumulative;
+  let dailyRate = 0;
+  if (points.length >= 2) {
+    const firstDate = new Date(points[0].date + "T00:00:00");
+    const lastDate = new Date(points[points.length - 1].date + "T00:00:00");
+    const spanDays = Math.max(1, (lastDate.getTime() - firstDate.getTime()) / 86400000 + 1);
+    dailyRate = currentTotal / spanDays;
+  }
+
+  const now = new Date();
+  const yearEnd = new Date(now.getFullYear(), 11, 31);
+  const daysRemaining = Math.max(0, (yearEnd.getTime() - now.getTime()) / 86400000);
+  const projectedYearEnd = currentTotal + dailyRate * daysRemaining;
+
+  return NextResponse.json({
+    points,
+    metricName: cfg.metric_name || metricId,
+    metricType: cfg.type,
+    higherIsBetter: cfg.analytics_config?.higher_is_better !== false,
+    currentTotal: Math.round(currentTotal * 100) / 100,
+    dailyRate: Math.round(dailyRate * 100) / 100,
+    projectedYearEnd: Math.round(projectedYearEnd),
+  });
+}
+
+function handleYearOverYear(
+  metricId: string,
+  configMap: Map<string, MetricConfig>,
+  byMetric: Map<string, Map<string, number | null>>,
+  sortedDates: string[]
+) {
+  const data = byMetric.get(metricId);
+  const cfg = configMap.get(metricId)!;
+
+  const YOY_COLORS = ["#3b82f6", "#f59e0b", "#22c55e", "#a855f7", "#ef4444"];
+
+  // Group data by year
+  const yearMap = new Map<number, { date: string; value: number }[]>();
+  for (const date of sortedDates) {
+    const val = data?.get(date);
+    if (val == null) continue;
+    const year = parseInt(date.slice(0, 4));
+    if (!yearMap.has(year)) yearMap.set(year, []);
+    yearMap.get(year)!.push({ date, value: val });
+  }
+
+  const years = Array.from(yearMap.keys()).sort();
+
+  const yearsData = years.map((year, idx) => {
+    const entries = yearMap.get(year)!;
+    const sum = entries.reduce((a, b) => a + b.value, 0);
+    const avg = sum / entries.length;
+
+    // Convert to day-of-year for alignment
+    const dataPoints = entries.map((e) => {
+      const d = new Date(e.date + "T00:00:00");
+      const startOfYear = new Date(d.getFullYear(), 0, 1);
+      const dayOfYear = Math.floor((d.getTime() - startOfYear.getTime()) / 86400000) + 1;
+      return { dayOfYear, date: e.date, value: e.value };
+    });
+
+    // Compute MA7
+    const sortedPoints = [...dataPoints].sort((a, b) => a.dayOfYear - b.dayOfYear);
+    const withMa7 = sortedPoints.map((p, i) => {
+      if (i < 6) return { ...p, ma7: undefined };
+      const window = sortedPoints.slice(i - 6, i + 1);
+      const ma7 = window.reduce((s, w) => s + w.value, 0) / 7;
+      return { ...p, ma7: Math.round(ma7 * 100) / 100 };
+    });
+
+    return {
+      year,
+      color: YOY_COLORS[idx % YOY_COLORS.length],
+      dataPoints: withMa7,
+      avg: Math.round(avg * 100) / 100,
+      count: entries.length,
+    };
+  });
+
+  return NextResponse.json({
+    years: yearsData,
+    metricName: cfg.metric_name || metricId,
+    metricType: cfg.type,
+    higherIsBetter: cfg.analytics_config?.higher_is_better !== false,
+  });
+}
+
+function handleStreakTimeline(
+  metricId: string,
+  configMap: Map<string, MetricConfig>,
+  byMetric: Map<string, Map<string, number | null>>,
+  sortedDates: string[]
+) {
+  const data = byMetric.get(metricId);
+  const cfg = configMap.get(metricId)!;
+  const isCheckbox = cfg.type === "checkbox";
+
+  const metricDates = sortedDates.filter((d) => data?.has(d));
+
+  // Determine threshold for numeric metrics
+  let threshold: number | undefined;
+  if (!isCheckbox) {
+    const vals: number[] = [];
+    for (const d of metricDates) {
+      const v = data?.get(d);
+      if (v != null) vals.push(v);
+    }
+    vals.sort((a, b) => a - b);
+    threshold = vals.length > 0 ? vals[Math.floor(vals.length / 2)] : 0;
+  }
+
+  // Build streak segments
+  const streaks: { startDate: string; endDate: string; length: number; type: "active" | "gap" }[] = [];
+  let currentStart: string | null = null;
+  let currentType: "active" | "gap" | null = null;
+  let prevDate: string | null = null;
+
+  for (const date of metricDates) {
+    const val = data?.get(date);
+    const isActive = isCheckbox
+      ? (val != null && val !== 0)
+      : (val != null && val >= (threshold ?? 0));
+
+    const segType = isActive ? "active" : "gap";
+
+    if (segType !== currentType) {
+      if (currentType && currentStart && prevDate) {
+        streaks.push({
+          startDate: currentStart,
+          endDate: prevDate,
+          length: daysBetween(currentStart, prevDate) + 1,
+          type: currentType,
+        });
+      }
+      currentStart = date;
+      currentType = segType;
+    }
+    prevDate = date;
+  }
+
+  // Close final segment
+  if (currentType && currentStart && prevDate) {
+    streaks.push({
+      startDate: currentStart,
+      endDate: prevDate,
+      length: daysBetween(currentStart, prevDate) + 1,
+      type: currentType,
+    });
+  }
+
+  // Compute stats
+  const activeStreaks = streaks.filter((s) => s.type === "active");
+  const currentStreak = activeStreaks.length > 0 && streaks[streaks.length - 1]?.type === "active"
+    ? streaks[streaks.length - 1].length
+    : 0;
+  const longestStreak = activeStreaks.length > 0
+    ? Math.max(...activeStreaks.map((s) => s.length))
+    : 0;
+  const averageStreak = activeStreaks.length > 0
+    ? activeStreaks.reduce((a, b) => a + b.length, 0) / activeStreaks.length
+    : 0;
+  const totalActiveDays = activeStreaks.reduce((a, b) => a + b.length, 0);
+  const totalTrackedDays = metricDates.length;
+
+  return NextResponse.json({
+    streaks,
+    stats: {
+      currentStreak,
+      longestStreak,
+      averageStreak: Math.round(averageStreak * 10) / 10,
+      totalStreaks: activeStreaks.length,
+      totalActiveDays,
+      totalTrackedDays,
+      activeRate: totalTrackedDays > 0 ? Math.round((totalActiveDays / totalTrackedDays) * 1000) / 10 : 0,
+    },
+    metricName: cfg.metric_name || metricId,
+    metricType: cfg.type,
+    isCheckbox,
+    threshold,
+  });
+}
+
+function handleCandlestick(
+  metricId: string,
+  configMap: Map<string, MetricConfig>,
+  byMetric: Map<string, Map<string, number | null>>,
+  sortedDates: string[],
+  period: string
+) {
+  const data = byMetric.get(metricId);
+  const cfg = configMap.get(metricId)!;
+
+  // Group dates into periods (weekly or monthly)
+  const periodMap = new Map<string, { dates: string[]; values: number[] }>();
+
+  for (const date of sortedDates) {
+    const val = data?.get(date);
+    if (val == null) continue;
+
+    let periodKey: string;
+    let periodStart: string;
+
+    if (period === "monthly") {
+      periodKey = date.slice(0, 7);
+      periodStart = periodKey + "-01";
+    } else {
+      // Weekly — get Monday of the week
+      const d = new Date(date + "T00:00:00");
+      const day = d.getDay();
+      const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+      const monday = new Date(d);
+      monday.setDate(diff);
+      periodKey = monday.toISOString().slice(0, 10);
+      periodStart = periodKey;
+    }
+
+    if (!periodMap.has(periodKey)) {
+      periodMap.set(periodKey, { dates: [], values: [] });
+    }
+    const bucket = periodMap.get(periodKey)!;
+    bucket.dates.push(date);
+    bucket.values.push(val);
+  }
+
+  const candles = Array.from(periodMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([periodKey, { dates, values }]) => {
+      const sortedValues = [...values];
+      const periodEnd = dates[dates.length - 1];
+
+      return {
+        period: periodKey,
+        periodStart: periodKey.length === 7 ? periodKey + "-01" : periodKey,
+        periodEnd,
+        open: values[0],
+        high: Math.max(...sortedValues),
+        low: Math.min(...sortedValues),
+        close: values[values.length - 1],
+        count: values.length,
+      };
+    });
+
+  // Overall average
+  const allValues: number[] = [];
+  for (const date of sortedDates) {
+    const val = data?.get(date);
+    if (val != null) allValues.push(val);
+  }
+  const overallAvg = allValues.length > 0
+    ? Math.round((allValues.reduce((a, b) => a + b, 0) / allValues.length) * 100) / 100
+    : 0;
+
+  return NextResponse.json({
+    candles,
+    metricName: cfg.metric_name || metricId,
+    metricType: cfg.type,
+    higherIsBetter: cfg.analytics_config?.higher_is_better !== false,
+    overallAvg,
+  });
+}
+
+function daysBetween(a: string, b: string): number {
+  return Math.round(
+    (new Date(b + "T00:00:00").getTime() - new Date(a + "T00:00:00").getTime()) / 86400000
+  );
 }

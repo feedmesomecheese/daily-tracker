@@ -1,130 +1,21 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-
-type Metric = {
-  metric_id: string;
-  metric_name: string | null;
-  type: string;
-  private: boolean | null;
-  is_calculated: boolean | null;
-  calc_expr: string | null;
-  analytics_config: {
-    higher_is_better?: boolean;
-  } | null;
-};
-
-type LogRow = {
-  metric_id: string;
-  date: string;
-  value: number | null;
-};
-
-type CorrelationInsight = {
-  type: "checkbox_numeric";
-  id: string; // unique key for dismissing
-  checkboxMetricId: string;
-  checkboxMetricName: string;
-  numericMetricId: string;
-  numericMetricName: string;
-  avgWhenTrue: number;
-  avgWhenFalse: number;
-  percentDiff: number;
-  daysTrue: number;
-  daysFalse: number;
-  direction: "higher" | "lower";
-  involvesPrivate: boolean;
-  numericHigherIsBetter: boolean;
-};
-
-type CheckboxCheckboxInsight = {
-  type: "checkbox_checkbox";
-  id: string; // unique key for dismissing
-  metricAId: string;
-  metricAName: string;
-  metricBId: string;
-  metricBName: string;
-  rateWhenATrue: number; // rate of B being true when A is true
-  rateWhenAFalse: number; // rate of B being true when A is false
-  percentDiff: number;
-  daysATrue: number;
-  daysAFalse: number;
-  involvesPrivate: boolean;
-};
-
-type NumericNumericInsight = {
-  type: "numeric_numeric";
-  id: string;
-  metricAId: string;
-  metricAName: string;
-  metricBId: string;
-  metricBName: string;
-  correlation: number; // Pearson r
-  direction: "positive" | "negative";
-  daysOverlap: number;
-  involvesPrivate: boolean;
-  metricAHigherIsBetter: boolean;
-  metricBHigherIsBetter: boolean;
-};
-
-type TimeLaggedInsight = {
-  type: "time_lagged";
-  id: string;
-  triggerMetricId: string;
-  triggerMetricName: string;
-  outcomeMetricId: string;
-  outcomeMetricName: string;
-  avgNextDayWhenTrue: number;
-  avgNextDayWhenFalse: number;
-  percentDiff: number;
-  direction: "higher" | "lower";
-  daysTrue: number;
-  daysFalse: number;
-  involvesPrivate: boolean;
-  outcomeHigherIsBetter: boolean;
-};
-
-type DayOfWeekInsight = {
-  type: "day_of_week";
-  id: string;
-  metricId: string;
-  metricName: string;
-  metricType: string;
-  bestDay: string;
-  worstDay: string;
-  bestAvg: number;
-  worstAvg: number;
-  overallAvg: number;
-  dayAverages: { day: string; avg: number }[];
-  involvesPrivate: boolean;
-  higherIsBetter: boolean;
-};
-
-type TrendInsight = {
-  type: "trend";
-  id: string;
-  metricId: string;
-  metricName: string;
-  metricType: string;
-  recentAvg: number;
-  priorAvg: number;
-  percentChange: number;
-  direction: "up" | "down";
-  recentDays: number;
-  priorDays: number;
-  involvesPrivate: boolean;
-  higherIsBetter: boolean;
-};
-
-type InsightsResponse = {
-  checkboxNumeric: CorrelationInsight[];
-  checkboxCheckbox: CheckboxCheckboxInsight[];
-  numericNumeric: NumericNumericInsight[];
-  timeLagged: TimeLaggedInsight[];
-  dayOfWeek: DayOfWeekInsight[];
-  trends: TrendInsight[];
-  totalDays: number;
-  dateRange: { first: string; last: string } | null;
-};
+import type {
+  Metric,
+  LogRow,
+  CorrelationInsight,
+  CheckboxCheckboxInsight,
+  NumericNumericInsight,
+  TimeLaggedInsight,
+  DayOfWeekInsight,
+  TrendInsight,
+  HistogramInsight,
+  CumulativeInsight,
+  YearOverYearInsight,
+  StreakTimelineInsight,
+  CandlestickInsight,
+  InsightsResponse,
+} from "@/types/insights";
 
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
@@ -180,18 +71,14 @@ export async function GET(req: Request) {
   const allMetricIds = new Set(allMetrics.map((m) => m.metric_id));
 
   // Build a map of calculated metrics -> their referenced metric IDs
-  // This helps us filter out redundant correlations (e.g., "When A, calculated(A+B) is higher")
   const calculatedDependencies = new Map<string, Set<string>>();
   for (const m of allMetrics) {
     if (m.is_calculated && m.calc_expr) {
       const refs = new Set<string>();
-      // Extract identifiers from the formula - metric IDs are used directly like: sleep_hours + mood
-      // Identifier pattern: starts with letter/underscore, followed by letters/numbers/underscores
       const regex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
       let match;
       while ((match = regex.exec(m.calc_expr)) !== null) {
         const id = match[0];
-        // Only add if it's an actual metric ID (not a function name like "prev", "diff", "avg", etc.)
         if (allMetricIds.has(id) && id !== m.metric_id) {
           refs.add(id);
         }
@@ -212,6 +99,11 @@ export async function GET(req: Request) {
       timeLagged: [],
       dayOfWeek: [],
       trends: [],
+      histograms: [],
+      cumulative: [],
+      yearOverYear: [],
+      streakTimelines: [],
+      candlesticks: [],
       totalDays: 0,
       dateRange: null,
     };
@@ -219,7 +111,6 @@ export async function GET(req: Request) {
   }
 
   // Load all logs (fetch all for this user, filter by metric in code)
-  // Using range() to paginate and get all data
   const allLogs: LogRow[] = [];
   const PAGE_SIZE = 1000;
   let offset = 0;
@@ -241,14 +132,12 @@ export async function GET(req: Request) {
     }
 
     const rows = (logs ?? []) as LogRow[];
-    // Filter to only metrics we care about
     const filtered = rows.filter((r) => metricIds.includes(r.metric_id));
     allLogs.push(...filtered);
 
     hasMore = rows.length === PAGE_SIZE;
     offset += PAGE_SIZE;
 
-    // Safety limit to prevent infinite loops
     if (offset > 500000) break;
   }
 
@@ -288,11 +177,9 @@ export async function GET(req: Request) {
       const numData = byMetric.get(num.metric_id);
       if (!numData) continue;
 
-      // Skip if the checkbox is a dependency of this calculated metric (redundant correlation)
       const deps = calculatedDependencies.get(num.metric_id);
       if (deps && deps.has(cb.metric_id)) continue;
 
-      // Find overlapping dates where both have values
       const valuesWhenTrue: number[] = [];
       const valuesWhenFalse: number[] = [];
 
@@ -300,7 +187,6 @@ export async function GET(req: Request) {
         const cbVal = cbData.get(date);
         const numVal = numData.get(date);
 
-        // Only include if numeric metric has a value for this date
         if (numVal == null) continue;
 
         const isTrue = cbVal != null && cbVal !== 0;
@@ -312,7 +198,6 @@ export async function GET(req: Request) {
         }
       }
 
-      // Check minimum data requirements
       if (
         valuesWhenTrue.length < MIN_DAYS_EACH_GROUP ||
         valuesWhenFalse.length < MIN_DAYS_EACH_GROUP
@@ -325,7 +210,6 @@ export async function GET(req: Request) {
       const avgFalse =
         valuesWhenFalse.reduce((a, b) => a + b, 0) / valuesWhenFalse.length;
 
-      // Calculate percent difference (relative to avgFalse as baseline)
       if (avgFalse === 0 && avgTrue === 0) continue;
 
       const percentDiff =
@@ -335,7 +219,6 @@ export async function GET(req: Request) {
           ? 100
           : -100;
 
-      // Only include if difference is meaningful
       if (Math.abs(percentDiff) < MIN_PERCENT_DIFF) continue;
 
       checkboxNumericInsights.push({
@@ -359,7 +242,6 @@ export async function GET(req: Request) {
     }
   }
 
-  // Sort by absolute percent difference (strongest correlations first)
   checkboxNumericInsights.sort(
     (a, b) => Math.abs(b.percentDiff) - Math.abs(a.percentDiff)
   );
@@ -386,7 +268,6 @@ export async function GET(req: Request) {
         const valA = dataA.get(date);
         const valB = dataB.get(date);
 
-        // Only count if both metrics have data for this date
         if (valA === undefined || valB === undefined) continue;
 
         const aTrue = valA != null && valA !== 0;
@@ -432,7 +313,6 @@ export async function GET(req: Request) {
     }
   }
 
-  // Sort by absolute difference
   checkboxCheckboxInsights.sort(
     (a, b) => Math.abs(b.percentDiff) - Math.abs(a.percentDiff)
   );
@@ -447,7 +327,6 @@ export async function GET(req: Request) {
       const mA = numericMetrics[i];
       const mB = numericMetrics[j];
 
-      // Skip if one is a calculated metric depending on the other
       const depsA = calculatedDependencies.get(mA.metric_id);
       const depsB = calculatedDependencies.get(mB.metric_id);
       if (depsA && depsA.has(mB.metric_id)) continue;
@@ -516,7 +395,6 @@ export async function GET(req: Request) {
   // 4) Time-lagged: checkbox today → numeric tomorrow
   const timeLaggedInsights: TimeLaggedInsight[] = [];
 
-  // Build a set for quick next-day lookup
   const dateSet = new Set(sortedDates);
 
   for (const cb of checkboxMetrics) {
@@ -532,7 +410,6 @@ export async function GET(req: Request) {
 
       for (const date of sortedDates) {
         const cbVal = cbData.get(date);
-        // Get next day
         const d = new Date(date + "T00:00:00");
         d.setDate(d.getDate() + 1);
         const nextDate = d.toISOString().slice(0, 10);
@@ -608,7 +485,7 @@ export async function GET(req: Request) {
     "Saturday",
   ];
   const MIN_DAYS_PER_DOW = 4;
-  const MIN_DOW_DIFF = 10; // percent difference from overall avg
+  const MIN_DOW_DIFF = 10;
 
   for (const m of numericMetrics) {
     const mData = byMetric.get(m.metric_id);
@@ -622,7 +499,6 @@ export async function GET(req: Request) {
       byDay[dow].push(val);
     }
 
-    // Need enough data for each day
     const hasEnoughData = byDay.every((d) => d.length >= MIN_DAYS_PER_DOW);
     if (!hasEnoughData) continue;
 
@@ -652,7 +528,6 @@ export async function GET(req: Request) {
     const worstPctDiff =
       ((dayAvgs[worstIdx] - overallAvg) / Math.abs(overallAvg)) * 100;
 
-    // Only include if best or worst day deviates meaningfully
     if (
       Math.abs(bestPctDiff) < MIN_DOW_DIFF &&
       Math.abs(worstPctDiff) < MIN_DOW_DIFF
@@ -679,7 +554,6 @@ export async function GET(req: Request) {
     });
   }
 
-  // Sort by spread between best and worst day
   dayOfWeekInsights.sort((a, b) => {
     const spreadA =
       Math.abs((a.bestAvg - a.overallAvg) / a.overallAvg) +
@@ -766,6 +640,307 @@ export async function GET(req: Request) {
     );
   }
 
+  // 7) Histogram / Distribution
+  const histogramInsights: HistogramInsight[] = [];
+
+  for (const m of numericMetrics) {
+    const mData = byMetric.get(m.metric_id);
+    if (!mData) continue;
+
+    const values: number[] = [];
+    for (const date of sortedDates) {
+      const val = mData.get(date);
+      if (val != null) values.push(val);
+    }
+
+    if (values.length < 30) continue;
+
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+
+    histogramInsights.push({
+      type: "histogram",
+      id: `hi:${m.metric_id}`,
+      metricId: m.metric_id,
+      metricName: m.metric_name || m.metric_id,
+      metricType: m.type,
+      mean: Math.round(mean * 100) / 100,
+      stdDev: Math.round(stdDev * 100) / 100,
+      count: values.length,
+      involvesPrivate: privateMetricIds.has(m.metric_id),
+      higherIsBetter: higherIsBetterMap.get(m.metric_id) ?? true,
+    });
+  }
+
+  // Sort by count desc
+  histogramInsights.sort((a, b) => b.count - a.count);
+
+  // 8) Cumulative / Running Total
+  const cumulativeInsights: CumulativeInsight[] = [];
+
+  for (const m of [...numericMetrics, ...checkboxMetrics.filter(() => false)]) {
+    const mData = byMetric.get(m.metric_id);
+    if (!mData) continue;
+
+    const isCount = m.type === "count";
+    const hib = higherIsBetterMap.get(m.metric_id) ?? true;
+
+    // Count metrics always qualify; others need higher_is_better=true and >= 14 data points
+    if (!isCount && (!hib || mData.size < 14)) continue;
+    if (isCount && mData.size < 1) continue;
+    if (!isCount && mData.size < 14) continue;
+
+    let total = 0;
+    let count = 0;
+    for (const date of sortedDates) {
+      const val = mData.get(date);
+      if (val != null) {
+        total += val;
+        count++;
+      }
+    }
+
+    if (count === 0) continue;
+
+    // Calculate daily rate based on actual calendar span
+    const firstDate = sortedDates.find((d) => mData.has(d));
+    const lastDate = [...sortedDates].reverse().find((d) => mData.has(d));
+    if (!firstDate || !lastDate) continue;
+
+    const spanDays = Math.max(1,
+      (new Date(lastDate + "T00:00:00").getTime() - new Date(firstDate + "T00:00:00").getTime()) / 86400000 + 1
+    );
+    const dailyRate = total / spanDays;
+
+    // Project to year end
+    const now = new Date();
+    const yearEnd = new Date(now.getFullYear(), 11, 31);
+    const daysRemaining = Math.max(0, (yearEnd.getTime() - now.getTime()) / 86400000);
+    const projectedYearEnd = total + dailyRate * daysRemaining;
+
+    cumulativeInsights.push({
+      type: "cumulative",
+      id: `cu:${m.metric_id}`,
+      metricId: m.metric_id,
+      metricName: m.metric_name || m.metric_id,
+      metricType: m.type,
+      currentTotal: Math.round(total * 100) / 100,
+      dailyRate: Math.round(dailyRate * 100) / 100,
+      projectedYearEnd: Math.round(projectedYearEnd),
+      involvesPrivate: privateMetricIds.has(m.metric_id),
+      higherIsBetter: hib,
+    });
+  }
+
+  // Count metrics first, then by total desc
+  cumulativeInsights.sort((a, b) => {
+    if (a.metricType === "count" && b.metricType !== "count") return -1;
+    if (a.metricType !== "count" && b.metricType === "count") return 1;
+    return b.currentTotal - a.currentTotal;
+  });
+
+  // 9) Year-over-Year Comparison
+  const yearOverYearInsights: YearOverYearInsight[] = [];
+
+  for (const m of numericMetrics) {
+    const mData = byMetric.get(m.metric_id);
+    if (!mData) continue;
+
+    // Group data by year
+    const yearData = new Map<number, { sum: number; count: number }>();
+    for (const date of sortedDates) {
+      const val = mData.get(date);
+      if (val == null) continue;
+      const year = parseInt(date.slice(0, 4));
+      const existing = yearData.get(year);
+      if (existing) {
+        existing.sum += val;
+        existing.count++;
+      } else {
+        yearData.set(year, { sum: val, count: 1 });
+      }
+    }
+
+    // Need >= 2 years with 60+ days each
+    const qualifyingYears = Array.from(yearData.entries())
+      .filter(([, d]) => d.count >= 60)
+      .sort((a, b) => a[0] - b[0]);
+
+    if (qualifyingYears.length < 2) continue;
+
+    const currentYear = qualifyingYears[qualifyingYears.length - 1];
+    const priorYear = qualifyingYears[qualifyingYears.length - 2];
+
+    const currentAvg = currentYear[1].sum / currentYear[1].count;
+    const priorAvg = priorYear[1].sum / priorYear[1].count;
+
+    if (priorAvg === 0 && currentAvg === 0) continue;
+
+    const percentChange =
+      priorAvg !== 0
+        ? ((currentAvg - priorAvg) / Math.abs(priorAvg)) * 100
+        : currentAvg > 0
+        ? 100
+        : -100;
+
+    yearOverYearInsights.push({
+      type: "year_over_year",
+      id: `yoy:${m.metric_id}`,
+      metricId: m.metric_id,
+      metricName: m.metric_name || m.metric_id,
+      metricType: m.type,
+      yearRange: `${qualifyingYears[0][0]}-${currentYear[0]}`,
+      currentYearAvg: Math.round(currentAvg * 100) / 100,
+      priorYearAvg: Math.round(priorAvg * 100) / 100,
+      percentChange: Math.round(percentChange * 10) / 10,
+      involvesPrivate: privateMetricIds.has(m.metric_id),
+      higherIsBetter: higherIsBetterMap.get(m.metric_id) ?? true,
+    });
+  }
+
+  // Sort by |percentChange| desc
+  yearOverYearInsights.sort(
+    (a, b) => Math.abs(b.percentChange) - Math.abs(a.percentChange)
+  );
+
+  // 10) Streak Timeline
+  const streakTimelineInsights: StreakTimelineInsight[] = [];
+  const allTrackableMetrics = [...checkboxMetrics, ...numericMetrics];
+
+  for (const m of allTrackableMetrics) {
+    const mData = byMetric.get(m.metric_id);
+    if (!mData) continue;
+
+    const isCheckbox = m.type === "checkbox";
+
+    // Get sorted values for this metric
+    const metricDates = sortedDates.filter((d) => mData.has(d));
+    if (metricDates.length < 30) continue;
+
+    // Determine threshold
+    let threshold = 0;
+    if (!isCheckbox) {
+      const vals: number[] = [];
+      for (const d of metricDates) {
+        const v = mData.get(d);
+        if (v != null) vals.push(v);
+      }
+      vals.sort((a, b) => a - b);
+      threshold = vals[Math.floor(vals.length / 2)]; // median
+    }
+
+    // Build streaks
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let streakCount = 0;
+    let totalStreakLength = 0;
+    let inStreak = false;
+
+    for (const date of metricDates) {
+      const val = mData.get(date);
+      const isActive = isCheckbox
+        ? (val != null && val !== 0)
+        : (val != null && val >= threshold);
+
+      if (isActive) {
+        if (!inStreak) {
+          inStreak = true;
+          currentStreak = 1;
+        } else {
+          currentStreak++;
+        }
+        if (currentStreak > longestStreak) longestStreak = currentStreak;
+      } else {
+        if (inStreak) {
+          streakCount++;
+          totalStreakLength += currentStreak;
+          inStreak = false;
+          currentStreak = 0;
+        }
+      }
+    }
+    // Handle final streak
+    if (inStreak) {
+      streakCount++;
+      totalStreakLength += currentStreak;
+    } else {
+      currentStreak = 0;
+    }
+
+    // Need >= 3 completed streaks
+    if (streakCount < 3) continue;
+
+    const averageStreak = totalStreakLength / streakCount;
+
+    streakTimelineInsights.push({
+      type: "streak_timeline",
+      id: `st:${m.metric_id}`,
+      metricId: m.metric_id,
+      metricName: m.metric_name || m.metric_id,
+      metricType: m.type,
+      currentStreak,
+      longestStreak,
+      averageStreak: Math.round(averageStreak * 10) / 10,
+      isCheckbox,
+      involvesPrivate: privateMetricIds.has(m.metric_id),
+      higherIsBetter: higherIsBetterMap.get(m.metric_id) ?? true,
+    });
+  }
+
+  // Sort by longest streak desc
+  streakTimelineInsights.sort((a, b) => b.longestStreak - a.longestStreak);
+
+  // 11) Candlestick Charts
+  const candlestickInsights: CandlestickInsight[] = [];
+
+  for (const m of numericMetrics) {
+    const mData = byMetric.get(m.metric_id);
+    if (!mData) continue;
+
+    // Need >= 8 weeks of data
+    const values: number[] = [];
+    const metricDates = sortedDates.filter((d) => mData.has(d) && mData.get(d) != null);
+    for (const d of metricDates) {
+      values.push(mData.get(d)!);
+    }
+
+    if (metricDates.length < 56) continue; // ~8 weeks
+
+    // Check coefficient of variation
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    if (mean === 0) continue;
+    const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    const cv = stdDev / Math.abs(mean);
+
+    if (cv <= 0.15) continue;
+
+    // Get recent week's data for card display
+    const recentDates = metricDates.slice(-7);
+    const recentVals = recentDates.map((d) => mData.get(d)!);
+    const recentRange = recentVals.length > 0
+      ? Math.max(...recentVals) - Math.min(...recentVals)
+      : 0;
+    const recentClose = recentVals.length > 0 ? recentVals[recentVals.length - 1] : 0;
+
+    candlestickInsights.push({
+      type: "candlestick",
+      id: `cs:${m.metric_id}`,
+      metricId: m.metric_id,
+      metricName: m.metric_name || m.metric_id,
+      metricType: m.type,
+      recentRange: Math.round(recentRange * 100) / 100,
+      recentClose: Math.round(recentClose * 100) / 100,
+      volatility: Math.round(cv * 1000) / 1000,
+      involvesPrivate: privateMetricIds.has(m.metric_id),
+      higherIsBetter: higherIsBetterMap.get(m.metric_id) ?? true,
+    });
+  }
+
+  // Sort by volatility desc
+  candlestickInsights.sort((a, b) => b.volatility - a.volatility);
+
   const response: InsightsResponse = {
     checkboxNumeric: checkboxNumericInsights.slice(0, 20),
     checkboxCheckbox: checkboxCheckboxInsights.slice(0, 10),
@@ -773,6 +948,11 @@ export async function GET(req: Request) {
     timeLagged: timeLaggedInsights.slice(0, 15),
     dayOfWeek: dayOfWeekInsights.slice(0, 10),
     trends: trendInsights.slice(0, 10),
+    histograms: histogramInsights.slice(0, 10),
+    cumulative: cumulativeInsights.slice(0, 8),
+    yearOverYear: yearOverYearInsights.slice(0, 8),
+    streakTimelines: streakTimelineInsights.slice(0, 8),
+    candlesticks: candlestickInsights.slice(0, 8),
     totalDays,
     dateRange,
   };

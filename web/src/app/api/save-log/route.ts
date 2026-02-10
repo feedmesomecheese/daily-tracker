@@ -131,15 +131,92 @@ export async function POST(req: Request) {
     console.warn("Recalculation warnings:", recalcResult.errors);
   }
 
+  // Check for new achievements (async, don't block response)
+  const metricsToCheck = toUpsert.map((e) => e.metric_id);
+  let newAchievements: { achievement_id: string; metric_id?: string; definition?: { name: string; icon: string } }[] = [];
+
+  if (metricsToCheck.length > 0) {
+    try {
+      // Check achievements for each metric that was updated
+      for (const metric_id of metricsToCheck) {
+        const { data: achievementData } = await supabase.functions.invoke("check-achievements", {
+          body: { date, metric_id },
+        }).catch(() => ({ data: null }));
+
+        // Fallback: inline check if function doesn't exist
+        if (!achievementData) {
+          // Basic streak check inline
+          const { data: logs } = await supabase
+            .from("log")
+            .select("date")
+            .eq("owner_id", owner_id)
+            .eq("metric_id", metric_id)
+            .not("value", "is", null)
+            .order("date", { ascending: false })
+            .limit(400);
+
+          if (logs && logs.length >= 7) {
+            // Check for consecutive days
+            let streak = 1;
+            for (let i = 1; i < logs.length; i++) {
+              const current = new Date(logs[i - 1].date + "T00:00:00");
+              const prev = new Date(logs[i].date + "T00:00:00");
+              const diffDays = Math.round((current.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+              if (diffDays === 1) streak++;
+              else break;
+            }
+
+            // Award streak achievements
+            const streakAchievements = [
+              { id: "streak_7", threshold: 7 },
+              { id: "streak_14", threshold: 14 },
+              { id: "streak_30", threshold: 30 },
+              { id: "streak_100", threshold: 100 },
+              { id: "streak_365", threshold: 365 },
+            ];
+
+            for (const sa of streakAchievements) {
+              if (streak >= sa.threshold) {
+                // Try to insert (will fail silently if already exists due to unique constraint)
+                await supabase
+                  .from("user_achievements")
+                  .upsert(
+                    {
+                      owner_id,
+                      achievement_id: sa.id,
+                      metric_id,
+                      value: { streak },
+                      notified: false,
+                    },
+                    { onConflict: "owner_id,achievement_id,metric_id", ignoreDuplicates: true }
+                  )
+                  .then(({ data }) => {
+                    if (data) {
+                      newAchievements.push({ achievement_id: sa.id, metric_id });
+                    }
+                  })
+                  .catch(() => {});
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Achievement check failed (non-blocking):", e);
+    }
+  }
+
   console.log("SAVE-LOG complete:", {
     date,
     upserted: toUpsert.length,
     deleted: toDelete.length,
     recalcDays: recalcResult.daysProcessed,
+    newAchievements: newAchievements.length,
   });
 
   return NextResponse.json({
     ok: true,
     recalculated: recalcResult.daysProcessed,
+    new_achievements: newAchievements,
   });
 }

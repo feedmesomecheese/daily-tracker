@@ -8,6 +8,7 @@ export async function GET(req: Request) {
   const date = searchParams.get("date");
   const start = searchParams.get("start");
   const end = searchParams.get("end");
+  const year = searchParams.get("year"); // Optional year filter for heatmap
 
   const {
     data: { user },
@@ -50,6 +51,9 @@ export async function GET(req: Request) {
 
     if (start) q = q.gte("date", start);
     if (end) q = q.lte("date", end);
+    if (year) {
+      q = q.gte("date", `${year}-01-01`).lte("date", `${year}-12-31`);
+    }
 
     const { data, error } = await q;
 

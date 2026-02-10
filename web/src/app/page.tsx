@@ -200,6 +200,22 @@ export default function Home() {
     }));
   }
 
+  // Warn user about unsaved changes when trying to close or refresh the page
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (dirty) {
+        // Standard way to trigger the browser's native confirmation dialog
+        e.preventDefault();
+        // For older browsers (Chrome < 119)
+        e.returnValue = "";
+        return "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [dirty]);
+
 
   // Check if a metric is visible based on parent's value
   const isMetricVisible = React.useCallback((metric: ConfigRow): boolean => {
@@ -643,14 +659,39 @@ export default function Home() {
     const trimmed = raw.trim();
     if (!trimmed) return null;
 
-    const m = /^(\d{1,2}):([0-5]\d)$/.exec(trimmed);
-    if (!m) return null;
+    // Try HH:MM or H:MM format first
+    const colonMatch = /^(\d{1,2}):([0-5]\d)$/.exec(trimmed);
+    if (colonMatch) {
+      const hours = Number(colonMatch[1]);
+      const minutes = Number(colonMatch[2]);
+      if (hours < 0 || hours > 23) return null;
+      return hours * 60 + minutes;
+    }
 
-    const hours = Number(m[1]);
-    const minutes = Number(m[2]);
-    if (hours < 0 || hours > 23) return null;
+    // Try flexible numeric formats (desktop-friendly):
+    // 3 digits: 705 → 7:05, 130 → 1:30
+    // 4 digits: 1930 → 19:30, 0705 → 7:05
+    const numMatch = /^(\d{3,4})$/.exec(trimmed);
+    if (numMatch) {
+      const num = trimmed;
+      let hours: number;
+      let minutes: number;
 
-    return hours * 60 + minutes;
+      if (num.length === 3) {
+        // 705 → 7:05
+        hours = Number(num.slice(0, 1));
+        minutes = Number(num.slice(1));
+      } else {
+        // 1930 → 19:30
+        hours = Number(num.slice(0, 2));
+        minutes = Number(num.slice(2));
+      }
+
+      if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return null;
+      return hours * 60 + minutes;
+    }
+
+    return null;
   }
 
   function formatHHMM(totalMinutes: number | null): string {
@@ -704,11 +745,11 @@ export default function Home() {
     // Empty → treat as delete, no error
     if (raw === "" || raw == null) return null;
 
-    // HH:MM type
+    // HH:MM type (also accepts flexible numeric formats like 705 → 7:05, 1930 → 19:30)
     if (m.type === "hhmm") {
       const minutes = parseHHMM(raw);
       if (minutes == null) {
-        return `${m.metric_name}: must be HH:MM (00–23:59)`;
+        return `${m.metric_name}: use HH:MM or numeric (705, 1930)`;
       }
       // If you later want min/max for hhmm, you can reuse the numeric block below
       return null;
@@ -1825,7 +1866,8 @@ export default function Home() {
                         // } else if (m.type === "checkbox") {
                         //   calcDisplay = calcValue >= 0.5 ? "✓" : "";
                         } else {
-                          calcDisplay = String(calcValue);
+                          // Truncate to 2 decimal places for calculated metrics
+                          calcDisplay = String(Math.round(calcValue * 100) / 100);
                         }
                       }
 
@@ -2226,6 +2268,16 @@ export default function Home() {
                                       setVals(prev => ({
                                         ...prev,
                                         [m.metric_id]: formatDurationHHMM(mins),
+                                      }));
+                                    }
+                                  }
+                                  // For hhmm type, format as HH:MM after blur (normalizes 705 → 07:05)
+                                  if (m.type === "hhmm" && v.trim() !== "" && !msg) {
+                                    const mins = parseHHMM(v);
+                                    if (mins != null) {
+                                      setVals(prev => ({
+                                        ...prev,
+                                        [m.metric_id]: formatHHMM(mins),
                                       }));
                                     }
                                   }

@@ -178,8 +178,8 @@ function formatMetricValue(value: number | null | undefined, metricType: string 
     return `${hrs}:${String(mins).padStart(2, "0")}`;
   }
 
-  // Regular number - round to 1 decimal
-  return String(Math.round(value * 10) / 10);
+  // Regular number - round to 2 decimals
+  return String(Math.round(value * 100) / 100);
 }
 
 // Format minutes from midnight to 12-hour time (e.g., "7:30 AM")
@@ -498,7 +498,7 @@ export function MetricStatsSheet({
   const [compareLastYear, setCompareLastYear] = useState(false);
 
   // Compare with other metrics
-  const [availableMetrics, setAvailableMetrics] = useState<{ id: string; name: string; type: string }[]>([]);
+  const [availableMetrics, setAvailableMetrics] = useState<{ id: string; name: string; type: string; group: string | null }[]>([]);
   const [compareMetricIds, setCompareMetricIds] = useState<string[]>([]);
   const [compareMetricsData, setCompareMetricsData] = useState<Record<string, StatsResponse>>({});
   const [normalizeComparison, setNormalizeComparison] = useState(true);
@@ -586,10 +586,11 @@ export function MetricStatsSheet({
             .filter((m: { type: string; active: boolean }) =>
               m.active && chartableTypes.includes(m.type)
             )
-            .map((m: { metric_id: string; metric_name: string; type: string }) => ({
+            .map((m: { metric_id: string; metric_name: string; type: string; group?: string | null }) => ({
               id: m.metric_id,
               name: m.metric_name,
               type: m.type,
+              group: m.group ?? null,
             }));
           setAvailableMetrics(metrics);
         }
@@ -846,10 +847,27 @@ export function MetricStatsSheet({
     return compareMetricIds
       .map((id) => {
         const metric = availableMetrics.find((m) => m.id === id);
-        return metric ? { id, name: metric.name, type: metric.type } : null;
+        return metric ? { id, name: metric.name, type: metric.type, group: metric.group } : null;
       })
-      .filter((m): m is { id: string; name: string; type: string } => m !== null);
+      .filter((m): m is { id: string; name: string; type: string; group: string | null } => m !== null);
   }, [compareMetricIds, availableMetrics]);
+
+  // Group available metrics by their group for the dropdown with separators
+  const groupedAvailableMetrics = useMemo(() => {
+    const filtered = availableMetrics.filter((m) => m.id !== metricId);
+
+    // Group by the group field
+    const groups = new Map<string, typeof filtered>();
+    for (const m of filtered) {
+      const groupName = m.group || "(ungrouped)";
+      if (!groups.has(groupName)) {
+        groups.set(groupName, []);
+      }
+      groups.get(groupName)!.push(m);
+    }
+
+    return groups;
+  }, [availableMetrics, metricId]);
 
   // Colors for comparison metrics
   const comparisonColors = ["#f43f5e", "#14b8a6", "#a855f7"];
@@ -1360,35 +1378,45 @@ export function MetricStatsSheet({
                           Compare {compareMetricIds.length > 0 && `(${compareMetricIds.length})`}
                         </Button>
                         {showCompareDropdown && (
-                          <div className="absolute right-0 top-7 z-50 bg-popover border rounded-md shadow-lg p-2 min-w-[200px] max-h-[300px] overflow-y-auto">
+                          <div className={`absolute ${isMobile ? "left-0 right-0" : "right-0"} top-7 z-50 bg-popover border rounded-md shadow-lg p-2 min-w-[200px] max-w-[90vw] max-h-[300px] overflow-y-auto`}>
                             <div className="text-xs font-medium text-muted-foreground mb-2">
                               Select metrics to compare:
                             </div>
-                            {availableMetrics
-                              .filter((m) => m.id !== metricId)
-                              .map((m) => (
-                                <label
-                                  key={m.id}
-                                  className="flex items-center gap-2 py-1 px-1 hover:bg-accent rounded cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={compareMetricIds.includes(m.id)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        if (compareMetricIds.length < 3) {
-                                          setCompareMetricIds([...compareMetricIds, m.id]);
+                            {Array.from(groupedAvailableMetrics.entries()).map(([groupName, metrics], groupIndex) => (
+                              <div key={groupName}>
+                                {/* Group separator/header */}
+                                {groupIndex > 0 && (
+                                  <div className="border-t my-1.5" />
+                                )}
+                                <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-1 py-1">
+                                  {groupName === "(ungrouped)" ? "Other" : groupName}
+                                </div>
+                                {/* Metrics in this group */}
+                                {metrics.map((m) => (
+                                  <label
+                                    key={m.id}
+                                    className="flex items-center gap-2 py-1 px-1 hover:bg-accent rounded cursor-pointer"
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={compareMetricIds.includes(m.id)}
+                                      onChange={(e) => {
+                                        if (e.target.checked) {
+                                          if (compareMetricIds.length < 3) {
+                                            setCompareMetricIds([...compareMetricIds, m.id]);
+                                          }
+                                        } else {
+                                          setCompareMetricIds(compareMetricIds.filter((id) => id !== m.id));
                                         }
-                                      } else {
-                                        setCompareMetricIds(compareMetricIds.filter((id) => id !== m.id));
-                                      }
-                                    }}
-                                    className="h-3 w-3"
-                                  />
-                                  <span className="text-xs truncate">{m.name}</span>
-                                  <span className="text-xs text-muted-foreground">({m.type})</span>
-                                </label>
-                              ))}
+                                      }}
+                                      className="h-3 w-3"
+                                    />
+                                    <span className="text-xs truncate">{m.name}</span>
+                                    <span className="text-xs text-muted-foreground">({m.type})</span>
+                                  </label>
+                                ))}
+                              </div>
+                            ))}
                             {compareMetricIds.length > 0 && (
                               <div className="border-t mt-2 pt-2">
                                 <label className="flex items-center gap-2 py-1 px-1 cursor-pointer">

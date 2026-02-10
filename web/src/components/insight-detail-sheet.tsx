@@ -17,6 +17,8 @@ import {
   Line,
   BarChart,
   Bar,
+  AreaChart,
+  Area,
   ScatterChart,
   Scatter,
   XAxis,
@@ -68,6 +70,7 @@ export function InsightDetailSheet({
   const [error, setError] = useState<string | null>(null);
   const [range, setRange] = useState<RangeOption>("all");
   const [groupBy, setGroupBy] = useState<GroupOption>("month");
+  const [candlestickPeriod, setCandlestickPeriod] = useState<"weekly" | "monthly">("weekly");
 
   // Mobile swipe-to-close
   const touchStartY = useRef(0);
@@ -94,6 +97,13 @@ export function InsightDetailSheet({
     }
   }, [onOpenChange]);
 
+  // Reset candlestick period when sheet opens for a new insight
+  useEffect(() => {
+    if (open && insightType === "candlestick") {
+      setCandlestickPeriod("weekly");
+    }
+  }, [open, insightType, insightId]);
+
   useEffect(() => {
     if (!open || !insightType || metricIds.length === 0) {
       setData(null);
@@ -107,8 +117,11 @@ export function InsightDetailSheet({
         setError(null);
         const headers = await getAuthHeaders();
         const params = new URLSearchParams({ type: insightType, metrics: metricIds.join(",") });
-        if (insightType === "trend") {
+        if (insightType === "trend" || insightType === "histogram" || insightType === "cumulative") {
           params.set("range", range);
+        }
+        if (insightType === "candlestick") {
+          params.set("period", candlestickPeriod);
         }
         if (showPrivate) params.set("showPrivate", "true");
 
@@ -124,7 +137,7 @@ export function InsightDetailSheet({
     })();
 
     return () => { cancelled = true; };
-  }, [open, insightType, metricIds, range, showPrivate]);
+  }, [open, insightType, metricIds, range, showPrivate, candlestickPeriod]);
 
   const title = insightType
     ? {
@@ -134,6 +147,11 @@ export function InsightDetailSheet({
         time_lagged: "Next-Day Effect",
         checkbox_numeric: "Habit Impact",
         checkbox_checkbox: "Habit Pair",
+        histogram: "Value Distribution",
+        cumulative: "Cumulative Total",
+        year_over_year: "Year-over-Year",
+        streak_timeline: "Streak Analysis",
+        candlestick: "Volatility Analysis",
       }[insightType] || "Insight Detail"
     : "Insight Detail";
 
@@ -186,6 +204,17 @@ export function InsightDetailSheet({
               {insightType === "checkbox_numeric" && <CheckboxNumericDetail data={data} />}
               {insightType === "time_lagged" && <TimeLaggedDetail data={data} />}
               {insightType === "checkbox_checkbox" && <CheckboxCheckboxDetail data={data} />}
+              {insightType === "histogram" && <HistogramDetail data={data} />}
+              {insightType === "cumulative" && <CumulativeDetail data={data} />}
+              {insightType === "year_over_year" && <YearOverYearDetail data={data} />}
+              {insightType === "streak_timeline" && <StreakTimelineDetail data={data} />}
+              {insightType === "candlestick" && (
+                <CandlestickDetail
+                  data={data}
+                  period={candlestickPeriod}
+                  setPeriod={setCandlestickPeriod}
+                />
+              )}
             </div>
           )}
         </div>
@@ -206,16 +235,13 @@ function formatValue(val: number, metricType?: string): string {
 
 function formatPeriod(period: string, group: GroupOption): string {
   if (group === "week") {
-    // period is "YYYY-MM-DD" (the Monday)
     const d = new Date(period + "T00:00:00");
     const month = d.toLocaleString("default", { month: "short" });
     return `Week of ${month} ${d.getDate()}, ${d.getFullYear()}`;
   } else if (group === "month") {
-    // period is "YYYY-MM"
     const d = new Date(period + "-01T00:00:00");
     return d.toLocaleString("default", { month: "long", year: "numeric" });
   } else {
-    // year: period is "YYYY"
     return period;
   }
 }
@@ -286,7 +312,6 @@ function TrendDetail({
   const aggDataKey = isCount && aggMode === "total" ? "total" : "avg";
   const aggLabel = isCount && aggMode === "total" ? "Total" : "Avg";
 
-  // Compute MA7 for daily values
   const ma7Points = useMemo(() => {
     const pts = data.points as { date: string; value: number }[] | undefined;
     if (!pts || pts.length < 7) return pts || [];
@@ -315,7 +340,6 @@ function TrendDetail({
         ))}
       </div>
 
-      {/* Raw data line chart */}
       {data.points?.length > 0 && (
         <Card>
           <CardContent className="px-2 pt-4 pb-2">
@@ -372,7 +396,6 @@ function TrendDetail({
         </Card>
       )}
 
-      {/* Grouped averages */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Group by:</span>
@@ -622,7 +645,6 @@ function CalendarHeatmap({
     return result.sort().reverse();
   }, [data]);
 
-  // Consistent color scale across all months
   const allValues = data.map((d) => d.value);
   const minVal = Math.min(...allValues);
   const maxVal = Math.max(...allValues);
@@ -631,22 +653,20 @@ function CalendarHeatmap({
   function getColor(value: number): string {
     const t = (value - minVal) / valRange;
     if (higherIsBetter) {
-      // Red (low) → Yellow (mid) → Green (high)
       if (t < 0.5) {
-        const s = t * 2; // 0..1 within first half
+        const s = t * 2;
         const r = Math.round(220 - s * 40);
         const g = Math.round(60 + s * 160);
         const b = Math.round(60 + s * 10);
         return `rgb(${r}, ${g}, ${b})`;
       } else {
-        const s = (t - 0.5) * 2; // 0..1 within second half
+        const s = (t - 0.5) * 2;
         const r = Math.round(180 - s * 140);
         const g = Math.round(220 - s * 25);
         const b = Math.round(70 + s * 30);
         return `rgb(${r}, ${g}, ${b})`;
       }
     } else {
-      // Green (low) → Yellow (mid) → Red (high)
       if (t < 0.5) {
         const s = t * 2;
         const r = Math.round(40 + s * 140);
@@ -834,7 +854,6 @@ function CheckboxNumericDetail({ data }: { data: DetailData }) {
         </CardContent>
       </Card>
 
-      {/* Distribution scatter */}
       {data.distribution?.length > 0 && (
         <Card>
           <CardContent className="px-2 pt-4 pb-2">
@@ -943,6 +962,666 @@ function CheckboxCheckboxDetail({ data }: { data: DetailData }) {
                     />
                   ))}
                 </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+// --- Histogram Detail ---
+function HistogramDetail({ data }: { data: DetailData }) {
+  const bins = data.bins as { binStart: number; binEnd: number; count: number; label: string }[];
+  const stats = data.stats as {
+    mean: number; median: number; stdDev: number; min: number; max: number;
+    count: number; skewness: number; p25: number; p75: number;
+  } | null;
+  const metricType = data.metricType as string | undefined;
+
+  if (!bins || bins.length === 0) {
+    return <p className="text-sm text-muted-foreground text-center py-4">No data available</p>;
+  }
+
+  return (
+    <>
+      <Card>
+        <CardContent className="px-2 pt-4 pb-2">
+          <p className="text-sm font-medium mb-2 px-2">{data.metricName} Distribution</p>
+          <div style={{ width: "100%", height: 260 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={bins} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis dataKey="label" tick={{ fontSize: 9 }} interval={0} angle={-30} textAnchor="end" height={50} />
+                <YAxis tick={{ fontSize: 10 }} />
+                <Tooltip
+                  content={({ payload }) => {
+                    if (!payload?.[0]) return null;
+                    const p = payload[0].payload;
+                    return (
+                      <div className="bg-background border rounded p-2 text-xs shadow">
+                        <p className="font-medium">{formatValue(p.binStart, metricType)} - {formatValue(p.binEnd, metricType)}</p>
+                        <p>{p.count} days</p>
+                      </div>
+                    );
+                  }}
+                />
+                {stats && (
+                  <ReferenceLine
+                    x={bins.findIndex((b) => stats.mean >= b.binStart && stats.mean < b.binEnd) >= 0
+                      ? bins[bins.findIndex((b) => stats.mean >= b.binStart && stats.mean < b.binEnd)].label
+                      : undefined}
+                    stroke="#f59e0b"
+                    strokeDasharray="5 5"
+                    label={{ value: `Mean: ${formatValue(stats.mean, metricType)}`, fontSize: 9, fill: "#f59e0b", position: "top" }}
+                  />
+                )}
+                <Bar dataKey="count" fill="#3b82f6" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {stats && (
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-sm font-medium mb-3">Statistics</p>
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <p className="text-muted-foreground text-xs">Mean</p>
+                <p className="font-mono font-semibold">{formatValue(stats.mean, metricType)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Median</p>
+                <p className="font-mono font-semibold">{formatValue(stats.median, metricType)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Std Dev</p>
+                <p className="font-mono font-semibold">{formatValue(stats.stdDev, metricType)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Min</p>
+                <p className="font-mono font-semibold">{formatValue(stats.min, metricType)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Max</p>
+                <p className="font-mono font-semibold">{formatValue(stats.max, metricType)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Count</p>
+                <p className="font-mono font-semibold">{stats.count}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">P25</p>
+                <p className="font-mono font-semibold">{formatValue(stats.p25, metricType)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">P75</p>
+                <p className="font-mono font-semibold">{formatValue(stats.p75, metricType)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground text-xs">Skewness</p>
+                <p className="font-mono font-semibold">{stats.skewness}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
+// --- Cumulative Detail ---
+function CumulativeDetail({ data }: { data: DetailData }) {
+  const points = data.points as { date: string; dailyValue: number; cumulativeTotal: number }[];
+  const metricType = data.metricType as string | undefined;
+
+  // Build pace line data
+  const paceData = useMemo(() => {
+    if (!points || points.length < 2) return [];
+    const lastPoint = points[points.length - 1];
+    const lastDate = new Date(lastPoint.date + "T00:00:00");
+    const yearEnd = new Date(lastDate.getFullYear(), 11, 31);
+
+    return [
+      { date: lastPoint.date, cumulativeTotal: lastPoint.cumulativeTotal, pace: lastPoint.cumulativeTotal },
+      { date: yearEnd.toISOString().slice(0, 10), cumulativeTotal: undefined, pace: data.projectedYearEnd },
+    ];
+  }, [points, data.projectedYearEnd]);
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <div>
+          <p className="text-xs text-muted-foreground">Total</p>
+          <p className="text-xl font-bold font-mono">{formatValue(data.currentTotal, metricType)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Daily Rate</p>
+          <p className="text-xl font-bold font-mono">{formatValue(data.dailyRate, metricType)}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Year-End Est.</p>
+          <p className="text-xl font-bold font-mono">{formatValue(data.projectedYearEnd, metricType)}</p>
+        </div>
+      </div>
+
+      {points.length > 0 && (
+        <Card>
+          <CardContent className="px-2 pt-4 pb-2">
+            <p className="text-sm font-medium mb-2 px-2">Cumulative Total</p>
+            <div style={{ width: "100%", height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart
+                  data={points}
+                  margin={{ top: 5, right: 10, left: -10, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 10 }}
+                    tickFormatter={formatShortDate}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatValue(v, metricType)} />
+                  <Tooltip
+                    labelFormatter={(d) => formatDate(d as string)}
+                    formatter={(value: number, name: string) => [
+                      formatValue(value, metricType),
+                      name === "cumulativeTotal" ? "Total" : "Daily",
+                    ]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="cumulativeTotal"
+                    stroke="#3b82f6"
+                    fill="#3b82f6"
+                    fillOpacity={0.15}
+                    strokeWidth={2}
+                    animationDuration={300}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {paceData.length > 0 && (
+        <Card>
+          <CardContent className="px-2 pt-4 pb-2">
+            <p className="text-sm font-medium mb-2 px-2">Year-End Projection</p>
+            <div style={{ width: "100%", height: 180 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={paceData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={formatShortDate} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatValue(v, metricType)} />
+                  <Tooltip labelFormatter={(d) => formatDate(d as string)} />
+                  <Line type="monotone" dataKey="pace" stroke="#f59e0b" strokeDasharray="8 4" strokeWidth={2} dot animationDuration={300} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="text-xs text-muted-foreground px-2 mt-1">
+              At {formatValue(data.dailyRate, metricType)}/day, projected year-end: {formatValue(data.projectedYearEnd, metricType)}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </>
+  );
+}
+
+// --- Year-over-Year Detail ---
+function YearOverYearDetail({ data }: { data: DetailData }) {
+  const years = data.years as {
+    year: number; color: string;
+    dataPoints: { dayOfYear: number; date: string; value: number; ma7?: number }[];
+    avg: number; count: number;
+  }[];
+  const metricType = data.metricType as string | undefined;
+  const [enabledYears, setEnabledYears] = useState<Set<number>>(() => new Set(years.map((y) => y.year)));
+  const [showMa7, setShowMa7] = useState(false);
+
+  const MONTH_TICKS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
+  const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // Merge all year data into a single series per year for the chart
+  const chartData = useMemo(() => {
+    const dayMap = new Map<number, Record<string, number | undefined>>();
+    for (const yearInfo of years) {
+      if (!enabledYears.has(yearInfo.year)) continue;
+      for (const dp of yearInfo.dataPoints) {
+        const existing = dayMap.get(dp.dayOfYear) || { dayOfYear: dp.dayOfYear };
+        existing[`y${yearInfo.year}`] = dp.value;
+        if (showMa7 && dp.ma7 !== undefined) {
+          existing[`ma7_${yearInfo.year}`] = dp.ma7;
+        }
+        dayMap.set(dp.dayOfYear, existing);
+      }
+    }
+    return Array.from(dayMap.values()).sort((a, b) => (a.dayOfYear as number) - (b.dayOfYear as number));
+  }, [years, enabledYears, showMa7]);
+
+  const toggleYear = (year: number) => {
+    setEnabledYears((prev) => {
+      const next = new Set(prev);
+      if (next.has(year)) {
+        if (next.size > 1) next.delete(year);
+      } else {
+        next.add(year);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <>
+      <div className="flex flex-wrap gap-2 items-center">
+        {years.map((y) => (
+          <button
+            key={y.year}
+            onClick={() => toggleYear(y.year)}
+            className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+              enabledYears.has(y.year) ? "text-white" : "opacity-40"
+            }`}
+            style={{
+              backgroundColor: enabledYears.has(y.year) ? y.color : "transparent",
+              borderColor: y.color,
+              color: enabledYears.has(y.year) ? "white" : y.color,
+            }}
+          >
+            {y.year} ({formatValue(y.avg, metricType)})
+          </button>
+        ))}
+        <Button
+          variant={showMa7 ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowMa7(!showMa7)}
+        >
+          MA7
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="px-2 pt-4 pb-2">
+          <div style={{ width: "100%", height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis
+                  dataKey="dayOfYear"
+                  tick={{ fontSize: 9 }}
+                  ticks={MONTH_TICKS}
+                  tickFormatter={(v) => MONTH_LABELS[MONTH_TICKS.indexOf(v)] || ""}
+                />
+                <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatValue(v, metricType)} />
+                <Tooltip
+                  content={({ payload }) => {
+                    if (!payload || payload.length === 0) return null;
+                    return (
+                      <div className="bg-background border rounded p-2 text-xs shadow">
+                        {payload.map((p) => {
+                          if (p.value == null) return null;
+                          const name = String(p.dataKey);
+                          const isMa = name.startsWith("ma7_");
+                          const year = name.replace("y", "").replace("ma7_", "");
+                          return (
+                            <p key={name} style={{ color: p.color }}>
+                              {year}{isMa ? " (MA7)" : ""}: {formatValue(p.value as number, metricType)}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    );
+                  }}
+                />
+                {years.filter((y) => enabledYears.has(y.year)).map((y) => (
+                  <Line
+                    key={y.year}
+                    type="monotone"
+                    dataKey={`y${y.year}`}
+                    stroke={y.color}
+                    dot={false}
+                    strokeWidth={1.5}
+                    connectNulls
+                    animationDuration={300}
+                  />
+                ))}
+                {showMa7 && years.filter((y) => enabledYears.has(y.year)).map((y) => (
+                  <Line
+                    key={`ma7_${y.year}`}
+                    type="monotone"
+                    dataKey={`ma7_${y.year}`}
+                    stroke={y.color}
+                    dot={false}
+                    strokeWidth={2.5}
+                    strokeDasharray="5 3"
+                    connectNulls
+                    animationDuration={300}
+                  />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-4">
+          <p className="text-sm font-medium mb-3">Year Averages</p>
+          <div className="space-y-2">
+            {years.map((y) => (
+              <div key={y.year} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: y.color }} />
+                  <span className="font-medium">{y.year}</span>
+                </div>
+                <div className="text-right">
+                  <span className="font-mono">{formatValue(y.avg, metricType)}</span>
+                  <span className="text-xs text-muted-foreground ml-2">({y.count} days)</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+// --- Streak Timeline Detail ---
+function StreakTimelineDetail({ data }: { data: DetailData }) {
+  const streaks = data.streaks as { startDate: string; endDate: string; length: number; type: "active" | "gap" }[];
+  const stats = data.stats as {
+    currentStreak: number; longestStreak: number; averageStreak: number;
+    totalStreaks: number; totalActiveDays: number; totalTrackedDays: number; activeRate: number;
+  };
+
+  // Streak length distribution for bar chart
+  const activeStreaks = streaks.filter((s) => s.type === "active");
+  const streakLengths = activeStreaks.map((s) => s.length);
+  const maxLen = Math.max(...streakLengths, 1);
+  const buckets: { range: string; count: number }[] = [];
+  const bucketSize = maxLen <= 10 ? 1 : maxLen <= 30 ? 5 : 10;
+  for (let i = 1; i <= maxLen; i += bucketSize) {
+    const end = Math.min(i + bucketSize - 1, maxLen);
+    const label = bucketSize === 1 ? `${i}` : `${i}-${end}`;
+    const count = streakLengths.filter((l) => l >= i && l <= end).length;
+    buckets.push({ range: label, count });
+  }
+
+  // Timeline visualization: show last 180 days of segments
+  const timelineStreaks = useMemo(() => {
+    if (streaks.length === 0) return [];
+    const lastDate = streaks[streaks.length - 1].endDate;
+    const cutoff = new Date(lastDate + "T00:00:00");
+    cutoff.setDate(cutoff.getDate() - 180);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return streaks.filter((s) => s.endDate >= cutoffStr);
+  }, [streaks]);
+
+  const totalTimelineDays = useMemo(() => {
+    if (timelineStreaks.length === 0) return 1;
+    const first = new Date(timelineStreaks[0].startDate + "T00:00:00");
+    const last = new Date(timelineStreaks[timelineStreaks.length - 1].endDate + "T00:00:00");
+    return Math.max(1, (last.getTime() - first.getTime()) / 86400000 + 1);
+  }, [timelineStreaks]);
+
+  return (
+    <>
+      <div className="grid grid-cols-4 gap-3 text-center">
+        <div>
+          <p className="text-xs text-muted-foreground">Current</p>
+          <p className="text-2xl font-bold font-mono">{stats.currentStreak}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Longest</p>
+          <p className="text-2xl font-bold font-mono">{stats.longestStreak}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Average</p>
+          <p className="text-2xl font-bold font-mono">{stats.averageStreak}</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">Active %</p>
+          <p className="text-2xl font-bold font-mono">{stats.activeRate}%</p>
+        </div>
+      </div>
+
+      {/* Timeline bars */}
+      <Card>
+        <CardContent className="p-4">
+          <p className="text-sm font-medium mb-3">Streak Timeline (last 180 days)</p>
+          <div className="flex rounded overflow-hidden" style={{ height: 32 }}>
+            {timelineStreaks.map((s, i) => {
+              const widthPct = (s.length / totalTimelineDays) * 100;
+              return (
+                <div
+                  key={i}
+                  className="relative group"
+                  style={{
+                    width: `${Math.max(widthPct, 0.5)}%`,
+                    backgroundColor: s.type === "active" ? "#22c55e" : "#e5e7eb",
+                    minWidth: 2,
+                  }}
+                  title={`${s.type === "active" ? "Streak" : "Gap"}: ${s.length}d (${s.startDate} to ${s.endDate})`}
+                >
+                  <div className="absolute bottom-full mb-1 left-1/2 -translate-x-1/2 bg-background border rounded p-1 text-[10px] shadow hidden group-hover:block whitespace-nowrap z-10">
+                    {s.type === "active" ? "Streak" : "Gap"}: {s.length}d
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+            <span>{timelineStreaks[0]?.startDate}</span>
+            <span>{timelineStreaks[timelineStreaks.length - 1]?.endDate}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Streak length distribution */}
+      {buckets.length > 0 && (
+        <Card>
+          <CardContent className="px-2 pt-4 pb-2">
+            <p className="text-sm font-medium mb-2 px-2">Streak Length Distribution</p>
+            <div style={{ width: "100%", height: 200 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={buckets} margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                  <XAxis dataKey="range" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                  <Tooltip formatter={(value: number) => [`${value} streaks`, "Count"]} />
+                  <Bar dataKey="count" fill="#22c55e" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent className="p-4">
+          <p className="text-sm font-medium mb-3">Summary</p>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div>
+              <p className="text-muted-foreground text-xs">Total Streaks</p>
+              <p className="font-mono font-semibold">{stats.totalStreaks}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs">Active Days</p>
+              <p className="font-mono font-semibold">{stats.totalActiveDays} / {stats.totalTrackedDays}</p>
+            </div>
+            {data.threshold !== undefined && (
+              <div className="col-span-2">
+                <p className="text-muted-foreground text-xs">Threshold (median)</p>
+                <p className="font-mono font-semibold">{formatValue(data.threshold, data.metricType)}</p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+// --- Candlestick Detail ---
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CandleShape(props: any) {
+  const { x, y, width, payload, yScale } = props;
+  if (!payload || !yScale) return null;
+
+  const { open, high, low, close } = payload;
+  const isGreen = close >= open;
+  const color = isGreen ? "#22c55e" : "#ef4444";
+
+  const bodyTop = yScale(Math.max(open, close));
+  const bodyBottom = yScale(Math.min(open, close));
+  const bodyHeight = Math.max(Math.abs(bodyBottom - bodyTop), 1);
+
+  const wickTop = yScale(high);
+  const wickBottom = yScale(low);
+  const centerX = x + width / 2;
+
+  return (
+    <g>
+      {/* Wick */}
+      <line
+        x1={centerX}
+        y1={wickTop}
+        x2={centerX}
+        y2={wickBottom}
+        stroke={color}
+        strokeWidth={1}
+      />
+      {/* Body */}
+      <rect
+        x={x + width * 0.15}
+        y={bodyTop}
+        width={width * 0.7}
+        height={bodyHeight}
+        fill={isGreen ? color : color}
+        fillOpacity={isGreen ? 0.8 : 0.8}
+        stroke={color}
+        strokeWidth={1}
+      />
+    </g>
+  );
+}
+
+function CandlestickDetail({
+  data,
+  period,
+  setPeriod,
+}: {
+  data: DetailData;
+  period: "weekly" | "monthly";
+  setPeriod: (p: "weekly" | "monthly") => void;
+}) {
+  const candles = data.candles as {
+    period: string; periodStart: string; periodEnd: string;
+    open: number; high: number; low: number; close: number; count: number;
+  }[];
+  const metricType = data.metricType as string | undefined;
+
+  // Compute Y domain
+  const allHighs = candles.map((c) => c.high);
+  const allLows = candles.map((c) => c.low);
+  const yMin = Math.min(...allLows) * 0.95;
+  const yMax = Math.max(...allHighs) * 1.05;
+
+  // Build a yScale function that matches Recharts domain
+  const yScale = useCallback(
+    (value: number) => {
+      const chartHeight = 260;
+      const margin = 10;
+      const plotHeight = chartHeight - margin * 2;
+      const ratio = (value - yMin) / (yMax - yMin || 1);
+      return chartHeight - margin - ratio * plotHeight;
+    },
+    [yMin, yMax]
+  );
+
+  // Augment candle data with yScale reference
+  const chartData = candles.map((c) => ({
+    ...c,
+    // dummy bar value to give each bar a position
+    barValue: c.high,
+    yScale,
+  }));
+
+  return (
+    <>
+      <div className="flex gap-2">
+        {(["weekly", "monthly"] as const).map((p) => (
+          <Button
+            key={p}
+            variant={period === p ? "default" : "outline"}
+            size="sm"
+            onClick={() => setPeriod(p)}
+          >
+            {p.charAt(0).toUpperCase() + p.slice(1)}
+          </Button>
+        ))}
+      </div>
+
+      <Card>
+        <CardContent className="px-2 pt-4 pb-2">
+          <p className="text-sm font-medium mb-2 px-2">{data.metricName} - {period === "weekly" ? "Weekly" : "Monthly"} Candles</p>
+          <div style={{ width: "100%", height: 280 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                margin={{ top: 10, right: 10, left: -10, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                <XAxis
+                  dataKey="period"
+                  tick={{ fontSize: 9 }}
+                  interval="preserveStartEnd"
+                  tickFormatter={(v) => {
+                    if (period === "monthly") {
+                      const d = new Date(v + "-01T00:00:00");
+                      return d.toLocaleString("default", { month: "short", year: "2-digit" });
+                    }
+                    return v.slice(5); // MM-DD
+                  }}
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  domain={[yMin, yMax]}
+                  tickFormatter={(v) => formatValue(v, metricType)}
+                />
+                <Tooltip
+                  content={({ payload }) => {
+                    if (!payload?.[0]) return null;
+                    const p = payload[0].payload;
+                    return (
+                      <div className="bg-background border rounded p-2 text-xs shadow">
+                        <p className="font-medium">{p.period}</p>
+                        <p>Open: {formatValue(p.open, metricType)}</p>
+                        <p>High: {formatValue(p.high, metricType)}</p>
+                        <p>Low: {formatValue(p.low, metricType)}</p>
+                        <p>Close: {formatValue(p.close, metricType)}</p>
+                        <p className="text-muted-foreground">{p.count} days</p>
+                      </div>
+                    );
+                  }}
+                />
+                <ReferenceLine
+                  y={data.overallAvg}
+                  stroke="#888"
+                  strokeDasharray="3 3"
+                  label={{ value: `Avg: ${formatValue(data.overallAvg, metricType)}`, fontSize: 9, fill: "#888" }}
+                />
+                <Bar
+                  dataKey="barValue"
+                  shape={<CandleShape yScale={yScale} />}
+                  isAnimationActive={false}
+                />
               </BarChart>
             </ResponsiveContainer>
           </div>
