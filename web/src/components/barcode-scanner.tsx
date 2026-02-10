@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { BrowserMultiFormatReader, NotFoundException } from "@zxing/library";
+import { BrowserMultiFormatReader, IScannerControls } from "@zxing/browser";
+import { NotFoundException } from "@zxing/library";
 import { Button } from "@/components/ui/button";
 
 type BarcodeScannerProps = {
@@ -11,54 +12,53 @@ type BarcodeScannerProps = {
 
 export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(true);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>("");
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Initialize reader and get cameras
+  // Get available cameras on mount
   useEffect(() => {
-    const reader = new BrowserMultiFormatReader();
-    readerRef.current = reader;
-
-    // Get available cameras
-    reader
-      .listVideoInputDevices()
-      .then((devices) => {
+    BrowserMultiFormatReader.listVideoInputDevices()
+      .then((devices: MediaDeviceInfo[]) => {
         setCameras(devices);
         // Prefer back camera on mobile
         const backCamera = devices.find(
-          (d) =>
+          (d: MediaDeviceInfo) =>
             d.label.toLowerCase().includes("back") ||
             d.label.toLowerCase().includes("rear") ||
             d.label.toLowerCase().includes("environment")
         );
         setSelectedCamera(backCamera?.deviceId || devices[0]?.deviceId || "");
+        setIsInitialized(true);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         console.error("Failed to list cameras:", err);
         setError("Unable to access camera. Please check permissions.");
       });
 
     return () => {
-      reader.reset();
+      // Stop any active scanning on unmount
+      controlsRef.current?.stop();
     };
   }, []);
 
   // Start scanning when camera is selected
   useEffect(() => {
-    if (!selectedCamera || !videoRef.current || !readerRef.current || !scanning) {
+    if (!selectedCamera || !videoRef.current || !scanning || !isInitialized) {
       return;
     }
 
-    const reader = readerRef.current;
     let active = true;
+    const reader = new BrowserMultiFormatReader();
 
     const startScanning = async () => {
       try {
         setError(null);
-        await reader.decodeFromVideoDevice(
+
+        const controls = await reader.decodeFromVideoDevice(
           selectedCamera,
           videoRef.current!,
           (result, err) => {
@@ -72,7 +72,7 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
 
               if (isValidISBN) {
                 setScanning(false);
-                reader.reset();
+                controls.stop();
                 onScan(text);
               }
             }
@@ -82,6 +82,8 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
             }
           }
         );
+
+        controlsRef.current = controls;
       } catch (err) {
         console.error("Failed to start scanning:", err);
         if (active) {
@@ -94,24 +96,32 @@ export function BarcodeScanner({ onScan, onClose }: BarcodeScannerProps) {
 
     return () => {
       active = false;
-      reader.reset();
+      controlsRef.current?.stop();
     };
-  }, [selectedCamera, scanning, onScan]);
+  }, [selectedCamera, scanning, onScan, isInitialized]);
 
   const switchCamera = useCallback(() => {
     if (cameras.length <= 1) return;
+
+    // Stop current scanning
+    controlsRef.current?.stop();
+
     const currentIndex = cameras.findIndex((c) => c.deviceId === selectedCamera);
     const nextIndex = (currentIndex + 1) % cameras.length;
-    readerRef.current?.reset();
     setSelectedCamera(cameras[nextIndex].deviceId);
   }, [cameras, selectedCamera]);
+
+  const handleClose = useCallback(() => {
+    controlsRef.current?.stop();
+    onClose();
+  }, [onClose]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between p-4 bg-black/80">
         <h2 className="text-white font-medium">Scan ISBN Barcode</h2>
-        <Button variant="ghost" size="sm" onClick={onClose} className="text-white">
+        <Button variant="ghost" size="sm" onClick={handleClose} className="text-white">
           Cancel
         </Button>
       </div>
