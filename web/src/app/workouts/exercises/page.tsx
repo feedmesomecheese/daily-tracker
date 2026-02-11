@@ -60,7 +60,9 @@ export default function ExerciseLibraryPage() {
   const [activeTab, setActiveTab] = useState("exercises");
 
   // Import state
-  const [importJson, setImportJson] = useState("");
+  const [modifiersCsv, setModifiersCsv] = useState("");
+  const [categoriesCsv, setCategoriesCsv] = useState("");
+  const [exercisesCsv, setExercisesCsv] = useState("");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
 
@@ -204,18 +206,59 @@ export default function ExerciseLibraryPage() {
     }
   };
 
+  // Parse CSV into array of objects
+  const parseCsv = (csv: string): Record<string, string>[] => {
+    const lines = csv.trim().split("\n").filter((l) => l.trim());
+    if (lines.length < 2) return [];
+
+    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
+    const rows: Record<string, string>[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(",").map((v) => v.trim());
+      const row: Record<string, string> = {};
+      headers.forEach((h, idx) => {
+        row[h] = values[idx] || "";
+      });
+      rows.push(row);
+    }
+    return rows;
+  };
+
   const handleImport = async () => {
-    if (!importJson.trim()) return;
+    if (!modifiersCsv.trim() && !categoriesCsv.trim() && !exercisesCsv.trim()) return;
     setImporting(true);
     setImportResult(null);
 
     try {
-      const data = JSON.parse(importJson);
+      // Parse CSVs
+      const modifiers = parseCsv(modifiersCsv).map((row) => ({
+        name: row.name || row.modifier,
+      })).filter((m) => m.name);
+
+      const categories = parseCsv(categoriesCsv).map((row) => ({
+        name: row.name || row.category,
+        short_code: row.short_code || row.code || undefined,
+      })).filter((c) => c.name);
+
+      const exercises = parseCsv(exercisesCsv).map((row) => ({
+        name: row.name || row.exercise,
+        exercise_type: row.exercise_type || row.type || "weighted",
+        category_names: (row.categories || row.category_names || "")
+          .split(";")
+          .map((s: string) => s.trim())
+          .filter(Boolean),
+        modifier_names: (row.modifiers || row.modifier_names || "")
+          .split(";")
+          .map((s: string) => s.trim())
+          .filter(Boolean),
+      })).filter((e) => e.name);
+
       const headers = await getAuthHeaders();
       const res = await fetch("/api/workouts/import", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ modifiers, categories, exercises }),
       });
       const json = await res.json();
 
@@ -231,10 +274,12 @@ export default function ExerciseLibraryPage() {
       ].join("\n");
 
       setImportResult(summary);
-      setImportJson("");
+      setModifiersCsv("");
+      setCategoriesCsv("");
+      setExercisesCsv("");
       fetchData();
     } catch (e) {
-      setImportResult(`Error: ${e instanceof Error ? e.message : "Invalid JSON or import failed"}`);
+      setImportResult(`Error: ${e instanceof Error ? e.message : "Import failed"}`);
     } finally {
       setImporting(false);
     }
@@ -589,42 +634,76 @@ export default function ExerciseLibraryPage() {
         <TabsContent value="import" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Import Data</CardTitle>
+              <CardTitle className="text-base">Import from CSV</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Paste JSON to import modifiers, categories, and exercises. Duplicates (by name) will be skipped.
+                Paste CSV data below. Import runs in order: Modifiers → Categories → Exercises. Duplicates (by name) are skipped.
               </p>
-              <textarea
-                value={importJson}
-                onChange={(e) => setImportJson(e.target.value)}
-                placeholder={`{
-  "modifiers": [
-    { "name": "Banded" },
-    { "name": "Pause" },
-    { "name": "Raised Heel" }
-  ],
-  "categories": [
-    { "name": "Main Squat", "short_code": "S" },
-    { "name": "Squat Accessories", "short_code": "SA" }
-  ],
-  "exercises": [
-    {
-      "name": "Squats",
-      "exercise_type": "weighted",
-      "category_names": ["Main Squat"],
-      "modifier_names": ["Banded", "Pause", "Raised Heel"]
-    }
-  ]
-}`}
-                rows={16}
-                className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
-              />
-              <div className="flex gap-2">
-                <Button onClick={handleImport} disabled={importing || !importJson.trim()}>
-                  {importing ? "Importing..." : "Import"}
+
+              {/* Modifiers CSV */}
+              <div>
+                <label className="text-sm font-medium">1. Modifiers</label>
+                <p className="text-xs text-muted-foreground mb-1">Columns: name</p>
+                <textarea
+                  value={modifiersCsv}
+                  onChange={(e) => setModifiersCsv(e.target.value)}
+                  placeholder={`name
+Banded
+Pause
+Raised Heel
+Reverse Band
+Tempo`}
+                  rows={5}
+                  className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
+                />
+              </div>
+
+              {/* Categories CSV */}
+              <div>
+                <label className="text-sm font-medium">2. Categories</label>
+                <p className="text-xs text-muted-foreground mb-1">Columns: name, short_code (optional)</p>
+                <textarea
+                  value={categoriesCsv}
+                  onChange={(e) => setCategoriesCsv(e.target.value)}
+                  placeholder={`name,short_code
+Main Squat,S
+Squat Accessories,SA
+Main Bench,B
+Bench Accessories,BA`}
+                  rows={5}
+                  className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
+                />
+              </div>
+
+              {/* Exercises CSV */}
+              <div>
+                <label className="text-sm font-medium">3. Exercises</label>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Columns: name, type, categories (semicolon-separated), modifiers (semicolon-separated)
+                </p>
+                <textarea
+                  value={exercisesCsv}
+                  onChange={(e) => setExercisesCsv(e.target.value)}
+                  placeholder={`name,type,categories,modifiers
+Squats,weighted,Main Squat,Banded;Pause;Raised Heel
+Leg Press,weighted,Squat Accessories,
+Bench Press,weighted,Main Bench,Banded;Pause
+Air Bike HIIT,cardio_hiit,,`}
+                  rows={6}
+                  className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={handleImport}
+                  disabled={importing || (!modifiersCsv.trim() && !categoriesCsv.trim() && !exercisesCsv.trim())}
+                >
+                  {importing ? "Importing..." : "Import All"}
                 </Button>
               </div>
+
               {importResult && (
                 <pre className="text-sm p-3 bg-muted rounded-md whitespace-pre-wrap">
                   {importResult}
@@ -635,15 +714,12 @@ export default function ExerciseLibraryPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">JSON Format</CardTitle>
+              <CardTitle className="text-base">CSV Format Notes</CardTitle>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-2">
-              <p><strong>modifiers</strong>: Array of {"{"} name, adjective_order? {"}"}</p>
-              <p><strong>categories</strong>: Array of {"{"} name, short_code?, color? {"}"}</p>
-              <p><strong>exercises</strong>: Array of {"{"} name, exercise_type?, category_names[]?, modifier_names[]?, aliases[]? {"}"}</p>
-              <p className="text-xs mt-2">
-                exercise_type options: weighted, bodyweight, cardio_hiit, cardio_zone2, sport
-              </p>
+              <p>Use semicolons (;) to separate multiple categories or modifiers within a cell.</p>
+              <p><strong>Exercise types:</strong> weighted, bodyweight, cardio_hiit, cardio_zone2, sport</p>
+              <p>Category and modifier names must match exactly (case-insensitive) to link properly.</p>
             </CardContent>
           </Card>
         </TabsContent>
