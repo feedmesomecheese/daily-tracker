@@ -57,6 +57,12 @@ export default function ExerciseLibraryPage() {
 
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [showArchived, setShowArchived] = useState(false);
+  const [activeTab, setActiveTab] = useState("exercises");
+
+  // Import state
+  const [importJson, setImportJson] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -198,6 +204,42 @@ export default function ExerciseLibraryPage() {
     }
   };
 
+  const handleImport = async () => {
+    if (!importJson.trim()) return;
+    setImporting(true);
+    setImportResult(null);
+
+    try {
+      const data = JSON.parse(importJson);
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/workouts/import", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json.error || "Import failed");
+      }
+
+      const { results } = json;
+      const summary = [
+        `Modifiers: ${results.modifiers.imported} imported${results.modifiers.errors.length ? `, ${results.modifiers.errors.length} errors` : ""}`,
+        `Categories: ${results.categories.imported} imported${results.categories.errors.length ? `, ${results.categories.errors.length} errors` : ""}`,
+        `Exercises: ${results.exercises.imported} imported${results.exercises.errors.length ? `, ${results.exercises.errors.length} errors` : ""}`,
+      ].join("\n");
+
+      setImportResult(summary);
+      setImportJson("");
+      fetchData();
+    } catch (e) {
+      setImportResult(`Error: ${e instanceof Error ? e.message : "Invalid JSON or import failed"}`);
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const filteredExercises = exercises.filter((ex) => {
     if (!showArchived && ex.is_archived) return false;
     if (selectedCategory !== "all" && !ex.category_ids.includes(selectedCategory)) return false;
@@ -230,11 +272,12 @@ export default function ExerciseLibraryPage() {
         </div>
       )}
 
-      <Tabs defaultValue="exercises">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="exercises">Exercises</TabsTrigger>
           <TabsTrigger value="categories">Categories</TabsTrigger>
           <TabsTrigger value="modifiers">Modifiers</TabsTrigger>
+          <TabsTrigger value="import">Import</TabsTrigger>
         </TabsList>
 
         {/* Exercises Tab */}
@@ -251,6 +294,12 @@ export default function ExerciseLibraryPage() {
                   placeholder="Exercise name..."
                   value={newExerciseName}
                   onChange={(e) => setNewExerciseName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addExercise();
+                    }
+                  }}
                   className="flex-1 h-9 px-3 border rounded-md text-sm"
                 />
                 <Select value={newExerciseType} onValueChange={setNewExerciseType}>
@@ -397,19 +446,37 @@ export default function ExerciseLibraryPage() {
                   placeholder="Category name..."
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCategory();
+                    }
+                  }}
                   className="flex-1 h-9 px-3 border rounded-md text-sm"
                 />
-                <input
-                  type="text"
-                  placeholder="Code (e.g., S)"
-                  value={newCategoryCode}
-                  onChange={(e) => setNewCategoryCode(e.target.value)}
-                  className="w-24 h-9 px-3 border rounded-md text-sm"
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Code"
+                    value={newCategoryCode}
+                    onChange={(e) => setNewCategoryCode(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCategory();
+                      }
+                    }}
+                    className="w-20 h-9 px-3 border rounded-md text-sm"
+                    title="Optional short code (e.g., S for Squat, BA for Bench Accessories)"
+                  />
+                </div>
                 <Button onClick={addCategory} size="sm">
                   Add
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Code is an optional short abbreviation (e.g., S, BA, DL).
+              </p>
             </CardContent>
           </Card>
 
@@ -464,6 +531,12 @@ export default function ExerciseLibraryPage() {
                   placeholder="Modifier name (e.g., Banded)..."
                   value={newModifierName}
                   onChange={(e) => setNewModifierName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addModifier();
+                    }
+                  }}
                   className="flex-1 h-9 px-3 border rounded-md text-sm"
                 />
                 <Button onClick={addModifier} size="sm">
@@ -508,6 +581,69 @@ export default function ExerciseLibraryPage() {
                   </p>
                 )}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Import Tab */}
+        <TabsContent value="import" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Import Data</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Paste JSON to import modifiers, categories, and exercises. Duplicates (by name) will be skipped.
+              </p>
+              <textarea
+                value={importJson}
+                onChange={(e) => setImportJson(e.target.value)}
+                placeholder={`{
+  "modifiers": [
+    { "name": "Banded" },
+    { "name": "Pause" },
+    { "name": "Raised Heel" }
+  ],
+  "categories": [
+    { "name": "Main Squat", "short_code": "S" },
+    { "name": "Squat Accessories", "short_code": "SA" }
+  ],
+  "exercises": [
+    {
+      "name": "Squats",
+      "exercise_type": "weighted",
+      "category_names": ["Main Squat"],
+      "modifier_names": ["Banded", "Pause", "Raised Heel"]
+    }
+  ]
+}`}
+                rows={16}
+                className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
+              />
+              <div className="flex gap-2">
+                <Button onClick={handleImport} disabled={importing || !importJson.trim()}>
+                  {importing ? "Importing..." : "Import"}
+                </Button>
+              </div>
+              {importResult && (
+                <pre className="text-sm p-3 bg-muted rounded-md whitespace-pre-wrap">
+                  {importResult}
+                </pre>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">JSON Format</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground space-y-2">
+              <p><strong>modifiers</strong>: Array of {"{"} name, adjective_order? {"}"}</p>
+              <p><strong>categories</strong>: Array of {"{"} name, short_code?, color? {"}"}</p>
+              <p><strong>exercises</strong>: Array of {"{"} name, exercise_type?, category_names[]?, modifier_names[]?, aliases[]? {"}"}</p>
+              <p className="text-xs mt-2">
+                exercise_type options: weighted, bodyweight, cardio_hiit, cardio_zone2, sport
+              </p>
             </CardContent>
           </Card>
         </TabsContent>
