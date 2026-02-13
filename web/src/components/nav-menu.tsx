@@ -38,7 +38,8 @@ const modules: NavModule[] = [
   {
     name: "Workouts",
     links: [
-      { href: "/workouts", label: "Log" },
+      { href: "/workouts", label: "Entry" },
+      { href: "/workouts/log", label: "Log" },
       { href: "/workouts/exercises", label: "Exercises" },
     ],
   },

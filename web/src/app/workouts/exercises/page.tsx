@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,11 +14,20 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type Category = {
+type WorkoutType = {
+  id: string;
+  name: string;
+  group_ids: string[];
+  sort_order: number;
+  is_archived: boolean;
+};
+
+type Group = {
   id: string;
   name: string;
   short_code: string | null;
   color: string | null;
+  input_type: string;
   sort_order: number;
   is_archived: boolean;
 };
@@ -33,36 +43,61 @@ type Exercise = {
   name: string;
   exercise_type: string;
   counts_toward_volume: boolean;
-  category_ids: string[];
+  group_ids: string[];
   available_modifier_ids: string[];
   is_archived: boolean;
   sort_order: number;
 };
 
 export default function ExerciseLibraryPage() {
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Form states
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryCode, setNewCategoryCode] = useState("");
+  // Type form states
+  const [newTypeName, setNewTypeName] = useState("");
+  const [newTypeGroups, setNewTypeGroups] = useState<string[]>([]);
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [editTypeName, setEditTypeName] = useState("");
+  const [editTypeGroups, setEditTypeGroups] = useState<string[]>([]);
+
+  // Group form states
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupCode, setNewGroupCode] = useState("");
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupCode, setEditGroupCode] = useState("");
+  const [editGroupInputType, setEditGroupInputType] = useState("strength");
+  const [newGroupInputType, setNewGroupInputType] = useState("strength");
+
+  // Modifier form
   const [newModifierName, setNewModifierName] = useState("");
+  const [editingModifierId, setEditingModifierId] = useState<string | null>(null);
+  const [editModifierName, setEditModifierName] = useState("");
+
+  // Exercise edit states
+  const [editingExerciseId, setEditingExerciseId] = useState<string | null>(null);
+  const [editExerciseName, setEditExerciseName] = useState("");
+  const [editExerciseType, setEditExerciseType] = useState("weighted");
+  const [editExerciseGroups, setEditExerciseGroups] = useState<string[]>([]);
+  const [editExerciseModifiers, setEditExerciseModifiers] = useState<string[]>([]);
+
+  // Exercise form
   const [newExerciseName, setNewExerciseName] = useState("");
   const [newExerciseType, setNewExerciseType] = useState("weighted");
-  const [newExerciseCategories, setNewExerciseCategories] = useState<string[]>([]);
+  const [newExerciseGroups, setNewExerciseGroups] = useState<string[]>([]);
   const [newExerciseModifiers, setNewExerciseModifiers] = useState<string[]>([]);
 
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [activeTab, setActiveTab] = useState("exercises");
 
   // Import state
-  const [modifiersCsv, setModifiersCsv] = useState("");
-  const [categoriesCsv, setCategoriesCsv] = useState("");
-  const [exercisesCsv, setExercisesCsv] = useState("");
+  const [typesCsv, setTypesCsv] = useState("");
+  const [exercisesCsvImport, setExercisesCsvImport] = useState("");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
 
@@ -71,23 +106,26 @@ export default function ExerciseLibraryPage() {
       setLoading(true);
       const headers = await getAuthHeaders();
 
-      const [catRes, modRes, exRes] = await Promise.all([
-        fetch("/api/workouts/categories?include_archived=true", { headers }),
+      const [typesRes, groupRes, modRes, exRes] = await Promise.all([
+        fetch("/api/workouts/types?include_archived=true", { headers }),
+        fetch("/api/workouts/groups?include_archived=true", { headers }),
         fetch("/api/workouts/modifiers", { headers }),
         fetch("/api/workouts/exercises?include_archived=true", { headers }),
       ]);
 
-      if (!catRes.ok || !modRes.ok || !exRes.ok) {
+      if (!groupRes.ok || !modRes.ok || !exRes.ok) {
         throw new Error("Failed to load data");
       }
 
-      const [catData, modData, exData] = await Promise.all([
-        catRes.json(),
+      const [typesData, groupData, modData, exData] = await Promise.all([
+        typesRes.ok ? typesRes.json() : [],
+        groupRes.json(),
         modRes.json(),
         exRes.json(),
       ]);
 
-      setCategories(catData);
+      setWorkoutTypes(typesData);
+      setGroups(groupData);
       setModifiers(modData);
       setExercises(exData);
     } catch (e) {
@@ -101,27 +139,129 @@ export default function ExerciseLibraryPage() {
     fetchData();
   }, [fetchData]);
 
-  const addCategory = async () => {
-    if (!newCategoryName.trim()) return;
+  // ── Types CRUD ──
+  const addType = async () => {
+    if (!newTypeName.trim()) return;
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch("/api/workouts/categories", {
+      const res = await fetch("/api/workouts/types", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: newCategoryName.trim(),
-          short_code: newCategoryCode.trim() || null,
+          name: newTypeName.trim(),
+          group_ids: newTypeGroups,
         }),
       });
-      if (!res.ok) throw new Error("Failed to add category");
-      setNewCategoryName("");
-      setNewCategoryCode("");
+      if (!res.ok) throw new Error("Failed to add type");
+      setNewTypeName("");
+      setNewTypeGroups([]);
       fetchData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to add category");
+      setError(e instanceof Error ? e.message : "Failed to add type");
     }
   };
 
+  const startEditType = (type: WorkoutType) => {
+    setEditingTypeId(type.id);
+    setEditTypeName(type.name);
+    setEditTypeGroups([...type.group_ids]);
+  };
+
+  const saveEditType = async () => {
+    if (!editingTypeId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/workouts/types/${editingTypeId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editTypeName.trim(),
+          group_ids: editTypeGroups,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update type");
+      setEditingTypeId(null);
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update type");
+    }
+  };
+
+  const deleteType = async (id: string) => {
+    if (!confirm("Delete this workout type?")) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/workouts/types/${id}`, { method: "DELETE", headers });
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete type");
+    }
+  };
+
+  // ── Groups CRUD ──
+  const addGroup = async () => {
+    if (!newGroupName.trim()) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/workouts/groups", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newGroupName.trim(),
+          short_code: newGroupCode.trim() || null,
+          input_type: newGroupInputType,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to add group");
+      setNewGroupName("");
+      setNewGroupCode("");
+      setNewGroupInputType("strength");
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add group");
+    }
+  };
+
+  const startEditGroup = (g: Group) => {
+    setEditingGroupId(g.id);
+    setEditGroupName(g.name);
+    setEditGroupCode(g.short_code || "");
+    setEditGroupInputType(g.input_type || "strength");
+  };
+
+  const saveEditGroup = async () => {
+    if (!editingGroupId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/workouts/groups/${editingGroupId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editGroupName.trim(),
+          short_code: editGroupCode.trim() || null,
+          input_type: editGroupInputType,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update group");
+      setEditingGroupId(null);
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update group");
+    }
+  };
+
+  const deleteGroup = async (id: string) => {
+    if (!confirm("Delete this group?")) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/workouts/groups/${id}`, { method: "DELETE", headers });
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete group");
+    }
+  };
+
+  // ── Modifiers CRUD ──
   const addModifier = async () => {
     if (!newModifierName.trim()) return;
     try {
@@ -139,6 +279,40 @@ export default function ExerciseLibraryPage() {
     }
   };
 
+  const startEditModifier = (mod: Modifier) => {
+    setEditingModifierId(mod.id);
+    setEditModifierName(mod.name);
+  };
+
+  const saveEditModifier = async () => {
+    if (!editingModifierId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/workouts/modifiers/${editingModifierId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editModifierName.trim() }),
+      });
+      if (!res.ok) throw new Error("Failed to update modifier");
+      setEditingModifierId(null);
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update modifier");
+    }
+  };
+
+  const deleteModifier = async (id: string) => {
+    if (!confirm("Delete this modifier?")) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/workouts/modifiers/${id}`, { method: "DELETE", headers });
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete modifier");
+    }
+  };
+
+  // ── Exercises CRUD ──
   const addExercise = async () => {
     if (!newExerciseName.trim()) return;
     try {
@@ -149,14 +323,14 @@ export default function ExerciseLibraryPage() {
         body: JSON.stringify({
           name: newExerciseName.trim(),
           exercise_type: newExerciseType,
-          category_ids: newExerciseCategories,
+          group_ids: newExerciseGroups,
           available_modifier_ids: newExerciseModifiers,
         }),
       });
       if (!res.ok) throw new Error("Failed to add exercise");
       setNewExerciseName("");
       setNewExerciseType("weighted");
-      setNewExerciseCategories([]);
+      setNewExerciseGroups([]);
       setNewExerciseModifiers([]);
       fetchData();
     } catch (e) {
@@ -178,87 +352,81 @@ export default function ExerciseLibraryPage() {
     }
   };
 
-  const deleteCategory = async (id: string) => {
-    if (!confirm("Delete this category?")) return;
+  const startEditExercise = (ex: Exercise) => {
+    setEditingExerciseId(ex.id);
+    setEditExerciseName(ex.name);
+    setEditExerciseType(ex.exercise_type);
+    setEditExerciseGroups([...ex.group_ids]);
+    setEditExerciseModifiers([...ex.available_modifier_ids]);
+  };
+
+  const saveEditExercise = async () => {
+    if (!editingExerciseId) return;
     try {
       const headers = await getAuthHeaders();
-      await fetch(`/api/workouts/categories/${id}`, {
-        method: "DELETE",
-        headers,
+      const res = await fetch(`/api/workouts/exercises/${editingExerciseId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editExerciseName.trim(),
+          exercise_type: editExerciseType,
+          group_ids: editExerciseGroups,
+          available_modifier_ids: editExerciseModifiers,
+        }),
       });
+      if (!res.ok) throw new Error("Failed to update exercise");
+      setEditingExerciseId(null);
       fetchData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete category");
+      setError(e instanceof Error ? e.message : "Failed to update exercise");
     }
   };
 
-  const deleteModifier = async (id: string) => {
-    if (!confirm("Delete this modifier?")) return;
+  const deleteExercise = async (id: string) => {
+    if (!confirm("Delete this exercise permanently?")) return;
     try {
       const headers = await getAuthHeaders();
-      await fetch(`/api/workouts/modifiers/${id}`, {
-        method: "DELETE",
-        headers,
-      });
+      await fetch(`/api/workouts/exercises/${id}`, { method: "DELETE", headers });
       fetchData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to delete modifier");
+      setError(e instanceof Error ? e.message : "Failed to delete exercise");
     }
   };
 
-  // Parse CSV into array of objects
-  const parseCsv = (csv: string): Record<string, string>[] => {
-    const lines = csv.trim().split("\n").filter((l) => l.trim());
-    if (lines.length < 2) return [];
+  // ── Import ──
+  const readFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsText(file);
+    });
+  };
 
-    const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/\s+/g, "_"));
-    const rows: Record<string, string>[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = lines[i].split(",").map((v) => v.trim());
-      const row: Record<string, string> = {};
-      headers.forEach((h, idx) => {
-        row[h] = values[idx] || "";
-      });
-      rows.push(row);
-    }
-    return rows;
+  const handleFileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (val: string) => void
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await readFile(file);
+    setter(text);
   };
 
   const handleImport = async () => {
-    if (!modifiersCsv.trim() && !categoriesCsv.trim() && !exercisesCsv.trim()) return;
+    if (!typesCsv.trim() && !exercisesCsvImport.trim()) return;
     setImporting(true);
     setImportResult(null);
 
     try {
-      // Parse CSVs
-      const modifiers = parseCsv(modifiersCsv).map((row) => ({
-        name: row.name || row.modifier,
-      })).filter((m) => m.name);
-
-      const categories = parseCsv(categoriesCsv).map((row) => ({
-        name: row.name || row.category,
-        short_code: row.short_code || row.code || undefined,
-      })).filter((c) => c.name);
-
-      const exercises = parseCsv(exercisesCsv).map((row) => ({
-        name: row.name || row.exercise,
-        exercise_type: row.exercise_type || row.type || "weighted",
-        category_names: (row.categories || row.category_names || "")
-          .split(";")
-          .map((s: string) => s.trim())
-          .filter(Boolean),
-        modifier_names: (row.modifiers || row.modifier_names || "")
-          .split(";")
-          .map((s: string) => s.trim())
-          .filter(Boolean),
-      })).filter((e) => e.name);
-
       const headers = await getAuthHeaders();
       const res = await fetch("/api/workouts/import", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ modifiers, categories, exercises }),
+        body: JSON.stringify({
+          types_csv: typesCsv,
+          exercises_csv: exercisesCsvImport,
+        }),
       });
       const json = await res.json();
 
@@ -267,16 +435,35 @@ export default function ExerciseLibraryPage() {
       }
 
       const { results } = json;
-      const summary = [
-        `Modifiers: ${results.modifiers.imported} imported${results.modifiers.errors.length ? `, ${results.modifiers.errors.length} errors` : ""}`,
-        `Categories: ${results.categories.imported} imported${results.categories.errors.length ? `, ${results.categories.errors.length} errors` : ""}`,
-        `Exercises: ${results.exercises.imported} imported${results.exercises.errors.length ? `, ${results.exercises.errors.length} errors` : ""}`,
-      ].join("\n");
+      const lines: string[] = [];
 
-      setImportResult(summary);
-      setModifiersCsv("");
-      setCategoriesCsv("");
-      setExercisesCsv("");
+      if (results.types) {
+        lines.push(`Types: ${results.types.imported} imported, ${results.types.skipped} skipped${results.types.errors.length ? `, ${results.types.errors.length} errors` : ""}`);
+      }
+      if (results.groups) {
+        lines.push(`Groups: ${results.groups.imported} imported, ${results.groups.skipped} skipped${results.groups.errors.length ? `, ${results.groups.errors.length} errors` : ""}`);
+      }
+      if (results.modifiers) {
+        lines.push(`Modifiers: ${results.modifiers.imported} imported, ${results.modifiers.skipped} skipped${results.modifiers.errors.length ? `, ${results.modifiers.errors.length} errors` : ""}`);
+      }
+      if (results.exercises) {
+        lines.push(`Exercises: ${results.exercises.imported} imported, ${results.exercises.skipped} skipped${results.exercises.errors.length ? `, ${results.exercises.errors.length} errors` : ""}`);
+      }
+
+      // Show any errors
+      const allErrors = [
+        ...(results.types?.errors || []).map((e: string) => `  Type: ${e}`),
+        ...(results.groups?.errors || []).map((e: string) => `  Group: ${e}`),
+        ...(results.modifiers?.errors || []).map((e: string) => `  Modifier: ${e}`),
+        ...(results.exercises?.errors || []).map((e: string) => `  Exercise: ${e}`),
+      ];
+      if (allErrors.length > 0) {
+        lines.push("", "Errors:", ...allErrors);
+      }
+
+      setImportResult(lines.join("\n"));
+      setTypesCsv("");
+      setExercisesCsvImport("");
       fetchData();
     } catch (e) {
       setImportResult(`Error: ${e instanceof Error ? e.message : "Import failed"}`);
@@ -287,11 +474,14 @@ export default function ExerciseLibraryPage() {
 
   const filteredExercises = exercises.filter((ex) => {
     if (!showArchived && ex.is_archived) return false;
-    if (selectedCategory !== "all" && !ex.category_ids.includes(selectedCategory)) return false;
+    if (selectedGroup !== "all" && !ex.group_ids.includes(selectedGroup)) return false;
     return true;
   });
 
-  const getCategoryName = (id: string) => categories.find((c) => c.id === id)?.name || id;
+  const getGroupName = (id: string) => groups.find((g) => g.id === id)?.name || id;
+
+  const getTypesForGroup = (groupId: string) =>
+    workoutTypes.filter((t) => t.group_ids.includes(groupId)).map((t) => t.name);
 
   if (loading) {
     return (
@@ -306,6 +496,9 @@ export default function ExerciseLibraryPage() {
     <main className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Exercise Library</h1>
+        <Link href="/workouts">
+          <Button variant="outline" size="sm">Log Workout</Button>
+        </Link>
       </div>
 
       {error && (
@@ -320,14 +513,14 @@ export default function ExerciseLibraryPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="exercises">Exercises</TabsTrigger>
-          <TabsTrigger value="categories">Categories</TabsTrigger>
+          <TabsTrigger value="types">Types</TabsTrigger>
+          <TabsTrigger value="groups">Groups</TabsTrigger>
           <TabsTrigger value="modifiers">Modifiers</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
         </TabsList>
 
-        {/* Exercises Tab */}
+        {/* ── Exercises Tab ── */}
         <TabsContent value="exercises" className="space-y-4">
-          {/* Add Exercise Form */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Add Exercise</CardTitle>
@@ -362,21 +555,21 @@ export default function ExerciseLibraryPage() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <span className="text-xs text-muted-foreground self-center">Categories:</span>
-                {categories.filter((c) => !c.is_archived).map((cat) => (
-                  <label key={cat.id} className="flex items-center gap-1 text-sm">
+                <span className="text-xs text-muted-foreground self-center">Groups:</span>
+                {groups.filter((g) => !g.is_archived).map((g) => (
+                  <label key={g.id} className="flex items-center gap-1 text-sm">
                     <input
                       type="checkbox"
-                      checked={newExerciseCategories.includes(cat.id)}
+                      checked={newExerciseGroups.includes(g.id)}
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setNewExerciseCategories([...newExerciseCategories, cat.id]);
+                          setNewExerciseGroups([...newExerciseGroups, g.id]);
                         } else {
-                          setNewExerciseCategories(newExerciseCategories.filter((c) => c !== cat.id));
+                          setNewExerciseGroups(newExerciseGroups.filter((id) => id !== g.id));
                         }
                       }}
                     />
-                    {cat.name}
+                    {g.name}
                   </label>
                 ))}
               </div>
@@ -392,7 +585,7 @@ export default function ExerciseLibraryPage() {
                         if (e.target.checked) {
                           setNewExerciseModifiers([...newExerciseModifiers, mod.id]);
                         } else {
-                          setNewExerciseModifiers(newExerciseModifiers.filter((m) => m !== mod.id));
+                          setNewExerciseModifiers(newExerciseModifiers.filter((id) => id !== mod.id));
                         }
                       }}
                     />
@@ -407,7 +600,6 @@ export default function ExerciseLibraryPage() {
             </CardContent>
           </Card>
 
-          {/* Exercise List */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -415,15 +607,15 @@ export default function ExerciseLibraryPage() {
                   Exercises ({filteredExercises.length})
                 </CardTitle>
                 <div className="flex items-center gap-2">
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                  <Select value={selectedGroup} onValueChange={setSelectedGroup}>
                     <SelectTrigger className="w-[150px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Categories</SelectItem>
-                      {categories.filter((c) => !c.is_archived).map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.name}
+                      <SelectItem value="all">All Groups</SelectItem>
+                      {groups.filter((g) => !g.is_archived).map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -444,28 +636,97 @@ export default function ExerciseLibraryPage() {
                 {filteredExercises.map((ex) => (
                   <div
                     key={ex.id}
-                    className={`flex items-center justify-between p-2 border rounded ${
-                      ex.is_archived ? "opacity-50" : ""
-                    }`}
+                    className={`p-2 border rounded ${ex.is_archived ? "opacity-50" : ""}`}
                   >
-                    <div>
-                      <span className="font-medium">{ex.name}</span>
-                      <span className="text-xs text-muted-foreground ml-2">
-                        {ex.exercise_type}
-                      </span>
-                      {ex.category_ids.length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          {ex.category_ids.map(getCategoryName).join(", ")}
+                    {editingExerciseId === ex.id ? (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={editExerciseName}
+                            onChange={(e) => setEditExerciseName(e.target.value)}
+                            className="flex-1 h-8 px-2 border rounded text-sm"
+                            autoFocus
+                          />
+                          <Select value={editExerciseType} onValueChange={setEditExerciseType}>
+                            <SelectTrigger className="w-[130px] h-8">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="weighted">Weighted</SelectItem>
+                              <SelectItem value="bodyweight">Bodyweight</SelectItem>
+                              <SelectItem value="cardio_hiit">HIIT</SelectItem>
+                              <SelectItem value="cardio_zone2">Zone 2</SelectItem>
+                              <SelectItem value="sport">Sport</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleArchiveExercise(ex)}
-                    >
-                      {ex.is_archived ? "Restore" : "Archive"}
-                    </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-xs text-muted-foreground self-center">Groups:</span>
+                          {groups.filter((g) => !g.is_archived).map((g) => (
+                            <label key={g.id} className="flex items-center gap-1 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={editExerciseGroups.includes(g.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEditExerciseGroups([...editExerciseGroups, g.id]);
+                                  } else {
+                                    setEditExerciseGroups(editExerciseGroups.filter((id) => id !== g.id));
+                                  }
+                                }}
+                              />
+                              {g.name}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-xs text-muted-foreground self-center">Modifiers:</span>
+                          {modifiers.map((mod) => (
+                            <label key={mod.id} className="flex items-center gap-1 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={editExerciseModifiers.includes(mod.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEditExerciseModifiers([...editExerciseModifiers, mod.id]);
+                                  } else {
+                                    setEditExerciseModifiers(editExerciseModifiers.filter((id) => id !== mod.id));
+                                  }
+                                }}
+                              />
+                              {mod.name}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={saveEditExercise}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingExerciseId(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">{ex.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            {ex.exercise_type}
+                          </span>
+                          {ex.group_ids.length > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              {ex.group_ids.map(getGroupName).join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => startEditExercise(ex)}>
+                            Edit
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => toggleArchiveExercise(ex)}>
+                            {ex.is_archived ? "Restore" : "Archive"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {filteredExercises.length === 0 && (
@@ -478,23 +739,152 @@ export default function ExerciseLibraryPage() {
           </Card>
         </TabsContent>
 
-        {/* Categories Tab */}
-        <TabsContent value="categories" className="space-y-4">
+        {/* ── Types Tab ── */}
+        <TabsContent value="types" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Add Category</CardTitle>
+              <CardTitle className="text-base">Add Workout Type</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Category name..."
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="Type name (e.g. Bench Day)..."
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
-                      addCategory();
+                      addType();
+                    }
+                  }}
+                  className="flex-1 h-9 px-3 border rounded-md text-sm"
+                />
+                <Button onClick={addType} size="sm">
+                  Add
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="text-xs text-muted-foreground self-center">Assign groups:</span>
+                {groups.filter((g) => !g.is_archived).map((g) => (
+                  <label key={g.id} className="flex items-center gap-1 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newTypeGroups.includes(g.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewTypeGroups([...newTypeGroups, g.id]);
+                        } else {
+                          setNewTypeGroups(newTypeGroups.filter((id) => id !== g.id));
+                        }
+                      }}
+                    />
+                    {g.name}
+                  </label>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Workout Types ({workoutTypes.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {workoutTypes.map((type) => (
+                  <div
+                    key={type.id}
+                    className="p-2 border rounded"
+                  >
+                    {editingTypeId === type.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editTypeName}
+                          onChange={(e) => setEditTypeName(e.target.value)}
+                          className="w-full h-8 px-2 border rounded text-sm"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          {groups.filter((g) => !g.is_archived).map((g) => (
+                            <label key={g.id} className="flex items-center gap-1 text-sm">
+                              <input
+                                type="checkbox"
+                                checked={editTypeGroups.includes(g.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEditTypeGroups([...editTypeGroups, g.id]);
+                                  } else {
+                                    setEditTypeGroups(editTypeGroups.filter((id) => id !== g.id));
+                                  }
+                                }}
+                              />
+                              {g.name}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={saveEditType}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingTypeId(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">{type.name}</span>
+                          {type.group_ids.length > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              Groups: {type.group_ids.map(getGroupName).join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => startEditType(type)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteType(type.id)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {workoutTypes.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No workout types yet. Create types like "Bench Day" or "Squat Day" and assign groups to them.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Groups Tab (renamed from Categories) ── */}
+        <TabsContent value="groups" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Add Group</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Group name..."
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addGroup();
                     }
                   }}
                   className="flex-1 h-9 px-3 border rounded-md text-sm"
@@ -503,59 +893,118 @@ export default function ExerciseLibraryPage() {
                   <input
                     type="text"
                     placeholder="Code"
-                    value={newCategoryCode}
-                    onChange={(e) => setNewCategoryCode(e.target.value)}
+                    value={newGroupCode}
+                    onChange={(e) => setNewGroupCode(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        addCategory();
+                        addGroup();
                       }
                     }}
                     className="w-20 h-9 px-3 border rounded-md text-sm"
                     title="Optional short code (e.g., S for Squat, BA for Bench Accessories)"
                   />
                 </div>
-                <Button onClick={addCategory} size="sm">
+                <Select value={newGroupInputType} onValueChange={setNewGroupInputType}>
+                  <SelectTrigger className="w-[130px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="strength">Strength</SelectItem>
+                    <SelectItem value="hiit">HIIT</SelectItem>
+                    <SelectItem value="cardio">Cardio</SelectItem>
+                    <SelectItem value="sport">Sport</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={addGroup} size="sm">
                   Add
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Code is an optional short abbreviation (e.g., S, BA, DL).
+                Input type determines the entry fields: Strength (sets/reps/weight), HIIT (cycles/on/off), Cardio (min/miles/incline/weight), Sport (notes only).
               </p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Categories ({categories.length})</CardTitle>
+              <CardTitle className="text-base">Groups ({groups.length})</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                {categories.map((cat) => (
-                  <div
-                    key={cat.id}
-                    className="flex items-center justify-between p-2 border rounded"
-                  >
-                    <div>
-                      <span className="font-medium">{cat.name}</span>
-                      {cat.short_code && (
-                        <span className="text-xs text-muted-foreground ml-2">
-                          ({cat.short_code})
-                        </span>
+                {groups.map((g) => {
+                  const typeNames = getTypesForGroup(g.id);
+                  return (
+                    <div key={g.id} className="p-2 border rounded">
+                      {editingGroupId === g.id ? (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={editGroupName}
+                              onChange={(e) => setEditGroupName(e.target.value)}
+                              className="flex-1 h-8 px-2 border rounded text-sm"
+                            />
+                            <input
+                              type="text"
+                              value={editGroupCode}
+                              onChange={(e) => setEditGroupCode(e.target.value)}
+                              placeholder="Code"
+                              className="w-20 h-8 px-2 border rounded text-sm"
+                            />
+                            <Select value={editGroupInputType} onValueChange={setEditGroupInputType}>
+                              <SelectTrigger className="w-[130px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="strength">Strength</SelectItem>
+                                <SelectItem value="hiit">HIIT</SelectItem>
+                                <SelectItem value="cardio">Cardio</SelectItem>
+                                <SelectItem value="sport">Sport</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={saveEditGroup}>Save</Button>
+                            <Button size="sm" variant="outline" onClick={() => setEditingGroupId(null)}>Cancel</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-medium">{g.name}</span>
+                            {g.short_code && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                ({g.short_code})
+                              </span>
+                            )}
+                            {g.input_type && g.input_type !== "strength" && (
+                              <span className="text-xs bg-muted px-1.5 py-0.5 rounded ml-2">
+                                {g.input_type}
+                              </span>
+                            )}
+                            {typeNames.length > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                Used in: {typeNames.join(", ")}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex gap-1">
+                            <Button variant="ghost" size="sm" onClick={() => startEditGroup(g)}>
+                              Edit
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => deleteGroup(g.id)}>
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteCategory(cat.id)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                ))}
-                {categories.length === 0 && (
+                  );
+                })}
+                {groups.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    No categories yet
+                    No groups yet
                   </p>
                 )}
               </div>
@@ -563,7 +1012,7 @@ export default function ExerciseLibraryPage() {
           </Card>
         </TabsContent>
 
-        {/* Modifiers Tab */}
+        {/* ── Modifiers Tab ── */}
         <TabsContent value="modifiers" className="space-y-4">
           <Card>
             <CardHeader>
@@ -588,9 +1037,6 @@ export default function ExerciseLibraryPage() {
                   Add
                 </Button>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Modifiers appear in the order shown below. Drag to reorder (coming soon).
-              </p>
             </CardContent>
           </Card>
 
@@ -601,23 +1047,38 @@ export default function ExerciseLibraryPage() {
             <CardContent>
               <div className="space-y-2">
                 {modifiers.map((mod, index) => (
-                  <div
-                    key={mod.id}
-                    className="flex items-center justify-between p-2 border rounded"
-                  >
-                    <div>
-                      <span className="text-xs text-muted-foreground mr-2">
-                        {index + 1}.
-                      </span>
-                      <span className="font-medium">{mod.name}</span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteModifier(mod.id)}
-                    >
-                      Delete
-                    </Button>
+                  <div key={mod.id} className="p-2 border rounded">
+                    {editingModifierId === mod.id ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={editModifierName}
+                          onChange={(e) => setEditModifierName(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEditModifier(); }}
+                          className="flex-1 h-8 px-2 border rounded text-sm"
+                          autoFocus
+                        />
+                        <Button size="sm" onClick={saveEditModifier}>Save</Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingModifierId(null)}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs text-muted-foreground mr-2">
+                            {index + 1}.
+                          </span>
+                          <span className="font-medium">{mod.name}</span>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => startEditModifier(mod)}>
+                            Edit
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteModifier(mod.id)}>
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {modifiers.length === 0 && (
@@ -630,7 +1091,7 @@ export default function ExerciseLibraryPage() {
           </Card>
         </TabsContent>
 
-        {/* Import Tab */}
+        {/* ── Import Tab ── */}
         <TabsContent value="import" className="space-y-4">
           <Card>
             <CardHeader>
@@ -638,59 +1099,60 @@ export default function ExerciseLibraryPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Paste CSV data below. Import runs in order: Modifiers → Categories → Exercises. Duplicates (by name) are skipped.
+                Upload or paste CSV files. Import creates Types, Groups, Modifiers, and Exercises.
+                Duplicates (by name) are skipped.
               </p>
 
-              {/* Modifiers CSV */}
               <div>
-                <label className="text-sm font-medium">1. Modifiers</label>
-                <p className="text-xs text-muted-foreground mb-1">Columns: name</p>
-                <textarea
-                  value={modifiersCsv}
-                  onChange={(e) => setModifiersCsv(e.target.value)}
-                  placeholder={`name
-Banded
-Pause
-Raised Heel
-Reverse Band
-Tempo`}
-                  rows={5}
-                  className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
-                />
-              </div>
-
-              {/* Categories CSV */}
-              <div>
-                <label className="text-sm font-medium">2. Categories</label>
-                <p className="text-xs text-muted-foreground mb-1">Columns: name, short_code (optional)</p>
-                <textarea
-                  value={categoriesCsv}
-                  onChange={(e) => setCategoriesCsv(e.target.value)}
-                  placeholder={`name,short_code
-Main Squat,S
-Squat Accessories,SA
-Main Bench,B
-Bench Accessories,BA`}
-                  rows={5}
-                  className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
-                />
-              </div>
-
-              {/* Exercises CSV */}
-              <div>
-                <label className="text-sm font-medium">3. Exercises</label>
+                <label className="text-sm font-medium">1. Types &amp; Groups CSV</label>
                 <p className="text-xs text-muted-foreground mb-1">
-                  Columns: name, type, categories (semicolon-separated), modifiers (semicolon-separated)
+                  Columns: Group, Type &mdash; Maps groups to workout types. Multi-type groups use quoted comma-separated values.
                 </p>
+                <div className="flex gap-2 mb-1">
+                  <input
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={(e) => handleFileUpload(e, setTypesCsv)}
+                    className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded-md file:border file:text-sm file:cursor-pointer"
+                  />
+                  {typesCsv && (
+                    <span className="text-xs text-green-600 self-center">
+                      Loaded ({typesCsv.split("\n").filter((l) => l.trim()).length - 1} rows)
+                    </span>
+                  )}
+                </div>
                 <textarea
-                  value={exercisesCsv}
-                  onChange={(e) => setExercisesCsv(e.target.value)}
-                  placeholder={`name,type,categories,modifiers
-Squats,weighted,Main Squat,Banded;Pause;Raised Heel
-Leg Press,weighted,Squat Accessories,
-Bench Press,weighted,Main Bench,Banded;Pause
-Air Bike HIIT,cardio_hiit,,`}
-                  rows={6}
+                  value={typesCsv}
+                  onChange={(e) => setTypesCsv(e.target.value)}
+                  placeholder={`Group,Type\nMain Squat,Squat Day\nGeneral Accessories,"Squat Day, Bench Day, Deadlift Day"`}
+                  rows={4}
+                  className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">2. Exercises CSV</label>
+                <p className="text-xs text-muted-foreground mb-1">
+                  Columns: Exercise, Group, Tonnage, Modifiers, Measure &mdash; Groups and modifiers are comma-separated in quotes.
+                </p>
+                <div className="flex gap-2 mb-1">
+                  <input
+                    type="file"
+                    accept=".csv,.txt"
+                    onChange={(e) => handleFileUpload(e, setExercisesCsvImport)}
+                    className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded-md file:border file:text-sm file:cursor-pointer"
+                  />
+                  {exercisesCsvImport && (
+                    <span className="text-xs text-green-600 self-center">
+                      Loaded ({exercisesCsvImport.split("\n").filter((l) => l.trim()).length - 1} rows)
+                    </span>
+                  )}
+                </div>
+                <textarea
+                  value={exercisesCsvImport}
+                  onChange={(e) => setExercisesCsvImport(e.target.value)}
+                  placeholder={`Exercise,Group,Tonnage,Modifiers,Measure\nSquats,Main Squat,y,Raised Heel,srw\nX Squats,Secondary Squat,y,"Raised Heel, Banded",srw`}
+                  rows={5}
                   className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
                 />
               </div>
@@ -698,10 +1160,18 @@ Air Bike HIIT,cardio_hiit,,`}
               <div className="flex gap-2 pt-2">
                 <Button
                   onClick={handleImport}
-                  disabled={importing || (!modifiersCsv.trim() && !categoriesCsv.trim() && !exercisesCsv.trim())}
+                  disabled={importing || (!typesCsv.trim() && !exercisesCsvImport.trim())}
                 >
                   {importing ? "Importing..." : "Import All"}
                 </Button>
+                {(typesCsv || exercisesCsvImport) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => { setTypesCsv(""); setExercisesCsvImport(""); setImportResult(null); }}
+                  >
+                    Clear
+                  </Button>
+                )}
               </div>
 
               {importResult && (
@@ -714,12 +1184,26 @@ Air Bike HIIT,cardio_hiit,,`}
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">CSV Format Notes</CardTitle>
+              <CardTitle className="text-base">CSV Format Reference</CardTitle>
             </CardHeader>
-            <CardContent className="text-sm text-muted-foreground space-y-2">
-              <p>Use semicolons (;) to separate multiple categories or modifiers within a cell.</p>
-              <p><strong>Exercise types:</strong> weighted, bodyweight, cardio_hiit, cardio_zone2, sport</p>
-              <p>Category and modifier names must match exactly (case-insensitive) to link properly.</p>
+            <CardContent className="text-sm text-muted-foreground space-y-3">
+              <div>
+                <p className="font-medium text-foreground">Types &amp; Groups CSV</p>
+                <p>Two columns: <code>Group</code> and <code>Type</code>. Each row maps a group to one or more types.</p>
+                <p>For groups in multiple types, quote the Type field: <code>&quot;Squat Day, Bench Day&quot;</code></p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Exercises CSV</p>
+                <p><strong>Exercise:</strong> The exercise name</p>
+                <p><strong>Group:</strong> Comma-separated group names (quoted if multiple)</p>
+                <p><strong>Tonnage:</strong> <code>y</code> or <code>n</code> &mdash; whether it counts toward volume</p>
+                <p><strong>Modifiers:</strong> Comma-separated modifier names (quoted if multiple)</p>
+                <p><strong>Measure:</strong> <code>srw</code> (sets/reps/weight), <code>coo</code> (cycles/on/off), <code>mmiw</code> (min/miles/incline/weight), <code>mmw</code> (min/miles/weight), <code>mw</code> (min/weight), <code>minutes</code></p>
+              </div>
+              <div>
+                <p className="font-medium text-foreground">Modifiers are auto-extracted</p>
+                <p>Modifiers listed in the Exercises CSV are automatically created. No separate modifier import needed.</p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

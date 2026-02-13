@@ -1,24 +1,18 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
-export type Exercise = {
+export type WorkoutType = {
   id: string;
   owner_id: string;
   name: string;
-  exercise_type: "weighted" | "bodyweight" | "cardio_hiit" | "cardio_zone2" | "sport";
-  measure_type: "srw" | "coo" | "mmiw" | "mmw" | "mw" | "minutes";
-  counts_toward_volume: boolean;
   group_ids: string[];
-  available_modifier_ids: string[];
-  muscle_groups: string[];
-  aliases: string[];
-  is_archived: boolean;
   sort_order: number;
+  is_archived: boolean;
   created_at: string;
   updated_at: string;
 };
 
-// GET /api/workouts/exercises - List all exercises
+// GET /api/workouts/types - List workout types
 export async function GET(req: Request) {
   const supabase = supabaseServerFromRequest(req);
   const {
@@ -32,22 +26,15 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const includeArchived = url.searchParams.get("include_archived") === "true";
-  const groupId = url.searchParams.get("group_id");
-  const exerciseType = url.searchParams.get("type");
 
   let query = supabase
-    .from("exercises")
+    .from("workout_types")
     .select("*")
     .eq("owner_id", user.id)
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
+    .order("sort_order", { ascending: true });
 
   if (!includeArchived) {
     query = query.eq("is_archived", false);
-  }
-
-  if (exerciseType) {
-    query = query.eq("exercise_type", exerciseType);
   }
 
   const { data, error } = await query;
@@ -56,18 +43,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Filter by group if specified (array contains)
-  let filteredData = data || [];
-  if (groupId) {
-    filteredData = filteredData.filter((ex: Exercise) =>
-      ex.group_ids?.includes(groupId)
-    );
-  }
-
-  return NextResponse.json(filteredData);
+  return NextResponse.json(data);
 }
 
-// POST /api/workouts/exercises - Create a new exercise
+// POST /api/workouts/types - Create a workout type
 export async function POST(req: Request) {
   const supabase = supabaseServerFromRequest(req);
   const {
@@ -80,27 +59,16 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const {
-    name,
-    exercise_type = "weighted",
-    measure_type = "srw",
-    counts_toward_volume = true,
-    group_ids = [],
-    available_modifier_ids = [],
-    muscle_groups = [],
-    aliases = [],
-    sort_order,
-  } = body;
+  const { name, group_ids = [], sort_order } = body;
 
   if (!name || typeof name !== "string" || name.trim().length === 0) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
-  // Get max sort_order if not provided
   let finalSortOrder = sort_order;
   if (finalSortOrder === undefined || finalSortOrder === null) {
     const { data: maxData } = await supabase
-      .from("exercises")
+      .from("workout_types")
       .select("sort_order")
       .eq("owner_id", user.id)
       .order("sort_order", { ascending: false })
@@ -109,17 +77,11 @@ export async function POST(req: Request) {
   }
 
   const { data, error } = await supabase
-    .from("exercises")
+    .from("workout_types")
     .insert({
       owner_id: user.id,
       name: name.trim(),
-      exercise_type,
-      measure_type,
-      counts_toward_volume,
       group_ids,
-      available_modifier_ids,
-      muscle_groups,
-      aliases,
       sort_order: finalSortOrder,
     })
     .select()

@@ -51,8 +51,9 @@ export async function PATCH(req: Request, { params }: Params) {
   const {
     name,
     exercise_type,
+    measure_type,
     counts_toward_volume,
-    category_ids,
+    group_ids,
     available_modifier_ids,
     muscle_groups,
     aliases,
@@ -63,8 +64,9 @@ export async function PATCH(req: Request, { params }: Params) {
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (name !== undefined) updates.name = name.trim();
   if (exercise_type !== undefined) updates.exercise_type = exercise_type;
+  if (measure_type !== undefined) updates.measure_type = measure_type;
   if (counts_toward_volume !== undefined) updates.counts_toward_volume = counts_toward_volume;
-  if (category_ids !== undefined) updates.category_ids = category_ids;
+  if (group_ids !== undefined) updates.group_ids = group_ids;
   if (available_modifier_ids !== undefined) updates.available_modifier_ids = available_modifier_ids;
   if (muscle_groups !== undefined) updates.muscle_groups = muscle_groups;
   if (aliases !== undefined) updates.aliases = aliases;

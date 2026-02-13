@@ -30,13 +30,15 @@ export async function POST(req: Request) {
     const deletions = [
       { table: "personal_records", label: "Personal records" },
       { table: "workout_sets", label: "Workout sets" },
+      { table: "workout_exercises", label: "Workout exercises" },
       { table: "hiit_sessions", label: "HIIT sessions" },
       { table: "cardio_sessions", label: "Cardio sessions" },
       { table: "activity_sessions", label: "Activity sessions" },
       { table: "workouts", label: "Workouts" },
       { table: "exercises", label: "Exercises" },
       { table: "exercise_modifiers", label: "Modifiers" },
-      { table: "exercise_categories", label: "Categories" },
+      { table: "exercise_groups", label: "Groups" },
+      { table: "workout_types", label: "Workout types" },
       { table: "timer_presets", label: "Timer presets" },
     ];
 
@@ -44,7 +46,7 @@ export async function POST(req: Request) {
 
     for (const { table, label } of deletions) {
       // For tables with owner_id
-      if (["personal_records", "workouts", "exercises", "exercise_modifiers", "exercise_categories", "timer_presets"].includes(table)) {
+      if (["personal_records", "workouts", "exercises", "exercise_modifiers", "exercise_groups", "workout_types", "timer_presets"].includes(table)) {
         const { error, count } = await supabase
           .from(table)
           .delete({ count: "exact" })

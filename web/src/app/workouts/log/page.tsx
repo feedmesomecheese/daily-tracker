@@ -1,0 +1,218 @@
+"use client";
+
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { getAuthHeaders } from "@/lib/authHeaders";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import WorkoutLogFilters, {
+  getInitialFilters,
+  type FilterState,
+} from "../components/WorkoutLogFilters";
+import WorkoutCentricView from "../components/WorkoutCentricView";
+import ExerciseCentricView from "../components/ExerciseCentricView";
+import type {
+  WorkoutType,
+  ExerciseGroup,
+  Exercise,
+  WorkoutHistory,
+} from "../types";
+
+export default function WorkoutLogPage() {
+  const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
+  const [groups, setGroups] = useState<ExerciseGroup[]>([]);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterState>(getInitialFilters);
+  const [activeTab, setActiveTab] = useState("workout");
+
+  // Fetch reference data once
+  const fetchRefData = useCallback(async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const [typesRes, groupsRes, exRes] = await Promise.all([
+        fetch("/api/workouts/types", { headers }),
+        fetch("/api/workouts/groups", { headers }),
+        fetch("/api/workouts/exercises", { headers }),
+      ]);
+      const [typesData, groupsData, exData] = await Promise.all([
+        typesRes.ok ? typesRes.json() : [],
+        groupsRes.ok ? groupsRes.json() : [],
+        exRes.ok ? exRes.json() : [],
+      ]);
+      setWorkoutTypes(typesData);
+      setGroups(groupsData);
+      setExercises(exData);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load reference data");
+    }
+  }, []);
+
+  // Fetch workouts when date range changes
+  const fetchWorkouts = useCallback(async () => {
+    try {
+      setLoading(true);
+      const headers = await getAuthHeaders();
+      const params = new URLSearchParams({
+        include_sets: "true",
+        limit: "500",
+      });
+      if (filters.startDate) params.set("start_date", filters.startDate);
+      if (filters.endDate) params.set("end_date", filters.endDate);
+
+      const res = await fetch(`/api/workouts?${params}`, { headers });
+      if (!res.ok) throw new Error("Failed to fetch workouts");
+      const data = await res.json();
+      setWorkouts(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load workouts");
+    } finally {
+      setLoading(false);
+    }
+  }, [filters.startDate, filters.endDate]);
+
+  useEffect(() => {
+    fetchRefData();
+  }, [fetchRefData]);
+
+  useEffect(() => {
+    fetchWorkouts();
+  }, [fetchWorkouts]);
+
+  // Build exercise lookup for group filtering
+  const exerciseGroupMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const ex of exercises) {
+      map.set(ex.id, ex.group_ids);
+    }
+    return map;
+  }, [exercises]);
+
+  // Client-side filtering
+  const filteredWorkouts = useMemo(() => {
+    let result = workouts;
+
+    // Filter by workout type IDs
+    if (filters.typeIds.size > 0) {
+      result = result.filter(
+        (w) => w.workout_type_id && filters.typeIds.has(w.workout_type_id)
+      );
+    }
+
+    // Filter by group
+    if (filters.groupId) {
+      result = result.filter((w) =>
+        (w.exercises || []).some((ex) => {
+          if (!ex.exercise_id) return false;
+          const gids = exerciseGroupMap.get(ex.exercise_id);
+          return gids?.includes(filters.groupId);
+        })
+      );
+    }
+
+    // Filter by exercise search (workout-centric: keep workouts that contain matching exercise)
+    if (filters.exerciseSearch) {
+      const search = filters.exerciseSearch.toLowerCase();
+      result = result.filter((w) =>
+        (w.exercises || []).some((ex) =>
+          ex.exercise_name_display.toLowerCase().includes(search)
+        )
+      );
+    }
+
+    return result;
+  }, [workouts, filters.typeIds, filters.groupId, filters.exerciseSearch, exerciseGroupMap]);
+
+  // For exercise-centric view: filter exercises within workouts too
+  const exerciseFilteredWorkouts = useMemo(() => {
+    if (!filters.exerciseSearch && !filters.groupId) return filteredWorkouts;
+
+    const search = filters.exerciseSearch?.toLowerCase() || "";
+
+    return filteredWorkouts.map((w) => ({
+      ...w,
+      exercises: (w.exercises || []).filter((ex) => {
+        let matchSearch = true;
+        let matchGroup = true;
+
+        if (search) {
+          matchSearch = ex.exercise_name_display
+            .toLowerCase()
+            .includes(search);
+        }
+        if (filters.groupId && ex.exercise_id) {
+          const gids = exerciseGroupMap.get(ex.exercise_id);
+          matchGroup = gids?.includes(filters.groupId) || false;
+        }
+
+        return matchSearch && matchGroup;
+      }),
+    })).filter((w) => (w.exercises || []).length > 0);
+  }, [filteredWorkouts, filters.exerciseSearch, filters.groupId, exerciseGroupMap]);
+
+  return (
+    <main className="p-4 sm:p-6 max-w-6xl mx-auto space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-2xl font-semibold">Workout Log</h1>
+        <Badge variant="secondary">
+          {filteredWorkouts.length}{" "}
+          {filteredWorkouts.length === 1 ? "workout" : "workouts"}
+        </Badge>
+      </div>
+
+      {error && (
+        <div className="bg-destructive/10 text-destructive p-3 rounded-lg text-sm">
+          {error}
+          <button onClick={() => setError(null)} className="ml-2 underline">
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Filters */}
+      <WorkoutLogFilters
+        filters={filters}
+        onChange={setFilters}
+        workoutTypes={workoutTypes}
+        groups={groups}
+      />
+
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="workout">Workout</TabsTrigger>
+          <TabsTrigger value="exercise">Exercise</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="workout">
+          {loading ? (
+            <div className="py-8 text-center text-muted-foreground">
+              Loading...
+            </div>
+          ) : (
+            <WorkoutCentricView
+              workouts={filteredWorkouts}
+              workoutTypes={workoutTypes}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="exercise">
+          {loading ? (
+            <div className="py-8 text-center text-muted-foreground">
+              Loading...
+            </div>
+          ) : (
+            <ExerciseCentricView
+              workouts={exerciseFilteredWorkouts}
+              workoutTypes={workoutTypes}
+              exercises={exercises}
+            />
+          )}
+        </TabsContent>
+      </Tabs>
+    </main>
+  );
+}
