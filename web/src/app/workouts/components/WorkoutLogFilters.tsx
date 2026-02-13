@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -10,9 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { WorkoutType, ExerciseGroup } from "../types";
+import type { WorkoutType, ExerciseGroup, Exercise } from "../types";
 
 export type DatePreset = "30d" | "60d" | "90d" | "year" | "all";
+
+export type FlagFilter = "pr" | "max" | "miss";
 
 export type FilterState = {
   datePreset: DatePreset;
@@ -21,6 +22,7 @@ export type FilterState = {
   typeIds: Set<string>;
   exerciseSearch: string;
   groupId: string; // "" = all
+  flags: Set<FlagFilter>;
 };
 
 type Props = {
@@ -28,6 +30,7 @@ type Props = {
   onChange: (filters: FilterState) => void;
   workoutTypes: WorkoutType[];
   groups: ExerciseGroup[];
+  exercises: Exercise[];
 };
 
 const DATE_PRESETS: { value: DatePreset; label: string }[] = [
@@ -36,6 +39,12 @@ const DATE_PRESETS: { value: DatePreset; label: string }[] = [
   { value: "90d", label: "90d" },
   { value: "year", label: "Year" },
   { value: "all", label: "All" },
+];
+
+const FLAG_OPTIONS: { value: FlagFilter; label: string; color: string }[] = [
+  { value: "pr", label: "PR", color: "border-amber-600/30 bg-amber-600/10 text-amber-700" },
+  { value: "max", label: "Max", color: "border-emerald-700/30 bg-emerald-700/10 text-emerald-700" },
+  { value: "miss", label: "Miss", color: "border-red-700/30 bg-red-700/10 text-red-700" },
 ];
 
 function getPresetDates(preset: DatePreset): { start: string; end: string } {
@@ -68,6 +77,7 @@ export function getInitialFilters(): FilterState {
     typeIds: new Set(),
     exerciseSearch: "",
     groupId: "",
+    flags: new Set(),
   };
 }
 
@@ -76,22 +86,42 @@ export default function WorkoutLogFilters({
   onChange,
   workoutTypes,
   groups,
+  exercises,
 }: Props) {
   const [typePopoverOpen, setTypePopoverOpen] = useState(false);
-  const popoverRef = useRef<HTMLDivElement>(null);
+  const typePopoverRef = useRef<HTMLDivElement>(null);
 
+  const [exerciseInputValue, setExerciseInputValue] = useState(filters.exerciseSearch);
+  const [exerciseDropdownOpen, setExerciseDropdownOpen] = useState(false);
+  const exerciseRef = useRef<HTMLDivElement>(null);
+
+  // Sync local input with external filter (e.g. on reset)
+  useEffect(() => {
+    setExerciseInputValue(filters.exerciseSearch);
+  }, [filters.exerciseSearch]);
+
+  // Close popovers on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (
-        popoverRef.current &&
-        !popoverRef.current.contains(e.target as Node)
-      ) {
+      if (typePopoverRef.current && !typePopoverRef.current.contains(e.target as Node)) {
         setTypePopoverOpen(false);
+      }
+      if (exerciseRef.current && !exerciseRef.current.contains(e.target as Node)) {
+        setExerciseDropdownOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  // Exercise autocomplete suggestions
+  const exerciseSuggestions = useMemo(() => {
+    if (!exerciseInputValue || exerciseInputValue.length < 1) return [];
+    const search = exerciseInputValue.toLowerCase();
+    return exercises
+      .filter((ex) => ex.name.toLowerCase().includes(search))
+      .slice(0, 8);
+  }, [exerciseInputValue, exercises]);
 
   const handlePreset = (preset: DatePreset) => {
     const { start, end } = getPresetDates(preset);
@@ -99,7 +129,7 @@ export default function WorkoutLogFilters({
   };
 
   const handleDateChange = (field: "startDate" | "endDate", value: string) => {
-    onChange({ ...filters, [field]: value, datePreset: "30d" }); // reset preset label when custom
+    onChange({ ...filters, [field]: value, datePreset: "30d" });
   };
 
   const toggleType = (typeId: string) => {
@@ -109,13 +139,46 @@ export default function WorkoutLogFilters({
     onChange({ ...filters, typeIds: next });
   };
 
+  const toggleFlag = (flag: FlagFilter) => {
+    const next = new Set(filters.flags);
+    if (next.has(flag)) next.delete(flag);
+    else next.add(flag);
+    onChange({ ...filters, flags: next });
+  };
+
+  const handleExerciseInput = (value: string) => {
+    setExerciseInputValue(value);
+    setExerciseDropdownOpen(value.length >= 1);
+    onChange({ ...filters, exerciseSearch: value });
+  };
+
+  const selectExercise = (name: string) => {
+    setExerciseInputValue(name);
+    setExerciseDropdownOpen(false);
+    onChange({ ...filters, exerciseSearch: name });
+  };
+
+  // Build type trigger label
+  const typeTriggerLabel = useMemo(() => {
+    if (filters.typeIds.size === 0) return "All types";
+    const names = workoutTypes
+      .filter((t) => filters.typeIds.has(t.id))
+      .map((t) => t.name);
+    if (names.length <= 2) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  }, [filters.typeIds, workoutTypes]);
+
+  const hasActiveFilters =
+    filters.typeIds.size > 0 ||
+    filters.exerciseSearch ||
+    filters.groupId ||
+    filters.flags.size > 0;
+
   return (
     <div className="flex flex-wrap items-end gap-3">
       {/* Date presets */}
       <div>
-        <label className="text-xs text-muted-foreground block mb-1">
-          Range
-        </label>
+        <label className="text-xs text-muted-foreground block mb-1">Range</label>
         <div className="flex">
           {DATE_PRESETS.map((p) => (
             <button
@@ -135,9 +198,7 @@ export default function WorkoutLogFilters({
 
       {/* Custom date range */}
       <div>
-        <label className="text-xs text-muted-foreground block mb-1">
-          From
-        </label>
+        <label className="text-xs text-muted-foreground block mb-1">From</label>
         <input
           type="date"
           value={filters.startDate}
@@ -156,17 +217,15 @@ export default function WorkoutLogFilters({
       </div>
 
       {/* Workout type multi-select */}
-      <div className="relative" ref={popoverRef}>
-        <label className="text-xs text-muted-foreground block mb-1">
-          Type
-        </label>
+      <div className="relative" ref={typePopoverRef}>
+        <label className="text-xs text-muted-foreground block mb-1">Type</label>
         <button
           onClick={() => setTypePopoverOpen((v) => !v)}
-          className="h-8 px-2.5 border rounded-md text-xs bg-background hover:bg-accent transition-colors min-w-[100px] text-left"
+          className={`h-8 px-2.5 border rounded-md text-xs bg-background hover:bg-accent transition-colors min-w-[100px] max-w-[200px] text-left truncate ${
+            filters.typeIds.size > 0 ? "border-primary/50" : ""
+          }`}
         >
-          {filters.typeIds.size === 0
-            ? "All types"
-            : `${filters.typeIds.size} selected`}
+          {typeTriggerLabel}
         </button>
         {typePopoverOpen && (
           <div className="absolute top-full left-0 mt-1 bg-popover border rounded-md shadow-lg py-1 min-w-[180px] z-50 max-h-60 overflow-y-auto">
@@ -199,33 +258,58 @@ export default function WorkoutLogFilters({
         )}
       </div>
 
-      {/* Exercise search */}
-      <div>
-        <label className="text-xs text-muted-foreground block mb-1">
-          Exercise
-        </label>
-        <Input
-          value={filters.exerciseSearch}
-          onChange={(e) =>
-            onChange({ ...filters, exerciseSearch: e.target.value })
-          }
-          placeholder="Search..."
-          className="h-8 text-xs w-[140px]"
+      {/* Exercise autocomplete */}
+      <div className="relative" ref={exerciseRef}>
+        <label className="text-xs text-muted-foreground block mb-1">Exercise</label>
+        <input
+          type="text"
+          value={exerciseInputValue}
+          onChange={(e) => handleExerciseInput(e.target.value)}
+          onFocus={() => {
+            if (exerciseInputValue.length >= 1) setExerciseDropdownOpen(true);
+          }}
+          placeholder="Search exercises..."
+          className={`h-8 px-2.5 border rounded-md text-xs w-[180px] bg-background outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+            filters.exerciseSearch ? "border-primary/50" : ""
+          }`}
         />
+        {exerciseDropdownOpen && exerciseSuggestions.length > 0 && (
+          <div className="absolute top-full left-0 mt-1 bg-popover border rounded-md shadow-lg py-1 min-w-[200px] z-50 max-h-48 overflow-y-auto">
+            {exerciseSuggestions.map((ex) => (
+              <button
+                key={ex.id}
+                onClick={() => selectExercise(ex.name)}
+                className="block w-full text-left px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+              >
+                {ex.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {filters.exerciseSearch && (
+          <button
+            onClick={() => {
+              setExerciseInputValue("");
+              setExerciseDropdownOpen(false);
+              onChange({ ...filters, exerciseSearch: "" });
+            }}
+            className="absolute right-1.5 top-[22px] text-muted-foreground hover:text-foreground text-xs px-1"
+          >
+            x
+          </button>
+        )}
       </div>
 
       {/* Group filter */}
       <div>
-        <label className="text-xs text-muted-foreground block mb-1">
-          Group
-        </label>
+        <label className="text-xs text-muted-foreground block mb-1">Group</label>
         <Select
           value={filters.groupId || "all"}
           onValueChange={(v) =>
             onChange({ ...filters, groupId: v === "all" ? "" : v })
           }
         >
-          <SelectTrigger className="h-8 text-xs w-[140px]">
+          <SelectTrigger className={`h-8 text-xs w-[140px] ${filters.groupId ? "border-primary/50" : ""}`}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -239,10 +323,28 @@ export default function WorkoutLogFilters({
         </Select>
       </div>
 
+      {/* Flag filters */}
+      <div>
+        <label className="text-xs text-muted-foreground block mb-1">Flags</label>
+        <div className="flex gap-1">
+          {FLAG_OPTIONS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => toggleFlag(f.value)}
+              className={`px-2 py-1.5 rounded-md text-xs font-medium border transition-colors ${
+                filters.flags.has(f.value)
+                  ? f.color
+                  : "bg-background border-input hover:bg-accent text-muted-foreground"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Reset */}
-      {(filters.typeIds.size > 0 ||
-        filters.exerciseSearch ||
-        filters.groupId) && (
+      {hasActiveFilters && (
         <Button
           variant="ghost"
           size="sm"
@@ -253,6 +355,7 @@ export default function WorkoutLogFilters({
               typeIds: new Set(),
               exerciseSearch: "",
               groupId: "",
+              flags: new Set(),
             })
           }
         >

@@ -121,35 +121,53 @@ export default function WorkoutLogPage() {
       );
     }
 
+    // Filter by flags (PR/Max/Miss) — keep workouts that have at least one matching set
+    if (filters.flags.size > 0) {
+      result = result.filter((w) =>
+        (w.exercises || []).some((ex) =>
+          (ex.sets || []).some((s) => {
+            if (filters.flags.has("pr") && s.is_pr) return true;
+            if (filters.flags.has("max") && s.is_cycle_max) return true;
+            if (filters.flags.has("miss") && s.is_missed) return true;
+            return false;
+          })
+        )
+      );
+    }
+
     return result;
-  }, [workouts, filters.typeIds, filters.groupId, filters.exerciseSearch, exerciseGroupMap]);
+  }, [workouts, filters.typeIds, filters.groupId, filters.exerciseSearch, filters.flags, exerciseGroupMap]);
 
   // For exercise-centric view: filter exercises within workouts too
   const exerciseFilteredWorkouts = useMemo(() => {
-    if (!filters.exerciseSearch && !filters.groupId) return filteredWorkouts;
+    if (!filters.exerciseSearch && !filters.groupId && filters.flags.size === 0)
+      return filteredWorkouts;
 
     const search = filters.exerciseSearch?.toLowerCase() || "";
 
     return filteredWorkouts.map((w) => ({
       ...w,
       exercises: (w.exercises || []).filter((ex) => {
-        let matchSearch = true;
-        let matchGroup = true;
-
-        if (search) {
-          matchSearch = ex.exercise_name_display
-            .toLowerCase()
-            .includes(search);
+        if (search && !ex.exercise_name_display.toLowerCase().includes(search)) {
+          return false;
         }
         if (filters.groupId && ex.exercise_id) {
           const gids = exerciseGroupMap.get(ex.exercise_id);
-          matchGroup = gids?.includes(filters.groupId) || false;
+          if (!gids?.includes(filters.groupId)) return false;
         }
-
-        return matchSearch && matchGroup;
+        if (filters.flags.size > 0) {
+          const hasMatchingSet = (ex.sets || []).some((s) => {
+            if (filters.flags.has("pr") && s.is_pr) return true;
+            if (filters.flags.has("max") && s.is_cycle_max) return true;
+            if (filters.flags.has("miss") && s.is_missed) return true;
+            return false;
+          });
+          if (!hasMatchingSet) return false;
+        }
+        return true;
       }),
     })).filter((w) => (w.exercises || []).length > 0);
-  }, [filteredWorkouts, filters.exerciseSearch, filters.groupId, exerciseGroupMap]);
+  }, [filteredWorkouts, filters.exerciseSearch, filters.groupId, filters.flags, exerciseGroupMap]);
 
   return (
     <main className="p-4 sm:p-6 max-w-6xl mx-auto space-y-4">
@@ -177,6 +195,7 @@ export default function WorkoutLogPage() {
         onChange={setFilters}
         workoutTypes={workoutTypes}
         groups={groups}
+        exercises={exercises}
       />
 
       {/* Tabs */}
