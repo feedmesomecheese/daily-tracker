@@ -3,6 +3,7 @@
 import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import ExerciseDetailRow from "./ExerciseDetailRow";
+import ExerciseStatsSheet from "./ExerciseStatsSheet";
 import type { WorkoutHistory, WorkoutType } from "../types";
 import { SUPERSET_COLORS } from "../types";
 
@@ -51,6 +52,10 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(0);
+  const [statsExercise, setStatsExercise] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const totalPages = Math.max(1, Math.ceil(workouts.length / pageSize));
   const safeePage = Math.min(page, totalPages - 1);
@@ -72,6 +77,10 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
       else next.add(id);
       return next;
     });
+  };
+
+  const handleExerciseClick = (exerciseId: string, exerciseName: string) => {
+    setStatsExercise({ id: exerciseId, name: exerciseName });
   };
 
   return (
@@ -156,6 +165,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                                     key={ei}
                                     exercise={ex}
                                     supersetStyle={ssStyle}
+                                    onExerciseClick={handleExerciseClick}
                                   />
                                 );
                               })}
@@ -242,6 +252,16 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
           </div>
         </div>
       )}
+
+      {/* Exercise Stats Sheet */}
+      <ExerciseStatsSheet
+        exerciseId={statsExercise?.id || null}
+        exerciseName={statsExercise?.name || null}
+        open={!!statsExercise}
+        onOpenChange={(open) => {
+          if (!open) setStatsExercise(null);
+        }}
+      />
     </div>
   );
 }

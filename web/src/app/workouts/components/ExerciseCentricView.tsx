@@ -4,6 +4,8 @@ import React, { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ExerciseHoverTooltip from "./ExerciseHoverTooltip";
+import ExerciseStatsSheet from "./ExerciseStatsSheet";
 import type {
   WorkoutHistory,
   WorkoutType,
@@ -112,6 +114,10 @@ export default function ExerciseCentricView({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState<number>(10);
   const [page, setPage] = useState(0);
+  const [statsExercise, setStatsExercise] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
 
   const data = useMemo(
     () => buildExerciseCentricData(workouts, exercises),
@@ -165,7 +171,20 @@ export default function ExerciseCentricView({
                     {isCollapsed ? "\u25B6" : "\u25BC"}
                   </span>
                   <CardTitle className="text-sm font-medium">
-                    {entry.exercise_name_display}
+                    {entry.exercise_id ? (
+                      <ExerciseHoverTooltip
+                        exerciseId={entry.exercise_id}
+                        exerciseName={entry.exercise_name_display}
+                        onClick={() =>
+                          setStatsExercise({
+                            id: entry.exercise_id!,
+                            name: entry.exercise_name_display,
+                          })
+                        }
+                      />
+                    ) : (
+                      entry.exercise_name_display
+                    )}
                   </CardTitle>
                   <Badge variant="secondary" className="text-xs">
                     {entry.sessionCount}{" "}
@@ -345,6 +364,16 @@ export default function ExerciseCentricView({
           </div>
         </div>
       )}
+
+      {/* Exercise Stats Sheet */}
+      <ExerciseStatsSheet
+        exerciseId={statsExercise?.id || null}
+        exerciseName={statsExercise?.name || null}
+        open={!!statsExercise}
+        onOpenChange={(open) => {
+          if (!open) setStatsExercise(null);
+        }}
+      />
     </div>
   );
 }

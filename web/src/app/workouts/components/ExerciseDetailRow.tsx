@@ -1,12 +1,14 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import type { WorkoutExercise } from "../types";
+import ExerciseHoverTooltip from "./ExerciseHoverTooltip";
 
 type SupersetStyle = { border: string; bg: string } | null;
 
 type Props = {
   exercise: WorkoutExercise;
   supersetStyle?: SupersetStyle;
+  onExerciseClick?: (exerciseId: string, exerciseName: string) => void;
 };
 
 function SetBadge({
@@ -39,7 +41,7 @@ function SetBadge({
   return <span>{label}</span>;
 }
 
-export default function ExerciseDetailRow({ exercise, supersetStyle }: Props) {
+export default function ExerciseDetailRow({ exercise, supersetStyle, onExerciseClick }: Props) {
   const hasSets = exercise.sets && exercise.sets.length > 0;
   const hasCardioData =
     exercise.duration_minutes ||
@@ -104,6 +106,9 @@ export default function ExerciseDetailRow({ exercise, supersetStyle }: Props) {
     );
   }
 
+  const exerciseId = exercise.exercise_id || exercise.id;
+  const showTooltip = exerciseId && onExerciseClick;
+
   return (
     <tr
       className={cn(
@@ -112,7 +117,18 @@ export default function ExerciseDetailRow({ exercise, supersetStyle }: Props) {
       )}
     >
       <td className="text-right font-medium pr-3 py-1 whitespace-nowrap align-top w-48">
-        {exercise.exercise_name_display}
+        {showTooltip ? (
+          <ExerciseHoverTooltip
+            exerciseId={exerciseId}
+            exerciseName={exercise.exercise_name_display}
+            onClick={() =>
+              onExerciseClick(exerciseId, exercise.exercise_name_display)
+            }
+            className="font-medium"
+          />
+        ) : (
+          exercise.exercise_name_display
+        )}
       </td>
       <td className="w-px bg-border py-1" />
       <td className="pl-3 py-1 tabular-nums align-top">
