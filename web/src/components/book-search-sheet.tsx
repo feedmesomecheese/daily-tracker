@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BarcodeScanner } from "@/components/barcode-scanner";
+import { CalendarInput } from "@/components/ui/calendar-input";
 import type { BookSearchResult } from "@/app/api/books/search/route";
 
 type BookSearchSheetProps = {
@@ -74,6 +75,8 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
   const [error, setError] = useState<string | null>(null);
   const [showScanner, setShowScanner] = useState(false);
   const [lookingUpIsbn, setLookingUpIsbn] = useState(false);
+  const [isbnInput, setIsbnInput] = useState("");
+  const [isbnError, setIsbnError] = useState<string | null>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Reset state when sheet closes
@@ -86,6 +89,8 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
       setError(null);
       setShowScanner(false);
       setLookingUpIsbn(false);
+      setIsbnInput("");
+      setIsbnError(null);
     }
   }, [open]);
 
@@ -163,6 +168,47 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
       setLookingUpIsbn(false);
     }
   }, []);
+
+  // Manual ISBN/ASIN lookup
+  const handleIsbnLookup = useCallback(async () => {
+    const cleaned = isbnInput.replace(/[-\s]/g, "");
+    setIsbnError(null);
+
+    // Kindle-only ASINs start with B0
+    if (/^B0/i.test(cleaned)) {
+      setIsbnError("Kindle ASINs not supported \u2014 try searching by title.");
+      return;
+    }
+
+    // Must be 10 or 13 digits
+    if (!/^\d{10}(\d{3})?$/.test(cleaned)) {
+      setIsbnError("Enter a valid ISBN (10 or 13 digits).");
+      return;
+    }
+
+    setLookingUpIsbn(true);
+    setError(null);
+
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/books/isbn?isbn=${encodeURIComponent(cleaned)}`, { headers });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.error || "ISBN lookup failed");
+      }
+
+      if (json.result) {
+        selectBook(json.result);
+      } else {
+        setIsbnError("Book not found for this ISBN/ASIN.");
+      }
+    } catch (e: unknown) {
+      setIsbnError(e instanceof Error ? e.message : "ISBN lookup failed");
+    } finally {
+      setLookingUpIsbn(false);
+    }
+  }, [isbnInput]);
 
   const selectBook = (result: BookSearchResult) => {
     setFormData({
@@ -302,6 +348,36 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-border" />
+                <span className="text-xs text-muted-foreground">or enter ISBN</span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+
+              <div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Enter ISBN or ASIN..."
+                    value={isbnInput}
+                    onChange={(e) => { setIsbnInput(e.target.value); setIsbnError(null); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleIsbnLookup(); } }}
+                    className="flex-1 h-10 px-3 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <Button
+                    onClick={handleIsbnLookup}
+                    disabled={!isbnInput.trim() || lookingUpIsbn}
+                    size="sm"
+                    className="h-10"
+                  >
+                    {lookingUpIsbn ? "..." : "Look Up"}
+                  </Button>
+                </div>
+                {isbnError && (
+                  <p className="text-xs text-destructive mt-1">{isbnError}</p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-border" />
                 <span className="text-xs text-muted-foreground">or search</span>
                 <div className="flex-1 h-px bg-border" />
               </div>
@@ -313,7 +389,6 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="w-full h-10 px-3 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  autoFocus
                 />
               </div>
 
@@ -481,25 +556,18 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-muted-foreground">Started</label>
-                    <input
-                      type="date"
-                      value={formData.started_at}
-                      onChange={(e) => updateField("started_at", e.target.value)}
-                      className="w-full h-9 px-3 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-xs text-muted-foreground">Finished</label>
-                    <input
-                      type="date"
-                      value={formData.finished_at}
-                      onChange={(e) => updateField("finished_at", e.target.value)}
-                      className="w-full h-9 px-3 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
-                  </div>
+                  <CalendarInput
+                    label="Started"
+                    value={formData.started_at}
+                    onChange={(date) => updateField("started_at", date)}
+                    placeholder="Select date"
+                  />
+                  <CalendarInput
+                    label="Finished"
+                    value={formData.finished_at}
+                    onChange={(date) => updateField("finished_at", date)}
+                    placeholder="Select date"
+                  />
                 </div>
 
                 <div>

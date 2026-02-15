@@ -348,7 +348,8 @@ export function TimeOfDayPicker({ value, onChange, className }: TimeOfDayPickerF
 }
 
 /**
- * DurationPickerField - tap to open duration wheel picker
+ * DurationPickerField - tap to open duration wheel picker (h/m/s)
+ * value is in decimal minutes (e.g. 90.5 = 1h 30m 30s)
  */
 type DurationPickerFieldProps = {
   value: number | null;
@@ -361,14 +362,18 @@ export function DurationPicker({ value, onChange, maxHours = 23, className }: Du
   const [open, setOpen] = useState(false);
 
   const hours = useMemo(() => Array.from({ length: maxHours + 1 }, (_, i) => i), [maxHours]);
-  const minutes = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
+  const minuteOptions = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
+  const secondOptions = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
 
-  const currentHour = value != null ? Math.min(Math.floor(value / 60), maxHours) : 0;
-  const currentMinute = value != null ? value % 60 : 0;
+  const totalSeconds = value != null ? Math.round(value * 60) : 0;
+  const currentHour = value != null ? Math.min(Math.floor(totalSeconds / 3600), maxHours) : 0;
+  const currentMinute = value != null ? Math.floor((totalSeconds % 3600) / 60) : 0;
+  const currentSecond = value != null ? totalSeconds % 60 : 0;
 
   const [pickerValue, setPickerValue] = useState({
     hour: currentHour,
     minute: currentMinute,
+    second: currentSecond,
   });
 
   // Reset to current value when opening
@@ -376,25 +381,35 @@ export function DurationPicker({ value, onChange, maxHours = 23, className }: Du
     setPickerValue({
       hour: currentHour,
       minute: currentMinute,
+      second: currentSecond,
     });
     setOpen(true);
   };
 
   const handleConfirm = () => {
-    onChange(pickerValue.hour * 60 + pickerValue.minute);
+    const decimalMinutes = pickerValue.hour * 60 + pickerValue.minute + pickerValue.second / 60;
+    onChange(decimalMinutes);
     setOpen(false);
   };
 
-  const totalMinutes = pickerValue.hour * 60 + pickerValue.minute;
+  const displayTotal = pickerValue.hour * 3600 + pickerValue.minute * 60 + pickerValue.second;
 
-  const displayValue = value != null
-    ? `${Math.floor(value / 60)}h ${value % 60}m`
-    : "Set duration";
+  const formatDisplay = (val: number | null) => {
+    if (val == null) return "Set duration";
+    const ts = Math.round(val * 60);
+    const h = Math.floor(ts / 3600);
+    const m = Math.floor((ts % 3600) / 60);
+    const s = ts % 60;
+    if (h > 0 && s > 0) return `${h}h ${m}m ${s}s`;
+    if (h > 0) return `${h}h ${m}m`;
+    if (s > 0) return `${m}m ${s}s`;
+    return `${m}m`;
+  };
 
   return (
     <>
       <button type="button" onClick={handleOpen} className={`${fieldButtonClass} ${className || ""}`}>
-        <span className={value == null ? "text-muted-foreground" : ""}>{displayValue}</span>
+        <span className={value == null ? "text-muted-foreground" : ""}>{formatDisplay(value)}</span>
         <span className="text-muted-foreground">⏱️</span>
       </button>
 
@@ -422,7 +437,7 @@ export function DurationPicker({ value, onChange, maxHours = 23, className }: Du
                   ))}
                 </Picker.Column>
                 <Picker.Column name="minute">
-                  {minutes.map((m) => (
+                  {minuteOptions.map((m) => (
                     <Picker.Item key={m} value={m}>
                       {({ selected }) => (
                         <div className={`${pickerItemClass} ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
@@ -432,11 +447,22 @@ export function DurationPicker({ value, onChange, maxHours = 23, className }: Du
                     </Picker.Item>
                   ))}
                 </Picker.Column>
+                <Picker.Column name="second">
+                  {secondOptions.map((s) => (
+                    <Picker.Item key={s} value={s}>
+                      {({ selected }) => (
+                        <div className={`${pickerItemClass} ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
+                          {s}s
+                        </div>
+                      )}
+                    </Picker.Item>
+                  ))}
+                </Picker.Column>
               </Picker>
             </div>
 
             <div className="text-sm text-muted-foreground">
-              Total: {totalMinutes} minutes
+              Total: {Math.floor(displayTotal / 60)}m {displayTotal % 60}s
             </div>
 
             <div className="flex gap-2 w-full max-w-xs">

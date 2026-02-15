@@ -205,9 +205,9 @@ export default function ExerciseCentricView({
                     <thead>
                       <tr className="border-b text-left text-xs text-muted-foreground">
                         <th className="py-1.5 px-2 font-medium">Date</th>
-                        <th className="py-1.5 px-2 font-medium">Type</th>
+                        <th className="py-1.5 px-2 font-medium hidden sm:table-cell">Type</th>
                         <th className="py-1.5 px-2 font-medium">Sets</th>
-                        <th className="py-1.5 px-2 font-medium text-right">
+                        <th className="py-1.5 px-2 font-medium text-right hidden sm:table-cell">
                           Tonnage
                         </th>
                       </tr>
@@ -292,13 +292,13 @@ export default function ExerciseCentricView({
                             <td className="py-1.5 px-2 whitespace-nowrap tabular-nums">
                               {session.date}
                             </td>
-                            <td className="py-1.5 px-2 text-muted-foreground whitespace-nowrap">
+                            <td className="py-1.5 px-2 text-muted-foreground whitespace-nowrap hidden sm:table-cell">
                               {typeName?.replace("_", " ") || "\u2014"}
                             </td>
                             <td className="py-1.5 px-2 tabular-nums">
                               {detailContent}
                             </td>
-                            <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
+                            <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground hidden sm:table-cell">
                               {session.tonnage > 0
                                 ? `${session.tonnage.toLocaleString()} lbs`
                                 : "\u2014"}

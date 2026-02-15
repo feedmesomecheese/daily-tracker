@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type ExerciseGroup = {
@@ -38,56 +39,62 @@ export default function ExerciseGroupPanels({
   onAddToBucket,
   onCustomExercise,
 }: ExerciseGroupPanelsProps) {
-  // Multi-select: set of selected exercise IDs
-  const [selectedExerciseIds, setSelectedExerciseIds] = useState<Set<string>>(new Set());
+  // Multi-select: ordered array of selected exercise IDs (preserves selection order)
+  const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>([]);
   const [selectedModifiers, setSelectedModifiers] = useState<string[]>([]);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
 
   // The "primary" selected exercise for showing modifiers (last clicked)
   const [primaryExerciseId, setPrimaryExerciseId] = useState<string | null>(null);
+
+  // Long-press state
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartPos = useRef<{ x: number; y: number } | null>(null);
+  const longPressTriggered = useRef(false);
 
   const primaryExercise = exercises.find((e) => e.id === primaryExerciseId);
   const availableModifiers = primaryExercise
     ? modifiers.filter((m) => primaryExercise.available_modifier_ids.includes(m.id))
     : [];
 
+  const isSelected = useCallback(
+    (id: string) => selectedExerciseIds.includes(id),
+    [selectedExerciseIds]
+  );
+
   const handleSelectExercise = (exerciseId: string, ctrlKey: boolean) => {
-    if (ctrlKey) {
+    if (ctrlKey || multiSelectMode || selectedExerciseIds.length > 0) {
       // Multi-select: toggle this exercise
       setSelectedExerciseIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(exerciseId)) {
-          next.delete(exerciseId);
+        if (prev.includes(exerciseId)) {
+          const next = prev.filter((id) => id !== exerciseId);
           // If we removed the primary, pick another or clear
           if (primaryExerciseId === exerciseId) {
-            const remaining = Array.from(next);
-            setPrimaryExerciseId(remaining.length > 0 ? remaining[remaining.length - 1] : null);
-            if (remaining.length === 0) setSelectedModifiers([]);
+            setPrimaryExerciseId(next.length > 0 ? next[next.length - 1] : null);
+            if (next.length === 0) {
+              setSelectedModifiers([]);
+              setMultiSelectMode(false);
+            }
           }
+          return next;
         } else {
-          next.add(exerciseId);
           setPrimaryExerciseId(exerciseId);
           setSelectedModifiers([]);
+          return [...prev, exerciseId];
         }
-        return next;
       });
     } else {
-      // Single click: select only this one (or deselect if already sole selection)
-      if (selectedExerciseIds.size === 1 && selectedExerciseIds.has(exerciseId)) {
-        setSelectedExerciseIds(new Set());
-        setPrimaryExerciseId(null);
-        setSelectedModifiers([]);
-      } else {
-        setSelectedExerciseIds(new Set([exerciseId]));
-        setPrimaryExerciseId(exerciseId);
-        setSelectedModifiers([]);
-      }
+      // First tap/click: select this one
+      setSelectedExerciseIds([exerciseId]);
+      setPrimaryExerciseId(exerciseId);
+      setSelectedModifiers([]);
     }
   };
 
   const handleAdd = () => {
-    if (selectedExerciseIds.size === 0) return;
+    if (selectedExerciseIds.length === 0) return;
 
-    // Add each selected exercise to bucket
+    // Add each selected exercise to bucket in selection order
     for (const exId of selectedExerciseIds) {
       const ex = exercises.find((e) => e.id === exId);
       if (!ex) continue;
@@ -97,10 +104,58 @@ export default function ExerciseGroupPanels({
       onAddToBucket(ex, mods);
     }
 
-    setSelectedExerciseIds(new Set());
+    setSelectedExerciseIds([]);
     setPrimaryExerciseId(null);
     setSelectedModifiers([]);
+    setMultiSelectMode(false);
   };
+
+  const clearSelection = () => {
+    setSelectedExerciseIds([]);
+    setPrimaryExerciseId(null);
+    setSelectedModifiers([]);
+    setMultiSelectMode(false);
+  };
+
+  // Long-press handlers for mobile multi-select
+  const handleTouchStart = useCallback((exerciseId: string, e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+    longPressTriggered.current = false;
+
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      // Enter multi-select mode
+      setMultiSelectMode(true);
+      setSelectedExerciseIds((prev) => {
+        if (prev.includes(exerciseId)) return prev;
+        return [...prev, exerciseId];
+      });
+      setPrimaryExerciseId(exerciseId);
+      setSelectedModifiers([]);
+      // Haptic feedback
+      if (navigator.vibrate) navigator.vibrate(50);
+    }, 500);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!touchStartPos.current || !longPressTimer.current) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartPos.current.x;
+    const dy = touch.clientY - touchStartPos.current.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 10) {
+      // Finger moved too far, cancel long-press
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
 
   const getExercisesForGroup = (groupId: string) =>
     exercises.filter((e) => e.group_ids.includes(groupId));
@@ -115,10 +170,20 @@ export default function ExerciseGroupPanels({
     <button
       key={ex.id}
       type="button"
-      onClick={(e) => handleSelectExercise(ex.id, e.ctrlKey || e.metaKey)}
+      onClick={(e) => {
+        // Ignore click if long-press just triggered
+        if (longPressTriggered.current) {
+          longPressTriggered.current = false;
+          return;
+        }
+        handleSelectExercise(ex.id, e.ctrlKey || e.metaKey);
+      }}
+      onTouchStart={(e) => handleTouchStart(ex.id, e)}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
       className={cn(
         "w-full text-left px-3 py-1.5 text-sm transition-colors",
-        selectedExerciseIds.has(ex.id)
+        isSelected(ex.id)
           ? "bg-primary/10 text-primary font-medium"
           : "hover:bg-muted"
       )}
@@ -129,6 +194,22 @@ export default function ExerciseGroupPanels({
 
   return (
     <div className="space-y-3">
+      {/* Multi-select mode indicator */}
+      {multiSelectMode && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="text-xs">
+            Multi-select
+          </Badge>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {/* Group Panels */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {groups.map((group) => {
@@ -165,9 +246,9 @@ export default function ExerciseGroupPanels({
       </div>
 
       {/* Selection info */}
-      {selectedExerciseIds.size > 1 && (
+      {selectedExerciseIds.length > 1 && (
         <p className="text-xs text-muted-foreground">
-          {selectedExerciseIds.size} exercises selected (Ctrl+click to select more)
+          {selectedExerciseIds.length} exercises selected (tap to add/remove more)
         </p>
       )}
 
@@ -198,9 +279,9 @@ export default function ExerciseGroupPanels({
           <Button
             size="sm"
             onClick={handleAdd}
-            disabled={selectedExerciseIds.size === 0}
+            disabled={selectedExerciseIds.length === 0}
           >
-            Add to Workout{selectedExerciseIds.size > 1 ? ` (${selectedExerciseIds.size})` : ""}
+            Add to Workout{selectedExerciseIds.length > 1 ? ` (${selectedExerciseIds.length})` : ""}
           </Button>
           <Button
             size="sm"

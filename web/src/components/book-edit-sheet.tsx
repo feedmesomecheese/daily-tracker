@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { CalendarInput } from "@/components/ui/calendar-input";
 import {
   Select,
   SelectContent,
@@ -455,25 +456,18 @@ export function BookEditSheet({
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground">Started</label>
-                  <input
-                    type="date"
-                    value={formData.started_at}
-                    onChange={(e) => updateField("started_at", e.target.value)}
-                    className="w-full h-9 px-3 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs text-muted-foreground">Finished</label>
-                  <input
-                    type="date"
-                    value={formData.finished_at}
-                    onChange={(e) => updateField("finished_at", e.target.value)}
-                    className="w-full h-9 px-3 border rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
+                <CalendarInput
+                  label="Started"
+                  value={formData.started_at}
+                  onChange={(date) => updateField("started_at", date)}
+                  placeholder="Select date"
+                />
+                <CalendarInput
+                  label="Finished"
+                  value={formData.finished_at}
+                  onChange={(date) => updateField("finished_at", date)}
+                  placeholder="Select date"
+                />
               </div>
 
               <div>

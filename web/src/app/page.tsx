@@ -1531,10 +1531,12 @@ export default function Home() {
         return;
       }
 
-      await loadDayValues(date);
       setDirty(false);
-      await reloadDateHints();
-      await reloadIndicators();
+      await Promise.all([
+        loadDayValues(date),
+        reloadDateHints(),
+        reloadIndicators(),
+      ]);
     } catch (e: any) {
       setError(String(e?.message || e));
     } finally {
@@ -2241,6 +2243,7 @@ export default function Home() {
                                 </Badge>
                               )}
                               <Input
+                                inputMode={["number", "score", "count"].includes(m.type) ? "numeric" : undefined}
                                 value={raw}
                                 onFocus={() => markAsTouched(m.metric_id)}
                                 onChange={(e) => {

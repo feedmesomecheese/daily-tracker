@@ -12,6 +12,8 @@ import ExerciseBucket from "./components/ExerciseBucket";
 import { type BucketExerciseData } from "./components/BucketExerciseRow";
 import WorkoutRating from "./components/WorkoutRating";
 import CustomExerciseSheet from "./components/CustomExerciseSheet";
+import { useMediaQuery } from "@/hooks/use-media-query";
+import { DurationPicker } from "@/components/ui/mobile-pickers";
 
 type WorkoutType = {
   id: string;
@@ -98,6 +100,8 @@ type GhostData = Record<
 >;
 
 export default function WorkoutsPage() {
+  const isMobile = useMediaQuery("(max-width: 639px)");
+
   // Data
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
   const [groups, setGroups] = useState<ExerciseGroup[]>([]);
@@ -718,13 +722,20 @@ export default function WorkoutsPage() {
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground">Duration</label>
-                  <input
-                    type="text"
-                    value={workoutDuration}
-                    onChange={(e) => setWorkoutDuration(e.target.value)}
-                    placeholder="h:mm:ss"
-                    className="w-24 px-3 py-2 border rounded-md text-sm tabular-nums"
-                  />
+                  {isMobile ? (
+                    <DurationPicker
+                      value={workoutDuration ? parseDurationToMinutes(workoutDuration) : null}
+                      onChange={(mins) => setWorkoutDuration(minutesToDurationStr(mins))}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      value={workoutDuration}
+                      onChange={(e) => setWorkoutDuration(e.target.value)}
+                      placeholder="h:mm:ss"
+                      className="w-24 px-3 py-2 border rounded-md text-sm tabular-nums"
+                    />
+                  )}
                 </div>
                 <WorkoutRating value={workoutRating} onChange={setWorkoutRating} />
               </div>

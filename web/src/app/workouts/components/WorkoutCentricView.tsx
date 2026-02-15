@@ -92,9 +92,9 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
               <th className="py-2 px-2 font-medium w-6"></th>
               <th className="py-2 px-2 font-medium">Date</th>
               <th className="py-2 px-2 font-medium">Type</th>
-              <th className="py-2 px-2 font-medium text-right">Duration</th>
-              <th className="py-2 px-2 font-medium text-center">Rating</th>
-              <th className="py-2 px-2 font-medium text-right">Exercises</th>
+              <th className="py-2 px-2 font-medium text-right hidden sm:table-cell">Duration</th>
+              <th className="py-2 px-2 font-medium text-center hidden sm:table-cell">Rating</th>
+              <th className="py-2 px-2 font-medium text-right hidden sm:table-cell">Exercises</th>
               <th className="py-2 px-2 font-medium text-right">Tonnage</th>
             </tr>
           </thead>
@@ -124,15 +124,15 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                     <td className="py-2 px-2 text-muted-foreground whitespace-nowrap">
                       {typeName?.replace("_", " ") || "\u2014"}
                     </td>
-                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground">
+                    <td className="py-2 px-2 text-right tabular-nums text-muted-foreground hidden sm:table-cell">
                       {formatDuration(workout.duration_minutes)}
                     </td>
-                    <td className="py-2 px-2 text-center text-muted-foreground">
+                    <td className="py-2 px-2 text-center text-muted-foreground hidden sm:table-cell">
                       {workout.rating
                         ? `${"*".repeat(workout.rating)}/5`
                         : "\u2014"}
                     </td>
-                    <td className="py-2 px-2 text-right tabular-nums">
+                    <td className="py-2 px-2 text-right tabular-nums hidden sm:table-cell">
                       {exCount || "\u2014"}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums">

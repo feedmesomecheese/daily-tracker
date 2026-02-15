@@ -387,7 +387,7 @@ export default function ExerciseStatsSheet({
                         tick={{ fontSize: 10 }}
                         interval="preserveStartEnd"
                       />
-                      <YAxis tick={{ fontSize: 10 }} width={50} />
+                      <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
                         formatter={(value: number) => [
@@ -426,7 +426,7 @@ export default function ExerciseStatsSheet({
                         tick={{ fontSize: 10 }}
                         interval="preserveStartEnd"
                       />
-                      <YAxis tick={{ fontSize: 10 }} width={50} />
+                      <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
                         formatter={(value: number) => [
