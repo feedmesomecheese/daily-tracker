@@ -166,7 +166,7 @@ export default function BucketExerciseRow({
       {/* Drag handle */}
       <button
         type="button"
-        className="mt-5 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground"
+        className="mt-5 cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
         {...attributes}
         {...listeners}
       >

@@ -5,7 +5,7 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -43,7 +43,7 @@ export default function ExerciseBucket({
   onExercisesChange,
 }: ExerciseBucketProps) {
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(MouseSensor),
     useSensor(TouchSensor, {
       activationConstraint: { delay: 250, tolerance: 5 },
     }),
