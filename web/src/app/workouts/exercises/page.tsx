@@ -739,7 +739,7 @@ export default function ExerciseLibraryPage() {
                           </div>
                           {editExerciseParent && ex.available_modifier_ids.length > 0 && (
                             <div className="flex flex-wrap items-center gap-2 pl-12">
-                              <span className="text-xs text-muted-foreground">Only with modifiers:</span>
+                              <span className="text-xs text-muted-foreground">Include in parent stats only with:</span>
                               {modifiers
                                 .filter((mod) => ex.available_modifier_ids.includes(mod.id))
                                 .map((mod) => (
@@ -759,7 +759,7 @@ export default function ExerciseLibraryPage() {
                                   </label>
                                 ))}
                               <span className="text-xs text-muted-foreground italic">
-                                {editExerciseParentModFilter.length === 0 ? "(all sessions included)" : ""}
+                                {editExerciseParentModFilter.length === 0 ? "(all sessions count toward parent)" : ""}
                               </span>
                             </div>
                           )}
