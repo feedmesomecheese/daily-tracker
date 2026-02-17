@@ -102,7 +102,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
             {pageWorkouts.map((workout, i) => {
               const isExpanded = expanded.has(workout.id);
               const tonnage = computeWorkoutTonnage(workout);
-              const exCount = workout.exercises?.length || 0;
+              const exCount = (workout.exercises?.length || 0) + (workout.activity_sessions?.length || 0);
               const typeName = workout.workout_type_id
                 ? typeMap.get(workout.workout_type_id) || workout.workout_type
                 : workout.workout_type;
@@ -141,36 +141,63 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                         : "\u2014"}
                     </td>
                   </tr>
-                  {isExpanded && workout.exercises && (
+                  {isExpanded && (exCount > 0 || workout.notes) && (
                     <tr>
                       <td colSpan={7} className="p-0">
                         <div className="px-4 py-2 bg-muted/20">
-                          <table className="w-full text-sm border-collapse">
-                            <tbody>
-                              {workout.exercises.map((ex, ei) => {
-                                const colorMap = computeSupersetColorMap(
-                                  workout.exercises!
-                                );
-                                const ssIdx =
-                                  ex.superset_group != null
-                                    ? colorMap.get(ex.superset_group)
-                                    : undefined;
-                                const ssStyle =
-                                  ssIdx != null
-                                    ? SUPERSET_COLORS[ssIdx]
-                                    : null;
+                          {workout.exercises && workout.exercises.length > 0 && (
+                            <table className="w-full text-sm border-collapse">
+                              <tbody>
+                                {workout.exercises.map((ex, ei) => {
+                                  const colorMap = computeSupersetColorMap(
+                                    workout.exercises!
+                                  );
+                                  const ssIdx =
+                                    ex.superset_group != null
+                                      ? colorMap.get(ex.superset_group)
+                                      : undefined;
+                                  const ssStyle =
+                                    ssIdx != null
+                                      ? SUPERSET_COLORS[ssIdx]
+                                      : null;
 
-                                return (
-                                  <ExerciseDetailRow
-                                    key={ei}
-                                    exercise={ex}
-                                    supersetStyle={ssStyle}
-                                    onExerciseClick={handleExerciseClick}
-                                  />
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                                  return (
+                                    <ExerciseDetailRow
+                                      key={ei}
+                                      exercise={ex}
+                                      supersetStyle={ssStyle}
+                                      onExerciseClick={handleExerciseClick}
+                                    />
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                          {/* Activity sessions (tennis, racquetball, etc.) */}
+                          {workout.activity_sessions && workout.activity_sessions.length > 0 && (
+                            <table className={`w-full text-sm border-collapse ${workout.exercises?.length ? "mt-2 pt-2 border-t" : ""}`}>
+                              <tbody>
+                                {workout.activity_sessions.map((a) => (
+                                  <tr key={a.id}>
+                                    <td className="text-right font-medium pr-3 py-1 whitespace-nowrap align-top w-32 sm:w-48">
+                                      {a.activity_type}
+                                    </td>
+                                    <td className="w-px bg-border py-1" />
+                                    <td className="pl-3 py-1 text-muted-foreground">
+                                      {a.duration_minutes && (
+                                        <span>{formatDuration(a.duration_minutes)}</span>
+                                      )}
+                                      {a.notes && (
+                                        <span className="italic ml-2 text-xs">
+                                          {a.notes}
+                                        </span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          )}
                           {tonnage > 0 && (
                             <div className="text-xs text-muted-foreground/60 text-right pt-2 border-t mt-2">
                               Total tonnage:{" "}

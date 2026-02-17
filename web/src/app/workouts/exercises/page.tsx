@@ -47,6 +47,7 @@ type Exercise = {
   available_modifier_ids: string[];
   is_archived: boolean;
   sort_order: number;
+  parent_exercise_id: string | null;
 };
 
 export default function ExerciseLibraryPage() {
@@ -84,6 +85,7 @@ export default function ExerciseLibraryPage() {
   const [editExerciseType, setEditExerciseType] = useState("weighted");
   const [editExerciseGroups, setEditExerciseGroups] = useState<string[]>([]);
   const [editExerciseModifiers, setEditExerciseModifiers] = useState<string[]>([]);
+  const [editExerciseParent, setEditExerciseParent] = useState<string | null>(null);
 
   // Exercise form
   const [newExerciseName, setNewExerciseName] = useState("");
@@ -358,6 +360,7 @@ export default function ExerciseLibraryPage() {
     setEditExerciseType(ex.exercise_type);
     setEditExerciseGroups([...ex.group_ids]);
     setEditExerciseModifiers([...ex.available_modifier_ids]);
+    setEditExerciseParent(ex.parent_exercise_id);
   };
 
   const saveEditExercise = async () => {
@@ -372,6 +375,7 @@ export default function ExerciseLibraryPage() {
           exercise_type: editExerciseType,
           group_ids: editExerciseGroups,
           available_modifier_ids: editExerciseModifiers,
+          parent_exercise_id: editExerciseParent,
         }),
       });
       if (!res.ok) throw new Error("Failed to update exercise");
@@ -699,6 +703,30 @@ export default function ExerciseLibraryPage() {
                             </label>
                           ))}
                         </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Parent:</span>
+                          <Select
+                            value={editExerciseParent || "none"}
+                            onValueChange={(v) => setEditExerciseParent(v === "none" ? null : v)}
+                          >
+                            <SelectTrigger className="w-[200px] h-8">
+                              <SelectValue placeholder="No parent" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">No parent</SelectItem>
+                              {exercises
+                                .filter((e) => e.id !== ex.id && !e.parent_exercise_id && !e.is_archived)
+                                .map((e) => (
+                                  <SelectItem key={e.id} value={e.id}>
+                                    {e.name}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <span className="text-xs text-muted-foreground">
+                            Stats will combine with parent
+                          </span>
+                        </div>
                         <div className="flex gap-2">
                           <Button size="sm" onClick={saveEditExercise}>Save</Button>
                           <Button size="sm" variant="outline" onClick={() => setEditingExerciseId(null)}>Cancel</Button>
@@ -714,6 +742,16 @@ export default function ExerciseLibraryPage() {
                           {ex.group_ids.length > 0 && (
                             <div className="text-xs text-muted-foreground">
                               {ex.group_ids.map(getGroupName).join(", ")}
+                            </div>
+                          )}
+                          {ex.parent_exercise_id && (
+                            <div className="text-xs text-blue-600">
+                              Linked to: {exercises.find((e) => e.id === ex.parent_exercise_id)?.name || "Unknown"}
+                            </div>
+                          )}
+                          {exercises.some((e) => e.parent_exercise_id === ex.id) && (
+                            <div className="text-xs text-emerald-600">
+                              Children: {exercises.filter((e) => e.parent_exercise_id === ex.id).map((e) => e.name).join(", ")}
                             </div>
                           )}
                         </div>

@@ -10,6 +10,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   LineChart,
@@ -49,6 +50,7 @@ type StatsResponse = {
     exercise_type: string;
     group_ids: string[];
     inputType: string;
+    linkedNames?: string[];
   };
   frequency: {
     last30d: number;
@@ -72,6 +74,9 @@ type StatsResponse = {
   } | null;
   pr: { weight: number; reps: number; date: string } | null;
   cycleMax: { weight: number; date: string } | null;
+  cycleMaxHistory: { weight: number; date: string }[];
+  oneRepMax: { weight: number; date: string } | null;
+  tonnagePr: { tonnage: number; date: string } | null;
   cardioPr?: {
     distance: { distance: number; date: string } | null;
     pace: { pace: number; distance: number; duration: number; date: string } | null;
@@ -177,6 +182,48 @@ function DayOfWeekBar({ breakdown }: { breakdown: Record<string, number> }) {
   );
 }
 
+function CycleMaxSparkline({ history }: { history: { weight: number; date: string }[] }) {
+  if (history.length < 2) return null;
+
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const weights = sorted.map((h) => h.weight);
+  const min = Math.min(...weights);
+  const max = Math.max(...weights);
+  const range = max - min || 1;
+
+  const width = 120;
+  const height = 28;
+  const padding = 2;
+  const chartH = height - padding * 2;
+
+  const points = weights.map((w, i) => {
+    const x = weights.length === 1 ? width / 2 : (i / (weights.length - 1)) * width;
+    const y = padding + chartH - ((w - min) / range) * chartH;
+    return `${x},${y}`;
+  });
+
+  const isUp = weights[weights.length - 1] > weights[0];
+
+  return (
+    <svg width={width} height={height} className="mt-1 block">
+      <polyline
+        points={points.join(" ")}
+        fill="none"
+        stroke={isUp ? "#10b981" : "#ef4444"}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx={Number(points[points.length - 1].split(",")[0])}
+        cy={Number(points[points.length - 1].split(",")[1])}
+        r={2.5}
+        fill={isUp ? "#10b981" : "#ef4444"}
+      />
+    </svg>
+  );
+}
+
 export default function ExerciseStatsSheet({
   exerciseId,
   exerciseName,
@@ -222,72 +269,96 @@ export default function ExerciseStatsSheet({
 
   const inputType = stats?.exercise?.inputType || "strength";
 
-  // Chart data — use full dates for year markers + tick formatting
-  const tonnageChartData = stats?.sessions.map((s) => ({
-    date: s.date,
-    tonnage: s.tonnage,
-  })) || [];
+  // Date range filter for charts
+  const [chartRange, setChartRange] = useState<"6mo" | "1yr" | "2yr" | "all">("all");
 
-  const topWeightChartData = stats?.sessions
-    .filter((s) => s.topWeight > 0)
-    .map((s) => ({
-      date: s.date,
-      weight: s.topWeight,
-    })) || [];
-
-  const intensityChartData = stats?.sessions
-    .filter((s) => s.intensity !== null)
-    .map((s) => ({
-      date: s.date,
-      intensity: s.intensity,
-    })) || [];
-
-  const cardioChartData = stats?.sessions.map((s) => ({
-    date: s.date,
-    distance: s.distance_miles || 0,
-    duration: s.duration_minutes || 0,
-  })) || [];
-
-  // Year markers — vertical lines at Jan 1 of each year
-  const yearMarkers = useMemo(() => {
+  // Filter sessions by date range
+  const filteredSessions = useMemo(() => {
     if (!stats?.sessions.length) return [];
+    if (chartRange === "all") return stats.sessions;
 
-    const years = new Set<number>();
-    for (const s of stats.sessions) {
-      years.add(parseInt(s.date.slice(0, 4), 10));
-    }
+    const now = new Date();
+    const daysBack = { "6mo": 183, "1yr": 365, "2yr": 730 }[chartRange];
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - daysBack);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
 
-    const markers: { date: string; year: number }[] = [];
-    const sortedYears = Array.from(years).sort();
+    return stats.sessions.filter((s) => s.date >= cutoffStr);
+  }, [stats?.sessions, chartRange]);
 
-    for (let i = 1; i < sortedYears.length; i++) {
-      const year = sortedYears[i];
-      const jan1 = `${year}-01-01`;
+  // Helper: convert date string to timestamp for time-proportional charting
+  const dateToTs = (d: string) => new Date(d + "T12:00:00").getTime();
+  // Recharts may pass ts as string or number, so coerce with Number()
+  const tsToShortDate = (ts: string | number) => {
+    const d = new Date(Number(ts));
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tooltipDateLabel = (_label: any, payload: readonly any[]) => {
+    const dateStr = payload?.[0]?.payload?.date;
+    if (dateStr) return formatDate(dateStr);
+    return "";
+  };
 
-      // Find the closest session date to Jan 1
-      let closestDate = "";
-      let closestDiff = Infinity;
-      for (const s of stats.sessions) {
-        if (s.date >= `${year - 1}-12-25` && s.date <= `${year}-01-07`) {
-          const diff = Math.abs(new Date(s.date).getTime() - new Date(jan1).getTime());
-          if (diff < closestDiff) {
-            closestDiff = diff;
-            closestDate = s.date;
-          }
-        }
-      }
+  // Chart data — time-proportional via timestamps, include date string for tooltips
+  const tonnageChartData = useMemo(() =>
+    filteredSessions.map((s) => ({
+      ts: dateToTs(s.date),
+      date: s.date,
+      tonnage: s.tonnage,
+    })),
+  [filteredSessions]);
 
-      if (closestDate) {
-        markers.push({ date: closestDate, year });
-      }
+  const topWeightChartData = useMemo(() =>
+    filteredSessions
+      .filter((s) => s.topWeight > 0)
+      .map((s) => ({
+        ts: dateToTs(s.date),
+        date: s.date,
+        weight: s.topWeight,
+      })),
+  [filteredSessions]);
+
+  const intensityChartData = useMemo(() =>
+    filteredSessions
+      .filter((s) => s.intensity !== null)
+      .map((s) => ({
+        ts: dateToTs(s.date),
+        date: s.date,
+        intensity: s.intensity,
+      })),
+  [filteredSessions]);
+
+  const cardioChartData = useMemo(() =>
+    filteredSessions.map((s) => ({
+      ts: dateToTs(s.date),
+      date: s.date,
+      distance: s.distance_miles || 0,
+      duration: s.duration_minutes || 0,
+    })),
+  [filteredSessions]);
+
+  // Year markers — exact Jan 1 timestamps within the filtered data range
+  const yearMarkers = useMemo(() => {
+    if (filteredSessions.length < 2) return [];
+
+    const firstDate = filteredSessions[0].date;
+    const lastDate = filteredSessions[filteredSessions.length - 1].date;
+    const firstYear = parseInt(firstDate.slice(0, 4), 10);
+    const lastYear = parseInt(lastDate.slice(0, 4), 10);
+
+    const markers: { ts: number; year: number }[] = [];
+    for (let year = firstYear + 1; year <= lastYear; year++) {
+      const ts = dateToTs(`${year}-01-01`);
+      markers.push({ ts, year });
     }
 
     return markers;
-  }, [stats?.sessions]);
+  }, [filteredSessions]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="overflow-y-auto w-full sm:max-w-lg">
+      <SheetContent side="right" className="overflow-y-auto w-full sm:max-w-[50vw]">
         <SheetHeader>
           <SheetTitle>{exerciseName || "Exercise Stats"}</SheetTitle>
           <SheetDescription>
@@ -299,6 +370,11 @@ export default function ExerciseStatsSheet({
             {stats && (
               <span className="text-xs ml-2">
                 {stats.frequency.total} total sessions
+              </span>
+            )}
+            {stats?.exercise.linkedNames && stats.exercise.linkedNames.length > 0 && (
+              <span className="text-xs block mt-1 text-muted-foreground">
+                Includes: {stats.exercise.linkedNames.join(", ")}
               </span>
             )}
           </SheetDescription>
@@ -333,17 +409,47 @@ export default function ExerciseStatsSheet({
             </div>
 
             {/* Records (strength) */}
-            {inputType === "strength" && (stats.pr || stats.cycleMax) && (
+            {inputType === "strength" && (
               <Card>
                 <CardHeader className="py-3">
                   <CardTitle className="text-sm">Records</CardTitle>
                 </CardHeader>
                 <CardContent className="pb-3">
                   <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-xs text-muted-foreground block">1RM</span>
+                      {stats.oneRepMax ? (
+                        <>
+                          <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-amber-600/30 bg-amber-600/10 text-amber-700 font-medium">
+                            {stats.oneRepMax.weight} lbs
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-1">
+                            {formatDate(stats.oneRepMax.date)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">{"\u2014"}</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted-foreground block">Tonnage PR</span>
+                      {stats.tonnagePr ? (
+                        <>
+                          <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-blue-600/30 bg-blue-600/10 text-blue-700 font-medium">
+                            {stats.tonnagePr.tonnage.toLocaleString()} lbs
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-1">
+                            {formatDate(stats.tonnagePr.date)}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">{"\u2014"}</span>
+                      )}
+                    </div>
                     {stats.pr && (
                       <div>
                         <span className="text-xs text-muted-foreground block">
-                          PR
+                          PR (flagged)
                         </span>
                         <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-amber-600/30 bg-amber-600/10 text-amber-700 font-medium">
                           {stats.pr.reps}x{stats.pr.weight}
@@ -353,19 +459,26 @@ export default function ExerciseStatsSheet({
                         </span>
                       </div>
                     )}
-                    {stats.cycleMax && (
-                      <div>
-                        <span className="text-xs text-muted-foreground block">
-                          Cycle Max
-                        </span>
-                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-emerald-700/30 bg-emerald-700/10 text-emerald-700 font-medium">
-                          {stats.cycleMax.weight} lbs
-                        </span>
-                        <span className="text-xs text-muted-foreground ml-1">
-                          {formatDate(stats.cycleMax.date)}
-                        </span>
-                      </div>
-                    )}
+                    <div>
+                      <span className="text-xs text-muted-foreground block">
+                        Cycle Max
+                      </span>
+                      {stats.cycleMax ? (
+                        <>
+                          <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-emerald-700/30 bg-emerald-700/10 text-emerald-700 font-medium">
+                            {stats.cycleMax.weight} lbs
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-1">
+                            {formatDate(stats.cycleMax.date)}
+                          </span>
+                          {stats.cycleMaxHistory.length > 1 && (
+                            <CycleMaxSparkline history={stats.cycleMaxHistory} />
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">{"\u2014"}</span>
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -410,6 +523,26 @@ export default function ExerciseStatsSheet({
               </Card>
             )}
 
+            {/* Date range filter for charts */}
+            {(tonnageChartData.length > 1 || cardioChartData.length > 1) && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">Chart range</span>
+                <div className="flex gap-1">
+                  {(["6mo", "1yr", "2yr", "all"] as const).map((range) => (
+                    <Button
+                      key={range}
+                      variant={chartRange === range ? "default" : "ghost"}
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => setChartRange(range)}
+                    >
+                      {range === "all" ? "All" : range.toUpperCase()}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Tonnage Chart (strength) */}
             {inputType === "strength" && tonnageChartData.length > 1 && (
               <Card>
@@ -423,22 +556,24 @@ export default function ExerciseStatsSheet({
                       {yearMarkers.map((m) => (
                         <ReferenceLine
                           key={`yr-${m.year}`}
-                          x={m.date}
+                          x={m.ts}
                           stroke="#374151"
                           strokeWidth={2}
                           label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
                         />
                       ))}
                       <XAxis
-                        dataKey="date"
+                        dataKey="ts"
+                        type="number"
+                        domain={["dataMin", "dataMax"]}
                         tick={{ fontSize: 10 }}
-                        interval="preserveStartEnd"
-                        tickFormatter={(d) => formatShortDate(d)}
+                        tickCount={5}
+                        tickFormatter={tsToShortDate}
                       />
                       <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
-                        labelFormatter={(d) => formatDate(d as string)}
+                        labelFormatter={tooltipDateLabel}
                         formatter={(value: number) => [
                           `${value.toLocaleString()} lbs`,
                           "Tonnage",
@@ -473,22 +608,24 @@ export default function ExerciseStatsSheet({
                       {yearMarkers.map((m) => (
                         <ReferenceLine
                           key={`yr-${m.year}`}
-                          x={m.date}
+                          x={m.ts}
                           stroke="#374151"
                           strokeWidth={2}
                           label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
                         />
                       ))}
                       <XAxis
-                        dataKey="date"
+                        dataKey="ts"
+                        type="number"
+                        domain={["dataMin", "dataMax"]}
                         tick={{ fontSize: 10 }}
-                        interval="preserveStartEnd"
-                        tickFormatter={(d) => formatShortDate(d)}
+                        tickCount={5}
+                        tickFormatter={tsToShortDate}
                       />
                       <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
-                        labelFormatter={(d) => formatDate(d as string)}
+                        labelFormatter={tooltipDateLabel}
                         formatter={(value: number) => [
                           `${value} lbs`,
                           "Top Weight",
@@ -523,17 +660,19 @@ export default function ExerciseStatsSheet({
                       {yearMarkers.map((m) => (
                         <ReferenceLine
                           key={`yr-${m.year}`}
-                          x={m.date}
+                          x={m.ts}
                           stroke="#374151"
                           strokeWidth={2}
                           label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
                         />
                       ))}
                       <XAxis
-                        dataKey="date"
+                        dataKey="ts"
+                        type="number"
+                        domain={["dataMin", "dataMax"]}
                         tick={{ fontSize: 10 }}
-                        interval="preserveStartEnd"
-                        tickFormatter={(d) => formatShortDate(d)}
+                        tickCount={5}
+                        tickFormatter={tsToShortDate}
                       />
                       <YAxis
                         tick={{ fontSize: 10 }}
@@ -543,7 +682,7 @@ export default function ExerciseStatsSheet({
                       />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
-                        labelFormatter={(d) => formatDate(d as string)}
+                        labelFormatter={tooltipDateLabel}
                         formatter={(value: number) => [`${value}%`, "Intensity"]}
                       />
                       <Line
@@ -576,22 +715,24 @@ export default function ExerciseStatsSheet({
                         {yearMarkers.map((m) => (
                           <ReferenceLine
                             key={`yr-${m.year}`}
-                            x={m.date}
+                            x={m.ts}
                             stroke="#374151"
                             strokeWidth={2}
                             label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
                           />
                         ))}
                         <XAxis
-                          dataKey="date"
+                          dataKey="ts"
+                          type="number"
+                          domain={["dataMin", "dataMax"]}
                           tick={{ fontSize: 10 }}
-                          interval="preserveStartEnd"
-                          tickFormatter={(d) => formatShortDate(d)}
+                          tickCount={5}
+                          tickFormatter={tsToShortDate}
                         />
                         <YAxis tick={{ fontSize: 10 }} width={40} />
                         <Tooltip
                           contentStyle={{ fontSize: 12 }}
-                          labelFormatter={(d) => formatDate(d as string)}
+                          labelFormatter={tooltipDateLabel}
                           formatter={(value: number, name: string) => [
                             name === "distance"
                               ? `${value} mi`
@@ -623,22 +764,24 @@ export default function ExerciseStatsSheet({
                         {yearMarkers.map((m) => (
                           <ReferenceLine
                             key={`yr-${m.year}`}
-                            x={m.date}
+                            x={m.ts}
                             stroke="#374151"
                             strokeWidth={2}
                             label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
                           />
                         ))}
                         <XAxis
-                          dataKey="date"
+                          dataKey="ts"
+                          type="number"
+                          domain={["dataMin", "dataMax"]}
                           tick={{ fontSize: 10 }}
-                          interval="preserveStartEnd"
-                          tickFormatter={(d) => formatShortDate(d)}
+                          tickCount={5}
+                          tickFormatter={tsToShortDate}
                         />
                         <YAxis tick={{ fontSize: 10 }} width={40} />
                         <Tooltip
                           contentStyle={{ fontSize: 12 }}
-                          labelFormatter={(d) => formatDate(d as string)}
+                          labelFormatter={tooltipDateLabel}
                           formatter={(value: number) => [
                             `${value} min`,
                             "Duration",
@@ -743,7 +886,7 @@ export default function ExerciseStatsSheet({
                           }`}
                         >
                           <td className="py-1.5 px-1 tabular-nums whitespace-nowrap">
-                            {formatShortDate(s.date)}
+                            {formatDate(s.date)}
                           </td>
                           {inputType === "strength" && (
                             <>

@@ -1,4 +1,4 @@
-CREATE TABLE invite_codes (
+CREATE TABLE IF NOT EXISTS invite_codes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code TEXT UNIQUE NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now(),

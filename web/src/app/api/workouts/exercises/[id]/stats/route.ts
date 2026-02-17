@@ -49,13 +49,31 @@ export async function GET(req: Request, { params }: Params) {
   // Get the exercise definition
   const { data: exercise, error: exError } = await supabase
     .from("exercises")
-    .select("id, name, exercise_type, group_ids")
+    .select("id, name, exercise_type, group_ids, parent_exercise_id")
     .eq("id", id)
     .eq("owner_id", user.id)
     .single();
 
   if (exError || !exercise) {
     return NextResponse.json({ error: "Exercise not found" }, { status: 404 });
+  }
+
+  // Find linked exercise IDs (this exercise + children, or siblings via parent)
+  const exerciseIds: string[] = [id];
+
+  // Check if this exercise has children (it's a parent)
+  const { data: children } = await supabase
+    .from("exercises")
+    .select("id, name")
+    .eq("parent_exercise_id", id)
+    .eq("owner_id", user.id);
+
+  const linkedNames: string[] = [];
+  if (children && children.length > 0) {
+    for (const child of children) {
+      exerciseIds.push(child.id);
+      linkedNames.push(child.name);
+    }
   }
 
   // Get the exercise's input type from its groups
@@ -72,7 +90,7 @@ export async function GET(req: Request, { params }: Params) {
     }
   }
 
-  // Fetch all workout_exercises for this exercise, joined with workout date
+  // Fetch all workout_exercises for this exercise (and linked exercises), joined with workout date
   // Paginate to avoid Supabase default 1000 row limit
   const allSessions: SessionRow[] = [];
   let sessionOffset = 0;
@@ -95,7 +113,7 @@ export async function GET(req: Request, { params }: Params) {
         notes,
         workouts!inner(date, workout_type_id, duration_minutes)
       `)
-      .eq("exercise_id", id)
+      .in("exercise_id", exerciseIds)
       .eq("workouts.owner_id", user.id)
       .order("workouts(date)", { ascending: true })
       .range(sessionOffset, sessionOffset + SESSION_PAGE - 1);
@@ -170,6 +188,9 @@ export async function GET(req: Request, { params }: Params) {
 
   let prWeight: { weight: number; reps: number; date: string } | null = null;
   let cycleMaxRecord: { weight: number; date: string } | null = null;
+  const cycleMaxHistory: { weight: number; date: string }[] = [];
+  let oneRepMax: { weight: number; date: string } | null = null;
+  let tonnagePr: { tonnage: number; date: string } | null = null;
   const setPatternCounts = new Map<string, number>();
 
   const sessionData: {
@@ -212,24 +233,38 @@ export async function GET(req: Request, { params }: Params) {
       const r = s.reps || 0;
       tonnage += w * r;
 
-      if (w > topWeight || (w === topWeight && r > topReps)) {
+      // Top set tracking — ignore 0-rep sets (missed lifts / bar feel)
+      if (r > 0 && (w > topWeight || (w === topWeight && r > topReps))) {
         topWeight = w;
         topReps = r;
       }
 
-      // PR tracking
+      // PR tracking (flagged)
       if (s.is_pr && w > 0) {
         if (!prWeight || w > prWeight.weight) {
           prWeight = { weight: w, reps: r, date };
         }
       }
 
-      // Cycle max tracking
+      // Cycle max tracking (flagged)
       if (s.is_cycle_max && w > 0) {
+        cycleMaxHistory.push({ weight: w, date });
         if (!cycleMaxRecord || w > cycleMaxRecord.weight) {
           cycleMaxRecord = { weight: w, date };
         }
       }
+
+      // 1RM tracking (heaviest single rep, not missed)
+      if (r === 1 && w > 0 && !s.is_missed) {
+        if (!oneRepMax || w > oneRepMax.weight) {
+          oneRepMax = { weight: w, date };
+        }
+      }
+    }
+
+    // Tonnage PR tracking
+    if (tonnage > 0 && (!tonnagePr || tonnage > tonnagePr.tonnage)) {
+      tonnagePr = { tonnage, date };
     }
 
     // Set pattern (e.g. "3x5", "5x5")
@@ -334,7 +369,7 @@ export async function GET(req: Request, { params }: Params) {
     .slice(0, 5);
 
   return NextResponse.json({
-    exercise: { ...exercise, inputType },
+    exercise: { ...exercise, inputType, linkedNames },
     frequency: {
       last30d: count30d,
       last60d: count60d,
@@ -344,6 +379,9 @@ export async function GET(req: Request, { params }: Params) {
     lastSession,
     pr: prWeight,
     cycleMax: cycleMaxRecord,
+    oneRepMax,
+    tonnagePr,
+    cycleMaxHistory,
     cardioPr: inputType === "cardio" ? { distance: distancePr, pace: pacePr } : undefined,
     tonnageTrend,
     sessions: sessionData.map((s) => ({

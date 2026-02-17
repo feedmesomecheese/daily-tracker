@@ -50,6 +50,14 @@ export type WorkoutExercise = {
   notes?: string | null;
 };
 
+export type ActivitySession = {
+  id: string;
+  workout_id: string;
+  activity_type: string;
+  duration_minutes: number | null;
+  notes: string | null;
+};
+
 export type WorkoutHistory = {
   id: string;
   date: string;
@@ -59,6 +67,7 @@ export type WorkoutHistory = {
   duration_minutes: number | null;
   notes: string | null;
   exercises?: WorkoutExercise[];
+  activity_sessions?: ActivitySession[];
   sets?: {
     exercise_name_display: string;
     set_number: number;

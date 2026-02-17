@@ -165,12 +165,26 @@ export async function GET(req: Request) {
       .in("workout_id", workoutIds)
       .order("set_order", { ascending: true });
 
+    // Fetch activity sessions (tennis, racquetball, etc.)
+    const { data: activitySessions } = await supabase
+      .from("activity_sessions")
+      .select("*")
+      .in("workout_id", workoutIds);
+
     // Group workout_exercises by workout
     const exercisesByWorkout = new Map<string, WorkoutExercise[]>();
     for (const we of workoutExercises || []) {
       const existing = exercisesByWorkout.get(we.workout_id) || [];
       existing.push(we);
       exercisesByWorkout.set(we.workout_id, existing);
+    }
+
+    // Group activity sessions by workout
+    const activitiesByWorkout = new Map<string, typeof activitySessions>();
+    for (const a of activitySessions || []) {
+      const existing = activitiesByWorkout.get(a.workout_id) || [];
+      existing.push(a);
+      activitiesByWorkout.set(a.workout_id, existing);
     }
 
     // Group sets by workout_exercise_id
@@ -199,6 +213,7 @@ export async function GET(req: Request) {
       return {
         ...w,
         exercises,
+        activity_sessions: activitiesByWorkout.get(w.id) || [],
         // Legacy: include orphan sets for backward compat
         sets: orphanSetsByWorkout.get(w.id) || [],
       };
