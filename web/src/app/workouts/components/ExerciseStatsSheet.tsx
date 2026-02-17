@@ -42,6 +42,7 @@ type SessionData = {
   duration_minutes: number | null;
   distance_miles: number | null;
   intensity: number | null;
+  applicableCycleMax: number | null;
 };
 
 type StatsResponse = {
@@ -278,6 +279,8 @@ export default function ExerciseStatsSheet({
         ts: dateToTs(s.date),
         date: s.date,
         intensity: s.intensity,
+        topWeight: s.topWeight,
+        cycleMax: s.applicableCycleMax,
       })),
   [filteredSessions]);
 
@@ -638,7 +641,20 @@ export default function ExerciseStatsSheet({
                         tickFormatter={(v) => `${v}%`}
                       />
                       <Tooltip
-                        content={<ChartTooltip formatter={(e) => `${e.value}%`} />}
+                        content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null;
+                          const data = payload[0]?.payload;
+                          return (
+                            <div className="bg-background border rounded-lg shadow-lg px-3 py-2 text-sm">
+                              {data?.date && (
+                                <p className="font-semibold text-foreground mb-1">{formatDate(data.date)}</p>
+                              )}
+                              <p style={{ color: "#10b981" }}>Intensity: {data?.intensity}%</p>
+                              <p className="text-muted-foreground">Top Weight: {data?.topWeight} lbs</p>
+                              <p className="text-muted-foreground">Cycle Max: {data?.cycleMax} lbs</p>
+                            </div>
+                          );
+                        }}
                       />
                       <Line
                         type="monotone"

@@ -60,6 +60,7 @@ export async function PATCH(req: Request, { params }: Params) {
     is_archived,
     sort_order,
     parent_exercise_id,
+    parent_modifier_filter,
   } = body;
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -74,6 +75,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (is_archived !== undefined) updates.is_archived = is_archived;
   if (sort_order !== undefined) updates.sort_order = sort_order;
   if (parent_exercise_id !== undefined) updates.parent_exercise_id = parent_exercise_id;
+  if (parent_modifier_filter !== undefined) updates.parent_modifier_filter = parent_modifier_filter;
 
   const { data, error } = await supabase
     .from("exercises")

@@ -6,6 +6,8 @@ type Params = { params: Promise<{ id: string }> };
 type SessionRow = {
   id: string;
   workout_id: string;
+  exercise_id: string | null;
+  modifier_ids: string[];
   exercise_order: number;
   superset_group: number | null;
   duration_minutes: number | null;
@@ -58,20 +60,27 @@ export async function GET(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Exercise not found" }, { status: 404 });
   }
 
-  // Find linked exercise IDs (this exercise + children, or siblings via parent)
+  // Find linked exercise IDs (this exercise + children)
   const exerciseIds: string[] = [id];
 
   // Check if this exercise has children (it's a parent)
   const { data: children } = await supabase
     .from("exercises")
-    .select("id, name")
+    .select("id, name, parent_modifier_filter")
     .eq("parent_exercise_id", id)
     .eq("owner_id", user.id);
+
+  // Map child exercise ID → required modifier IDs (null = include all sessions)
+  const childModifierFilter = new Map<string, string[] | null>();
 
   const linkedNames: string[] = [];
   if (children && children.length > 0) {
     for (const child of children) {
       exerciseIds.push(child.id);
+      childModifierFilter.set(
+        child.id,
+        child.parent_modifier_filter?.length ? child.parent_modifier_filter : null
+      );
       linkedNames.push(child.name);
     }
   }
@@ -101,6 +110,8 @@ export async function GET(req: Request, { params }: Params) {
       .select(`
         id,
         workout_id,
+        exercise_id,
+        modifier_ids,
         exercise_order,
         superset_group,
         duration_minutes,
@@ -124,7 +135,16 @@ export async function GET(req: Request, { params }: Params) {
     sessionOffset += SESSION_PAGE;
   }
 
-  const sessions = allSessions;
+  // Filter out child exercise sessions that don't match the modifier filter
+  const sessions = allSessions.filter((s) => {
+    // Sessions for the parent exercise itself — always include
+    if (s.exercise_id === id) return true;
+    // Sessions for child exercises — check modifier filter
+    const filter = s.exercise_id ? childModifierFilter.get(s.exercise_id) : null;
+    if (!filter) return true; // no filter = include all
+    // At least one required modifier must be present
+    return filter.some((modId) => (s.modifier_ids || []).includes(modId));
+  });
 
   if (sessions.length === 0) {
     return NextResponse.json({
@@ -207,6 +227,7 @@ export async function GET(req: Request, { params }: Params) {
     cycles: number | null;
     notes: string | null;
     intensity: number | null;
+    applicableCycleMax: number | null;
   }[] = [];
 
   // First pass: collect all cycle max entries and build session data
@@ -286,6 +307,7 @@ export async function GET(req: Request, { params }: Params) {
       cycles: session.cycles,
       notes: session.notes,
       intensity: null,
+      applicableCycleMax: null,
     });
   }
 
@@ -310,6 +332,7 @@ export async function GET(req: Request, { params }: Params) {
       }
       if (applicableCM && applicableCM > 0) {
         s.intensity = Math.round((s.topWeight / applicableCM) * 100);
+        s.applicableCycleMax = applicableCM;
       }
     }
   }
@@ -400,6 +423,7 @@ export async function GET(req: Request, { params }: Params) {
       duration_minutes: s.duration_minutes,
       distance_miles: s.distance_miles,
       intensity: s.intensity,
+      applicableCycleMax: s.applicableCycleMax,
     })),
     dayOfWeek,
     setPatterns,
