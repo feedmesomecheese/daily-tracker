@@ -73,28 +73,42 @@ export async function GET(req: Request, { params }: Params) {
   }
 
   // Fetch all workout_exercises for this exercise, joined with workout date
-  const { data: sessions } = await supabase
-    .from("workout_exercises")
-    .select(`
-      id,
-      workout_id,
-      exercise_order,
-      superset_group,
-      duration_minutes,
-      distance_miles,
-      incline_pct,
-      weight,
-      time_on_seconds,
-      time_off_seconds,
-      cycles,
-      notes,
-      workouts!inner(date, workout_type_id, duration_minutes)
-    `)
-    .eq("exercise_id", id)
-    .eq("workouts.owner_id", user.id)
-    .order("workouts(date)", { ascending: true });
+  // Paginate to avoid Supabase default 1000 row limit
+  const allSessions: SessionRow[] = [];
+  let sessionOffset = 0;
+  const SESSION_PAGE = 1000;
+  while (true) {
+    const { data: page } = await supabase
+      .from("workout_exercises")
+      .select(`
+        id,
+        workout_id,
+        exercise_order,
+        superset_group,
+        duration_minutes,
+        distance_miles,
+        incline_pct,
+        weight,
+        time_on_seconds,
+        time_off_seconds,
+        cycles,
+        notes,
+        workouts!inner(date, workout_type_id, duration_minutes)
+      `)
+      .eq("exercise_id", id)
+      .eq("workouts.owner_id", user.id)
+      .order("workouts(date)", { ascending: true })
+      .range(sessionOffset, sessionOffset + SESSION_PAGE - 1);
 
-  if (!sessions || sessions.length === 0) {
+    if (!page || page.length === 0) break;
+    allSessions.push(...(page as SessionRow[]));
+    if (page.length < SESSION_PAGE) break;
+    sessionOffset += SESSION_PAGE;
+  }
+
+  const sessions = allSessions;
+
+  if (sessions.length === 0) {
     return NextResponse.json({
       exercise: { ...exercise, inputType },
       frequency: { last30d: 0, last60d: 0, perWeek30d: 0, total: 0 },
@@ -108,13 +122,27 @@ export async function GET(req: Request, { params }: Params) {
     });
   }
 
-  // Fetch all sets for these workout_exercises
+  // Fetch all sets for these workout_exercises (chunked to avoid URL length limits)
   const weIds = sessions.map((s: SessionRow) => s.id);
-  const { data: allSets } = await supabase
-    .from("workout_sets")
-    .select("workout_exercise_id, set_number, reps, weight, is_pr, is_cycle_max, is_missed")
-    .in("workout_exercise_id", weIds)
-    .order("set_number", { ascending: true });
+  const allSets: SetRow[] = [];
+  const CHUNK = 200;
+  for (let i = 0; i < weIds.length; i += CHUNK) {
+    const chunk = weIds.slice(i, i + CHUNK);
+    let setOffset = 0;
+    while (true) {
+      const { data: page } = await supabase
+        .from("workout_sets")
+        .select("workout_exercise_id, set_number, reps, weight, is_pr, is_cycle_max, is_missed")
+        .in("workout_exercise_id", chunk)
+        .order("set_number", { ascending: true })
+        .range(setOffset, setOffset + SESSION_PAGE - 1);
+
+      if (!page || page.length === 0) break;
+      allSets.push(...(page as SetRow[]));
+      if (page.length < SESSION_PAGE) break;
+      setOffset += SESSION_PAGE;
+    }
+  }
 
   // Group sets by workout_exercise_id
   const setsByWe = new Map<string, SetRow[]>();

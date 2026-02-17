@@ -99,14 +99,34 @@ export async function GET(req: Request) {
   const startDate = url.searchParams.get("start_date");
   const endDate = url.searchParams.get("end_date");
   const includeSets = url.searchParams.get("include_sets") === "true";
+  const exerciseName = url.searchParams.get("exercise_name");
+
+  // If filtering by exercise name, first find matching workout IDs
+  let exerciseWorkoutIds: string[] | null = null;
+  if (exerciseName) {
+    const { data: matchingExercises } = await supabase
+      .from("workout_exercises")
+      .select("workout_id")
+      .ilike("exercise_name_display", `%${exerciseName}%`);
+
+    if (!matchingExercises || matchingExercises.length === 0) {
+      return NextResponse.json([]);
+    }
+    exerciseWorkoutIds = Array.from(new Set((matchingExercises as { workout_id: string }[]).map((e) => e.workout_id)));
+  }
 
   let query = supabase
     .from("workouts")
     .select("*")
     .eq("owner_id", user.id)
     .order("date", { ascending: false })
-    .order("created_at", { ascending: false })
-    .range(offset, offset + limit - 1);
+    .order("created_at", { ascending: false });
+
+  if (exerciseWorkoutIds) {
+    // When filtering by exercise, use the matched IDs (capped at limit)
+    query = query.in("id", exerciseWorkoutIds.slice(0, 2000));
+  }
+  query = query.range(offset, offset + limit - 1);
 
   if (workoutType) {
     query = query.eq("workout_type", workoutType);

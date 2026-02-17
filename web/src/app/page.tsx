@@ -153,6 +153,7 @@ export default function Home() {
   const [date, setDate] = useState<string>(() => getLocalDateString());
   const [initialDateLoaded, setInitialDateLoaded] = useState(false);
   const [metrics, setMetrics] = useState<ConfigRow[]>([]);
+  const [metricsLoaded, setMetricsLoaded] = useState(false);
   const [vals, setVals] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -368,6 +369,7 @@ export default function Home() {
         const active = normalized.filter((r) => r.active);
 
         setMetrics(sortMetricsForForm(active));
+        setMetricsLoaded(true);
       } catch (e: any) {
         setError(String(e?.message || e));
       }
@@ -1818,7 +1820,24 @@ export default function Home() {
         )}*/}
 
       {metrics.length === 0 ? (
-        <div>{error ? `Error: ${error}` : "Loading metrics…"}</div>
+        <div className="mt-8 text-center">
+          {error ? (
+            <p className="text-red-600">Error: {error}</p>
+          ) : !metricsLoaded ? (
+            <p className="text-muted-foreground">Loading metrics…</p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-lg font-medium">Welcome!</p>
+              <p className="text-muted-foreground text-sm">
+                Go ahead and create your first metric on the{" "}
+                <a href="/metrics" className="underline text-foreground hover:text-primary">
+                  Metrics page
+                </a>
+                .
+              </p>
+            </div>
+          )}
+        </div>
       ) : (
         <div>
           {groupedMetrics.map((group) => {

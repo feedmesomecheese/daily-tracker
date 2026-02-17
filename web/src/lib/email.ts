@@ -15,6 +15,76 @@ function getResend(): Resend {
   return resendInstance;
 }
 
+export type AccessRequestEmailData = {
+  email: string;
+  name?: string;
+  message?: string;
+};
+
+/**
+ * Send an access request email to the admin
+ */
+export async function sendAccessRequestEmail({
+  email,
+  name,
+  message,
+}: AccessRequestEmailData): Promise<{ success: boolean; error?: string }> {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail) {
+    console.error("ADMIN_EMAIL environment variable is not set");
+    return { success: false, error: "Admin email not configured" };
+  }
+
+  const subject = `Daily Tracker: Access Request from ${name || email}`;
+  const bodyText = [
+    `New access request for Daily Tracker:`,
+    ``,
+    `Email: ${email}`,
+    name ? `Name: ${name}` : null,
+    message ? `Message: ${message}` : null,
+    ``,
+    `To grant access, create an invite code and send it to this person.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const bodyHtml = `
+    <div style="font-family: system-ui, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>New Access Request</h2>
+      <p><strong>Email:</strong> ${email}</p>
+      ${name ? `<p><strong>Name:</strong> ${name}</p>` : ""}
+      ${message ? `<p><strong>Message:</strong> ${message}</p>` : ""}
+      <p style="color: #666; font-size: 14px; margin-top: 24px;">
+        To grant access, create an invite code and send it to this person.
+      </p>
+    </div>
+  `;
+
+  try {
+    const resend = getResend();
+    const { error } = await resend.emails.send({
+      from:
+        process.env.RESEND_FROM_EMAIL ||
+        "Daily Tracker <notifications@resend.dev>",
+      to: adminEmail,
+      subject,
+      text: bodyText,
+      html: bodyHtml,
+    });
+
+    if (error) {
+      console.error("Resend error:", error);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("Email send error:", msg);
+    return { success: false, error: msg };
+  }
+}
+
 export type StreakAlertEmailData = {
   to: string;
   metricName: string;

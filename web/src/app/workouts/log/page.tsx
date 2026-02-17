@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -34,7 +34,7 @@ export default function WorkoutLogPage() {
       const [typesRes, groupsRes, exRes] = await Promise.all([
         fetch("/api/workouts/types", { headers }),
         fetch("/api/workouts/groups", { headers }),
-        fetch("/api/workouts/exercises", { headers }),
+        fetch("/api/workouts/exercises?include_archived=true", { headers }),
       ]);
       const [typesData, groupsData, exData] = await Promise.all([
         typesRes.ok ? typesRes.json() : [],
@@ -49,7 +49,17 @@ export default function WorkoutLogPage() {
     }
   }, []);
 
-  // Fetch workouts when date range changes
+  // Debounce exercise search for API calls
+  const [debouncedExerciseSearch, setDebouncedExerciseSearch] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    debounceRef.current = setTimeout(() => {
+      setDebouncedExerciseSearch(filters.exerciseSearch);
+    }, 400);
+    return () => clearTimeout(debounceRef.current);
+  }, [filters.exerciseSearch]);
+
+  // Fetch workouts when date range or exercise search changes
   const fetchWorkouts = useCallback(async () => {
     try {
       setLoading(true);
@@ -60,6 +70,7 @@ export default function WorkoutLogPage() {
       });
       if (filters.startDate) params.set("start_date", filters.startDate);
       if (filters.endDate) params.set("end_date", filters.endDate);
+      if (debouncedExerciseSearch) params.set("exercise_name", debouncedExerciseSearch);
 
       const res = await fetch(`/api/workouts?${params}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch workouts");
@@ -70,7 +81,7 @@ export default function WorkoutLogPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters.startDate, filters.endDate]);
+  }, [filters.startDate, filters.endDate, debouncedExerciseSearch]);
 
   useEffect(() => {
     fetchRefData();

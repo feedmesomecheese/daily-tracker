@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import {
   Sheet,
@@ -19,6 +19,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 
 type SetRow = {
@@ -221,31 +222,68 @@ export default function ExerciseStatsSheet({
 
   const inputType = stats?.exercise?.inputType || "strength";
 
-  // Chart data
+  // Chart data — use full dates for year markers + tick formatting
   const tonnageChartData = stats?.sessions.map((s) => ({
-    date: formatShortDate(s.date),
+    date: s.date,
     tonnage: s.tonnage,
   })) || [];
 
   const topWeightChartData = stats?.sessions
     .filter((s) => s.topWeight > 0)
     .map((s) => ({
-      date: formatShortDate(s.date),
+      date: s.date,
       weight: s.topWeight,
     })) || [];
 
   const intensityChartData = stats?.sessions
     .filter((s) => s.intensity !== null)
     .map((s) => ({
-      date: formatShortDate(s.date),
+      date: s.date,
       intensity: s.intensity,
     })) || [];
 
   const cardioChartData = stats?.sessions.map((s) => ({
-    date: formatShortDate(s.date),
+    date: s.date,
     distance: s.distance_miles || 0,
     duration: s.duration_minutes || 0,
   })) || [];
+
+  // Year markers — vertical lines at Jan 1 of each year
+  const yearMarkers = useMemo(() => {
+    if (!stats?.sessions.length) return [];
+
+    const years = new Set<number>();
+    for (const s of stats.sessions) {
+      years.add(parseInt(s.date.slice(0, 4), 10));
+    }
+
+    const markers: { date: string; year: number }[] = [];
+    const sortedYears = Array.from(years).sort();
+
+    for (let i = 1; i < sortedYears.length; i++) {
+      const year = sortedYears[i];
+      const jan1 = `${year}-01-01`;
+
+      // Find the closest session date to Jan 1
+      let closestDate = "";
+      let closestDiff = Infinity;
+      for (const s of stats.sessions) {
+        if (s.date >= `${year - 1}-12-25` && s.date <= `${year}-01-07`) {
+          const diff = Math.abs(new Date(s.date).getTime() - new Date(jan1).getTime());
+          if (diff < closestDiff) {
+            closestDiff = diff;
+            closestDate = s.date;
+          }
+        }
+      }
+
+      if (closestDate) {
+        markers.push({ date: closestDate, year });
+      }
+    }
+
+    return markers;
+  }, [stats?.sessions]);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -382,14 +420,25 @@ export default function ExerciseStatsSheet({
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={tonnageChartData}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      {yearMarkers.map((m) => (
+                        <ReferenceLine
+                          key={`yr-${m.year}`}
+                          x={m.date}
+                          stroke="#374151"
+                          strokeWidth={2}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                        />
+                      ))}
                       <XAxis
                         dataKey="date"
                         tick={{ fontSize: 10 }}
                         interval="preserveStartEnd"
+                        tickFormatter={(d) => formatShortDate(d)}
                       />
                       <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
+                        labelFormatter={(d) => formatDate(d as string)}
                         formatter={(value: number) => [
                           `${value.toLocaleString()} lbs`,
                           "Tonnage",
@@ -421,14 +470,25 @@ export default function ExerciseStatsSheet({
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={topWeightChartData}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      {yearMarkers.map((m) => (
+                        <ReferenceLine
+                          key={`yr-${m.year}`}
+                          x={m.date}
+                          stroke="#374151"
+                          strokeWidth={2}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                        />
+                      ))}
                       <XAxis
                         dataKey="date"
                         tick={{ fontSize: 10 }}
                         interval="preserveStartEnd"
+                        tickFormatter={(d) => formatShortDate(d)}
                       />
                       <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
+                        labelFormatter={(d) => formatDate(d as string)}
                         formatter={(value: number) => [
                           `${value} lbs`,
                           "Top Weight",
@@ -460,10 +520,20 @@ export default function ExerciseStatsSheet({
                   <ResponsiveContainer width="100%" height={180}>
                     <LineChart data={intensityChartData}>
                       <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      {yearMarkers.map((m) => (
+                        <ReferenceLine
+                          key={`yr-${m.year}`}
+                          x={m.date}
+                          stroke="#374151"
+                          strokeWidth={2}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                        />
+                      ))}
                       <XAxis
                         dataKey="date"
                         tick={{ fontSize: 10 }}
                         interval="preserveStartEnd"
+                        tickFormatter={(d) => formatShortDate(d)}
                       />
                       <YAxis
                         tick={{ fontSize: 10 }}
@@ -473,6 +543,7 @@ export default function ExerciseStatsSheet({
                       />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
+                        labelFormatter={(d) => formatDate(d as string)}
                         formatter={(value: number) => [`${value}%`, "Intensity"]}
                       />
                       <Line
@@ -502,14 +573,25 @@ export default function ExerciseStatsSheet({
                     <ResponsiveContainer width="100%" height={180}>
                       <LineChart data={cardioChartData}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                        {yearMarkers.map((m) => (
+                          <ReferenceLine
+                            key={`yr-${m.year}`}
+                            x={m.date}
+                            stroke="#374151"
+                            strokeWidth={2}
+                            label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          />
+                        ))}
                         <XAxis
                           dataKey="date"
                           tick={{ fontSize: 10 }}
                           interval="preserveStartEnd"
+                          tickFormatter={(d) => formatShortDate(d)}
                         />
                         <YAxis tick={{ fontSize: 10 }} width={40} />
                         <Tooltip
                           contentStyle={{ fontSize: 12 }}
+                          labelFormatter={(d) => formatDate(d as string)}
                           formatter={(value: number, name: string) => [
                             name === "distance"
                               ? `${value} mi`
@@ -538,14 +620,25 @@ export default function ExerciseStatsSheet({
                     <ResponsiveContainer width="100%" height={180}>
                       <LineChart data={cardioChartData}>
                         <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                        {yearMarkers.map((m) => (
+                          <ReferenceLine
+                            key={`yr-${m.year}`}
+                            x={m.date}
+                            stroke="#374151"
+                            strokeWidth={2}
+                            label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          />
+                        ))}
                         <XAxis
                           dataKey="date"
                           tick={{ fontSize: 10 }}
                           interval="preserveStartEnd"
+                          tickFormatter={(d) => formatShortDate(d)}
                         />
                         <YAxis tick={{ fontSize: 10 }} width={40} />
                         <Tooltip
                           contentStyle={{ fontSize: 12 }}
+                          labelFormatter={(d) => formatDate(d as string)}
                           formatter={(value: number) => [
                             `${value} min`,
                             "Duration",

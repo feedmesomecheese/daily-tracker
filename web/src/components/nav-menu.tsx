@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type NavModule = {
   name: string;
@@ -50,8 +51,16 @@ const settingsLink = { href: "/settings", label: "Settings" };
 export function NavMenu() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [hasSession, setHasSession] = useState<boolean | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+
+  // Check auth session on mount
+  useEffect(() => {
+    supabaseBrowser.auth.getSession().then(({ data: { session } }) => {
+      setHasSession(!!session);
+    });
+  }, []);
 
   // Determine which module is active based on current path
   const activeModule = modules.find((m) =>
@@ -80,6 +89,14 @@ export function NavMenu() {
   const toggleDropdown = (name: string) => {
     setOpenDropdown((prev) => (prev === name ? null : name));
   };
+
+  async function handleLogout() {
+    await supabaseBrowser.auth.signOut();
+    window.location.href = "/login";
+  }
+
+  // Hide nav when no session (login/signup/reset pages)
+  if (hasSession === null || hasSession === false) return null;
 
   return (
     <div ref={menuRef} className="w-full">
@@ -134,6 +151,15 @@ export function NavMenu() {
         >
           {settingsLink.label}
         </Link>
+
+        <div className="mx-2 h-4 w-px bg-border" />
+
+        <button
+          onClick={handleLogout}
+          className="px-3 py-1.5 rounded-md transition-colors hover:bg-accent text-muted-foreground"
+        >
+          Log Out
+        </button>
       </div>
 
       {/* Mobile: hamburger menu */}
@@ -182,6 +208,13 @@ export function NavMenu() {
           >
             {settingsLink.label}
           </Link>
+          <div className="border-t my-1" />
+          <button
+            onClick={handleLogout}
+            className="py-1.5 px-3 hover:bg-accent rounded block text-left text-muted-foreground"
+          >
+            Log Out
+          </button>
         </div>
       )}
     </div>
