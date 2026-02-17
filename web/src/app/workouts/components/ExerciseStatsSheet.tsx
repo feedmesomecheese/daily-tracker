@@ -22,6 +22,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 type SetRow = {
   set_number: number;
@@ -182,70 +183,6 @@ function DayOfWeekBar({ breakdown }: { breakdown: Record<string, number> }) {
   );
 }
 
-// Custom tooltip that reliably shows the date from chart data
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function ChartTooltip({ active, payload, formatter }: { active?: boolean; payload?: any[]; formatter: (payload: any) => string }) {
-  if (!active || !payload?.length) return null;
-  const data = payload[0]?.payload;
-  const dateStr = data?.date;
-  return (
-    <div className="bg-background border rounded-lg shadow-lg px-3 py-2 text-sm">
-      {dateStr && (
-        <p className="font-semibold text-foreground mb-1">
-          {formatDate(dateStr)}
-        </p>
-      )}
-      {payload.map((entry: any, i: number) => (
-        <p key={i} style={{ color: entry.color || entry.stroke }}>
-          {formatter(entry)}
-        </p>
-      ))}
-    </div>
-  );
-}
-
-function CycleMaxSparkline({ history }: { history: { weight: number; date: string }[] }) {
-  if (history.length < 2) return null;
-
-  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
-  const weights = sorted.map((h) => h.weight);
-  const min = Math.min(...weights);
-  const max = Math.max(...weights);
-  const range = max - min || 1;
-
-  const width = 120;
-  const height = 28;
-  const padding = 2;
-  const chartH = height - padding * 2;
-
-  const points = weights.map((w, i) => {
-    const x = weights.length === 1 ? width / 2 : (i / (weights.length - 1)) * width;
-    const y = padding + chartH - ((w - min) / range) * chartH;
-    return `${x},${y}`;
-  });
-
-  const isUp = weights[weights.length - 1] > weights[0];
-
-  return (
-    <svg width={width} height={height} className="mt-1 block">
-      <polyline
-        points={points.join(" ")}
-        fill="none"
-        stroke={isUp ? "#10b981" : "#ef4444"}
-        strokeWidth={1.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle
-        cx={Number(points[points.length - 1].split(",")[0])}
-        cy={Number(points[points.length - 1].split(",")[1])}
-        r={2.5}
-        fill={isUp ? "#10b981" : "#ef4444"}
-      />
-    </svg>
-  );
-}
-
 export default function ExerciseStatsSheet({
   exerciseId,
   exerciseName,
@@ -352,6 +289,23 @@ export default function ExerciseStatsSheet({
       duration: s.duration_minutes || 0,
     })),
   [filteredSessions]);
+
+  // Cycle max chart data (from cycleMaxHistory, filtered by date range)
+  const cycleMaxChartData = useMemo(() => {
+    if (!stats?.cycleMaxHistory?.length) return [];
+    const sorted = [...stats.cycleMaxHistory].sort((a, b) => a.date.localeCompare(b.date));
+    if (chartRange === "all") {
+      return sorted.map((h) => ({ ts: dateToTs(h.date), date: h.date, weight: h.weight }));
+    }
+    const now = new Date();
+    const daysBack = { "6mo": 183, "1yr": 365, "2yr": 730 }[chartRange];
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - daysBack);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return sorted
+      .filter((h) => h.date >= cutoffStr)
+      .map((h) => ({ ts: dateToTs(h.date), date: h.date, weight: h.weight }));
+  }, [stats?.cycleMaxHistory, chartRange]);
 
   // Year markers — exact Jan 1 timestamps within the filtered data range
   const yearMarkers = useMemo(() => {
@@ -476,7 +430,7 @@ export default function ExerciseStatsSheet({
                     )}
                     <div>
                       <span className="text-xs text-muted-foreground block">
-                        Cycle Max
+                        Current Cycle Max
                       </span>
                       {stats.cycleMax ? (
                         <>
@@ -486,9 +440,6 @@ export default function ExerciseStatsSheet({
                           <span className="text-xs text-muted-foreground ml-1">
                             {formatDate(stats.cycleMax.date)}
                           </span>
-                          {stats.cycleMaxHistory.length > 1 && (
-                            <CycleMaxSparkline history={stats.cycleMaxHistory} />
-                          )}
                         </>
                       ) : (
                         <span className="text-sm text-muted-foreground">{"\u2014"}</span>
@@ -696,6 +647,53 @@ export default function ExerciseStatsSheet({
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         activeDot={{ r: 4 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Cycle Max Chart (strength with cycle max data) */}
+            {inputType === "strength" && cycleMaxChartData.length > 1 && (
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">
+                    Cycle Max History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <LineChart data={cycleMaxChartData}>
+                      <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
+                      {yearMarkers.map((m) => (
+                        <ReferenceLine
+                          key={`yr-${m.year}`}
+                          x={m.ts}
+                          stroke="#374151"
+                          strokeWidth={2}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                        />
+                      ))}
+                      <XAxis
+                        dataKey="ts"
+                        type="number"
+                        domain={["dataMin", "dataMax"]}
+                        tick={{ fontSize: 10 }}
+                        tickCount={5}
+                        tickFormatter={tsToShortDate}
+                      />
+                      <YAxis tick={{ fontSize: 10 }} width={40} />
+                      <Tooltip
+                        content={<ChartTooltip formatter={(e) => `${e.value} lbs`} />}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="weight"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        dot={{ r: 3 }}
+                        activeDot={{ r: 5 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>

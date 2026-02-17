@@ -29,6 +29,7 @@ import {
   ReferenceLine,
   Cell,
 } from "recharts";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 type InsightDetailSheetProps = {
   open: boolean;
@@ -359,8 +360,10 @@ function TrendDetail({
                   />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatValue(v, metricType)} />
                   <Tooltip
-                    labelFormatter={(d) => formatDate(d as string)}
-                    formatter={(value: number, name: string) => [formatValue(value, metricType), name === "ma7" ? "7-day avg" : "Value"]}
+                    content={<ChartTooltip formatter={(e) => {
+                      const label = e.name === "ma7" ? "7-day avg" : "Value";
+                      return `${label}: ${formatValue(Number(e.value), metricType)}`;
+                    }} />}
                   />
                   <ReferenceLine
                     y={data.overallAvg}
@@ -864,7 +867,7 @@ function CheckboxNumericDetail({ data }: { data: DetailData }) {
                   <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                   <XAxis dataKey="date" tick={{ fontSize: 9 }} tickFormatter={formatShortDate} interval="preserveStartEnd" />
                   <YAxis dataKey="value" tick={{ fontSize: 10 }} />
-                  <Tooltip labelFormatter={(d) => formatDate(d as string)} />
+                  <Tooltip content={<ChartTooltip formatter={(e) => `${e.name}: ${e.value}`} />} />
                   <Scatter
                     data={(data.distribution as { date: string; value: number; checked: boolean }[]).filter((d) => d.checked)}
                     fill="#22c55e"
@@ -1127,11 +1130,10 @@ function CumulativeDetail({ data }: { data: DetailData }) {
                   />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatValue(v, metricType)} />
                   <Tooltip
-                    labelFormatter={(d) => formatDate(d as string)}
-                    formatter={(value: number, name: string) => [
-                      formatValue(value, metricType),
-                      name === "cumulativeTotal" ? "Total" : "Daily",
-                    ]}
+                    content={<ChartTooltip formatter={(e) => {
+                      const label = e.name === "cumulativeTotal" ? "Total" : "Daily";
+                      return `${label}: ${formatValue(Number(e.value), metricType)}`;
+                    }} />}
                   />
                   <Area
                     type="monotone"
@@ -1159,7 +1161,7 @@ function CumulativeDetail({ data }: { data: DetailData }) {
                   <CartesianGrid strokeDasharray="3 3" opacity={0.3} />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={formatShortDate} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatValue(v, metricType)} />
-                  <Tooltip labelFormatter={(d) => formatDate(d as string)} />
+                  <Tooltip content={<ChartTooltip formatter={(e) => `${formatValue(Number(e.value), metricType)}`} />} />
                   <Line type="monotone" dataKey="pace" stroke="#f59e0b" strokeDasharray="8 4" strokeWidth={2} dot animationDuration={300} />
                 </LineChart>
               </ResponsiveContainer>

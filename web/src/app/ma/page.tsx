@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 type ConfigRow = {
   metric_id: string;
@@ -226,7 +227,7 @@ export default function MaPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} />
-                  <Tooltip />
+                  <Tooltip content={<ChartTooltip formatter={(e) => `${e.name}: ${e.value}`} />} />
                   <Legend />
                   <Line
                     type="monotone"

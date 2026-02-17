@@ -187,7 +187,6 @@ export async function GET(req: Request, { params }: Params) {
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   let prWeight: { weight: number; reps: number; date: string } | null = null;
-  let cycleMaxRecord: { weight: number; date: string } | null = null;
   const cycleMaxHistory: { weight: number; date: string }[] = [];
   let oneRepMax: { weight: number; date: string } | null = null;
   let tonnagePr: { tonnage: number; date: string } | null = null;
@@ -210,6 +209,7 @@ export async function GET(req: Request, { params }: Params) {
     intensity: number | null;
   }[] = [];
 
+  // First pass: collect all cycle max entries and build session data
   for (const session of sessions as SessionRow[]) {
     const workout = session.workouts;
     const date = workout.date;
@@ -246,12 +246,9 @@ export async function GET(req: Request, { params }: Params) {
         }
       }
 
-      // Cycle max tracking (flagged)
+      // Cycle max tracking (flagged) — collect all, sort later
       if (s.is_cycle_max && w > 0) {
         cycleMaxHistory.push({ weight: w, date });
-        if (!cycleMaxRecord || w > cycleMaxRecord.weight) {
-          cycleMaxRecord = { weight: w, date };
-        }
       }
 
       // 1RM tracking (heaviest single rep, not missed)
@@ -274,12 +271,6 @@ export async function GET(req: Request, { params }: Params) {
       setPatternCounts.set(pattern, (setPatternCounts.get(pattern) || 0) + 1);
     }
 
-    // Intensity (top set weight / cycle max weight)
-    let intensity: number | null = null;
-    if (cycleMaxRecord && topWeight > 0) {
-      intensity = Math.round((topWeight / cycleMaxRecord.weight) * 100);
-    }
-
     sessionData.push({
       date,
       workout_type_id: workout.workout_type_id,
@@ -294,15 +285,31 @@ export async function GET(req: Request, { params }: Params) {
       time_off_seconds: session.time_off_seconds,
       cycles: session.cycles,
       notes: session.notes,
-      intensity,
+      intensity: null,
     });
   }
 
-  // Recalculate intensity for all sessions now that we have the final cycle max
-  if (cycleMaxRecord) {
-    for (const s of sessionData) {
-      if (s.topWeight > 0) {
-        s.intensity = Math.round((s.topWeight / cycleMaxRecord.weight) * 100);
+  // Sort cycle max history by date for lookups
+  cycleMaxHistory.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Current cycle max = most recent by date (not highest weight)
+  const cycleMaxRecord = cycleMaxHistory.length > 0
+    ? cycleMaxHistory[cycleMaxHistory.length - 1]
+    : null;
+
+  // Calculate intensity for each session using the most recent cycle max BEFORE that session
+  for (const s of sessionData) {
+    if (s.topWeight > 0 && cycleMaxHistory.length > 0) {
+      // Find the most recent cycle max on or before this session's date
+      let applicableCM: number | null = null;
+      for (let i = cycleMaxHistory.length - 1; i >= 0; i--) {
+        if (cycleMaxHistory[i].date <= s.date) {
+          applicableCM = cycleMaxHistory[i].weight;
+          break;
+        }
+      }
+      if (applicableCM && applicableCM > 0) {
+        s.intensity = Math.round((s.topWeight / applicableCM) * 100);
       }
     }
   }

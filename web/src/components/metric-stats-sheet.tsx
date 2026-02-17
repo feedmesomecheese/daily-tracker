@@ -25,6 +25,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { GoalsSection } from "@/components/goal-progress-card";
+import { ChartTooltip } from "@/components/chart-tooltip";
 
 type GoalProgressData = {
   goal_id: string;
@@ -1530,10 +1531,10 @@ export function MetricStatsSheet({
                           tickFormatter={yAxisConfig.tickFormatter}
                         />
                         <Tooltip
-                          labelFormatter={(d) => formatDate(d as string)}
-                          formatter={(value: number) => [
-                            yAxisConfig.tooltipFormatter(value),
-                          ]}
+                          content={<ChartTooltip formatter={(e) => {
+                            const label = e.name === "ma7" ? "7-day" : e.name === "ma30" ? "30-day" : e.name === "ma90" ? "90-day" : e.name === "ma180" ? "180-day" : e.name;
+                            return `${label}: ${yAxisConfig.tooltipFormatter(Number(e.value))}`;
+                          }} />}
                         />
                         {/* Custom legend with explicit order */}
                         <Legend
