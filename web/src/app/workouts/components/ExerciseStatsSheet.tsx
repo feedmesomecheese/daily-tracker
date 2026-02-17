@@ -182,6 +182,28 @@ function DayOfWeekBar({ breakdown }: { breakdown: Record<string, number> }) {
   );
 }
 
+// Custom tooltip that reliably shows the date from chart data
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ChartTooltip({ active, payload, formatter }: { active?: boolean; payload?: any[]; formatter: (payload: any) => string }) {
+  if (!active || !payload?.length) return null;
+  const data = payload[0]?.payload;
+  const dateStr = data?.date;
+  return (
+    <div className="bg-background border rounded-lg shadow-lg px-3 py-2 text-sm">
+      {dateStr && (
+        <p className="font-semibold text-foreground mb-1">
+          {formatDate(dateStr)}
+        </p>
+      )}
+      {payload.map((entry: any, i: number) => (
+        <p key={i} style={{ color: entry.color || entry.stroke }}>
+          {formatter(entry)}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function CycleMaxSparkline({ history }: { history: { weight: number; date: string }[] }) {
   if (history.length < 2) return null;
 
@@ -293,13 +315,6 @@ export default function ExerciseStatsSheet({
     const d = new Date(Number(ts));
     return `${d.getMonth() + 1}/${d.getDate()}`;
   };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tooltipDateLabel = (_label: any, payload: readonly any[]) => {
-    const dateStr = payload?.[0]?.payload?.date;
-    if (dateStr) return formatDate(dateStr);
-    return "";
-  };
-
   // Chart data — time-proportional via timestamps, include date string for tooltips
   const tonnageChartData = useMemo(() =>
     filteredSessions.map((s) => ({
@@ -572,12 +587,7 @@ export default function ExerciseStatsSheet({
                       />
                       <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
-                        contentStyle={{ fontSize: 12 }}
-                        labelFormatter={tooltipDateLabel}
-                        formatter={(value: number) => [
-                          `${value.toLocaleString()} lbs`,
-                          "Tonnage",
-                        ]}
+                        content={<ChartTooltip formatter={(e) => `${Number(e.value).toLocaleString()} lbs`} />}
                       />
                       <Line
                         type="monotone"
@@ -625,11 +635,7 @@ export default function ExerciseStatsSheet({
                       <YAxis tick={{ fontSize: 10 }} width={40} />
                       <Tooltip
                         contentStyle={{ fontSize: 12 }}
-                        labelFormatter={tooltipDateLabel}
-                        formatter={(value: number) => [
-                          `${value} lbs`,
-                          "Top Weight",
-                        ]}
+                        content={<ChartTooltip formatter={(e) => `${e.value} lbs`} />}
                       />
                       <Line
                         type="monotone"
@@ -681,9 +687,7 @@ export default function ExerciseStatsSheet({
                         tickFormatter={(v) => `${v}%`}
                       />
                       <Tooltip
-                        contentStyle={{ fontSize: 12 }}
-                        labelFormatter={tooltipDateLabel}
-                        formatter={(value: number) => [`${value}%`, "Intensity"]}
+                        content={<ChartTooltip formatter={(e) => `${e.value}%`} />}
                       />
                       <Line
                         type="monotone"
@@ -731,14 +735,7 @@ export default function ExerciseStatsSheet({
                         />
                         <YAxis tick={{ fontSize: 10 }} width={40} />
                         <Tooltip
-                          contentStyle={{ fontSize: 12 }}
-                          labelFormatter={tooltipDateLabel}
-                          formatter={(value: number, name: string) => [
-                            name === "distance"
-                              ? `${value} mi`
-                              : `${value} min`,
-                            name === "distance" ? "Distance" : "Duration",
-                          ]}
+                          content={<ChartTooltip formatter={(e) => e.dataKey === "distance" ? `${e.value} mi` : `${e.value} min`} />}
                         />
                         <Line
                           type="monotone"
@@ -780,12 +777,7 @@ export default function ExerciseStatsSheet({
                         />
                         <YAxis tick={{ fontSize: 10 }} width={40} />
                         <Tooltip
-                          contentStyle={{ fontSize: 12 }}
-                          labelFormatter={tooltipDateLabel}
-                          formatter={(value: number) => [
-                            `${value} min`,
-                            "Duration",
-                          ]}
+                          content={<ChartTooltip formatter={(e) => `${e.value} min`} />}
                         />
                         <Line
                           type="monotone"

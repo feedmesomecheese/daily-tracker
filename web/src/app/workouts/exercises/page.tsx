@@ -103,6 +103,11 @@ export default function ExerciseLibraryPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
 
+  // Cycle max import state
+  const [cycleMaxCsv, setCycleMaxCsv] = useState("");
+  const [cycleMaxImporting, setCycleMaxImporting] = useState(false);
+  const [cycleMaxResult, setCycleMaxResult] = useState<string | null>(null);
+
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -1215,6 +1220,98 @@ export default function ExerciseLibraryPage() {
               {importResult && (
                 <pre className="text-sm p-3 bg-muted rounded-md whitespace-pre-wrap">
                   {importResult}
+                </pre>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Import Cycle Maxes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Upload a CSV with columns: <code>Lift, Weight, Date</code> (date as M/D/YYYY).
+                Matches lift names to exercises (case-insensitive) and marks matching sets as cycle max.
+              </p>
+
+              <div className="flex gap-2 mb-1">
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  onChange={(e) => handleFileUpload(e, setCycleMaxCsv)}
+                  className="text-sm file:mr-2 file:py-1 file:px-3 file:rounded-md file:border file:text-sm file:cursor-pointer"
+                />
+                {cycleMaxCsv && (
+                  <span className="text-xs text-green-600 self-center">
+                    Loaded ({cycleMaxCsv.split("\n").filter((l) => l.trim()).length - 1} rows)
+                  </span>
+                )}
+              </div>
+              <textarea
+                value={cycleMaxCsv}
+                onChange={(e) => setCycleMaxCsv(e.target.value)}
+                placeholder={`Lift,Weight,Date\nBench Press,315,6/15/2024\nSquats,405,7/1/2024`}
+                rows={4}
+                className="w-full px-3 py-2 border rounded-md text-sm font-mono resize-none"
+              />
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={async () => {
+                    if (!cycleMaxCsv.trim()) return;
+                    setCycleMaxImporting(true);
+                    setCycleMaxResult(null);
+                    try {
+                      const headers = await getAuthHeaders();
+                      const res = await fetch("/api/workouts/import/cycle-max", {
+                        method: "POST",
+                        headers: { ...headers, "Content-Type": "application/json" },
+                        body: JSON.stringify({ csv: cycleMaxCsv }),
+                      });
+                      const json = await res.json();
+                      if (!res.ok) throw new Error(json.error || "Import failed");
+
+                      const s = json.summary;
+                      const lines = [
+                        `Parsed: ${s.totalRows} rows (${s.parseErrors} parse errors)`,
+                        `Exercises matched: ${s.exercisesMatched}`,
+                        `Sets updated: ${s.setsUpdated}`,
+                        `Sets not found: ${s.setsNotFound}`,
+                      ];
+                      if (s.unmatchedExercises.length > 0) {
+                        lines.push("", "Unmatched exercises:", ...s.unmatchedExercises.map((n: string) => `  - ${n}`));
+                      }
+                      if (json.notFoundDetails?.length > 0) {
+                        lines.push("", "Not found details (first 50):", ...json.notFoundDetails.map((d: string) => `  - ${d}`));
+                      }
+                      if (json.parseErrors?.length > 0) {
+                        lines.push("", "Parse errors:", ...json.parseErrors.map((e: string) => `  - ${e}`));
+                      }
+                      setCycleMaxResult(lines.join("\n"));
+                    } catch (e) {
+                      setCycleMaxResult(`Error: ${e instanceof Error ? e.message : "Import failed"}`);
+                    } finally {
+                      setCycleMaxImporting(false);
+                    }
+                  }}
+                  disabled={cycleMaxImporting || !cycleMaxCsv.trim()}
+                >
+                  {cycleMaxImporting ? "Importing..." : "Import Cycle Maxes"}
+                </Button>
+                {cycleMaxCsv && (
+                  <Button
+                    variant="outline"
+                    onClick={() => { setCycleMaxCsv(""); setCycleMaxResult(null); }}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+
+              {cycleMaxResult && (
+                <pre className="text-sm p-3 bg-muted rounded-md whitespace-pre-wrap max-h-96 overflow-y-auto">
+                  {cycleMaxResult}
                 </pre>
               )}
             </CardContent>
