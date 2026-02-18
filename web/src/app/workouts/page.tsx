@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -102,6 +103,8 @@ type GhostData = Record<
 
 export default function WorkoutsPage() {
   const isMobile = useMediaQuery("(max-width: 639px)");
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   // Data
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
@@ -331,6 +334,40 @@ export default function WorkoutsPage() {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
+
+  // Load workout for editing from ?edit=<id> query param
+  const editParamHandled = useRef(false);
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || loading || editParamHandled.current) return;
+    editParamHandled.current = true;
+
+    // Check if the workout is already in the recent workouts list
+    const existing = workouts.find((w) => w.id === editId);
+    if (existing) {
+      loadWorkoutForEdit(existing);
+      router.replace("/workouts", { scroll: false });
+      return;
+    }
+
+    // Fetch the workout by ID
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/workouts/${editId}`, { headers });
+        if (!res.ok) {
+          setError("Could not load workout for editing");
+          return;
+        }
+        const workout = await res.json();
+        loadWorkoutForEdit(workout);
+        router.replace("/workouts", { scroll: false });
+      } catch {
+        setError("Could not load workout for editing");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, loading, workouts]);
 
   const handleAddToBucket = (exercise: Exercise, selectedModifiers: string[]) => {
     const displayName = buildExerciseDisplayName(exercise, selectedModifiers);

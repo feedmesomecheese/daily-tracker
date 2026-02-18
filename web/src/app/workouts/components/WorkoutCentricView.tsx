@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ExerciseDetailRow from "./ExerciseDetailRow";
 import ExerciseStatsSheet from "./ExerciseStatsSheet";
@@ -209,6 +210,13 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                               {workout.notes}
                             </p>
                           )}
+                          <div className="flex justify-end pt-2 border-t mt-2">
+                            <Link href={`/workouts?edit=${workout.id}`}>
+                              <Button variant="ghost" size="sm" className="text-xs">
+                                Edit
+                              </Button>
+                            </Link>
+                          </div>
                         </div>
                       </td>
                     </tr>
