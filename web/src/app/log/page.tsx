@@ -645,36 +645,32 @@ export default function DailyLogPage() {
               const params = new URLSearchParams();
               if (showArchived) params.set("archived", "1");
               if (showPrivate) params.set("private", "1");
+              if (startDate) params.set("start", startDate);
+              if (endDate) params.set("end", endDate);
               const queryStr = params.toString();
 
               const res = await fetch(`/api/export/daily-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
               if (!res.ok) {
                 let msg = `Export failed (${res.status})`;
-                try {
-                  const j = await res.json();
-                  msg = j?.error || msg;
-                } catch {}
+                try { const j = await res.json(); msg = j?.error || msg; } catch {}
                 throw new Error(msg);
               }
 
               const blob = await res.blob();
               const url = window.URL.createObjectURL(blob);
-
               const a = document.createElement("a");
               a.href = url;
-              a.download = "daily-tracker-log.csv";
+              a.download = `daily-tracker${startDate ? `_${startDate}` : ""}${endDate ? `_to_${endDate}` : ""}.csv`;
               document.body.appendChild(a);
               a.click();
               a.remove();
-
               window.URL.revokeObjectURL(url);
             } catch (e: unknown) {
-              const message = e instanceof Error ? e.message : String(e);
-              alert(message);
+              alert(e instanceof Error ? e.message : String(e));
             }
           }}
         >
-          Download CSV
+          Export CSV
         </Button>
       </div>
 

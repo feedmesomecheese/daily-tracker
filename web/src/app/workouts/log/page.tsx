@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import WorkoutLogFilters, {
   getInitialFilters,
@@ -183,12 +184,48 @@ export default function WorkoutLogPage() {
   return (
     <main className="p-4 sm:p-6 max-w-6xl mx-auto space-y-4">
       {/* Header */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <h1 className="text-2xl font-semibold">Workout Log</h1>
-        <Badge variant="secondary">
-          {filteredWorkouts.length}{" "}
-          {filteredWorkouts.length === 1 ? "workout" : "workouts"}
-        </Badge>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-semibold">Workout Log</h1>
+          <Badge variant="secondary">
+            {filteredWorkouts.length}{" "}
+            {filteredWorkouts.length === 1 ? "workout" : "workouts"}
+          </Badge>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+            try {
+              const headers = await getAuthHeaders();
+              const params = new URLSearchParams();
+              if (filters.startDate) params.set("start", filters.startDate);
+              if (filters.endDate) params.set("end", filters.endDate);
+              const queryStr = params.toString();
+
+              const res = await fetch(`/api/export/workout-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
+              if (!res.ok) {
+                let msg = `Export failed (${res.status})`;
+                try { const j = await res.json(); msg = j?.error || msg; } catch {}
+                throw new Error(msg);
+              }
+
+              const blob = await res.blob();
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `workout-log${filters.startDate ? `_${filters.startDate}` : ""}${filters.endDate ? `_to_${filters.endDate}` : ""}.csv`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              window.URL.revokeObjectURL(url);
+            } catch (e: unknown) {
+              alert(e instanceof Error ? e.message : String(e));
+            }
+          }}
+        >
+          Export CSV
+        </Button>
       </div>
 
       {error && (
