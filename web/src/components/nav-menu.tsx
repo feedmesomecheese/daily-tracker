@@ -16,7 +16,7 @@ const modules: NavModule[] = [
     links: [
       { href: "/", label: "Today" },
       { href: "/metrics", label: "Metrics" },
-      { href: "/wide", label: "Wide" },
+      { href: "/log", label: "Log" },
       { href: "/ma", label: "Moving Avg" },
       { href: "/stats", label: "Stats" },
       { href: "/insights", label: "Insights" },

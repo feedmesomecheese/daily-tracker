@@ -23,6 +23,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { ChartTooltip } from "@/components/chart-tooltip";
+import { getLocalDateString } from "@/lib/dateUtils";
 
 type SetRow = {
   set_number: number;
@@ -241,7 +242,7 @@ export default function ExerciseStatsSheet({
     const daysBack = { "6mo": 183, "1yr": 365, "2yr": 730 }[chartRange];
     const cutoff = new Date(now);
     cutoff.setDate(cutoff.getDate() - daysBack);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const cutoffStr = getLocalDateString(cutoff);
 
     return stats.sessions.filter((s) => s.date >= cutoffStr);
   }, [stats?.sessions, chartRange]);
@@ -304,7 +305,7 @@ export default function ExerciseStatsSheet({
     const daysBack = { "6mo": 183, "1yr": 365, "2yr": 730 }[chartRange];
     const cutoff = new Date(now);
     cutoff.setDate(cutoff.getDate() - daysBack);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const cutoffStr = getLocalDateString(cutoff);
     return sorted
       .filter((h) => h.date >= cutoffStr)
       .map((h) => ({ ts: dateToTs(h.date), date: h.date, weight: h.weight }));

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { getLocalDateString } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -105,7 +106,7 @@ function getWeekOptions(): { value: string; label: string }[] {
     const endLabel = weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
     options.push({
-      value: weekStart.toISOString().slice(0, 10),
+      value: getLocalDateString(weekStart),
       label: `${startLabel} - ${endLabel}`,
     });
   }

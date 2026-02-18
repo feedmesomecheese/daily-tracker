@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { getLocalDateString } from "@/lib/dateUtils";
 import { RadarChart, RadarDataPoint } from "@/components/radar-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,10 +46,6 @@ const VIEW_OPTIONS = [
   { value: "30d", label: "30-day Average" },
   { value: "day", label: "Single Day" },
 ];
-
-function getLocalDateString(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 10);
-}
 
 export default function RadarPage() {
   const [config, setConfig] = useState<ConfigRow[]>([]);

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { getLocalDateString } from "@/lib/dateUtils";
 import { PeriodSelector, PeriodType } from "@/components/summary/period-selector";
 import { MetricSummaryCard, MetricSummary } from "@/components/summary/metric-summary-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,10 +24,6 @@ type SummaryResponse = {
     total_days: number;
   };
 };
-
-function getLocalDateString(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 10);
-}
 
 function formatPeriodLabel(type: PeriodType, start: string, end: string): string {
   const startDate = new Date(start + "T00:00:00");

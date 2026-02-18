@@ -387,7 +387,7 @@ function EditableCell({
   );
 }
 
-export default function WideViewPage() {
+export default function DailyLogPage() {
   const [allConfig, setAllConfig] = useState<ConfigRow[]>([]);
   const [logRows, setLogRows] = useState<LogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -601,7 +601,7 @@ export default function WideViewPage() {
   if (loading) {
     return (
       <main className="p-6 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-4">Wide View</h1>
+        <h1 className="text-2xl font-semibold mb-4">Daily Log</h1>
         <div className="text-sm text-gray-600">Loading...</div>
       </main>
     );
@@ -610,7 +610,7 @@ export default function WideViewPage() {
   if (error) {
     return (
       <main className="p-6 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-4">Wide View</h1>
+        <h1 className="text-2xl font-semibold mb-4">Daily Log</h1>
         <div className="text-sm text-red-600">Error: {error}</div>
       </main>
     );
@@ -619,7 +619,7 @@ export default function WideViewPage() {
   if (allDates.length === 0 || metricIds.length === 0) {
     return (
       <main className="p-6 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-4">Wide View</h1>
+        <h1 className="text-2xl font-semibold mb-4">Daily Log</h1>
         <div className="text-sm text-gray-600">No data yet.</div>
       </main>
     );
@@ -630,7 +630,7 @@ export default function WideViewPage() {
       {/* Header row */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold">Wide View</h1>
+          <h1 className="text-2xl font-semibold">Daily Log</h1>
           <Badge variant="secondary">{filteredDates.length} days</Badge>
           <Badge variant="outline">{metricIds.length} metrics</Badge>
           <Badge variant="outline" className="text-blue-600">Click cells to edit</Badge>
@@ -647,7 +647,7 @@ export default function WideViewPage() {
               if (showPrivate) params.set("private", "1");
               const queryStr = params.toString();
 
-              const res = await fetch(`/api/export/wide.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
+              const res = await fetch(`/api/export/daily-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
               if (!res.ok) {
                 let msg = `Export failed (${res.status})`;
                 try {
@@ -662,7 +662,7 @@ export default function WideViewPage() {
 
               const a = document.createElement("a");
               a.href = url;
-              a.download = "daily-tracker-wide.csv";
+              a.download = "daily-tracker-log.csv";
               document.body.appendChild(a);
               a.click();
               a.remove();

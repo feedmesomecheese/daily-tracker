@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { getLocalDateString } from "@/lib/dateUtils";
 
 type PeriodType = "week" | "month" | "quarter" | "year";
 
@@ -17,10 +18,6 @@ type ConfigEntry = {
   active: boolean;
   private: boolean | null;
 };
-
-function getLocalDateString(d: Date = new Date()): string {
-  return d.toISOString().slice(0, 10);
-}
 
 function getPeriodBounds(
   type: PeriodType,

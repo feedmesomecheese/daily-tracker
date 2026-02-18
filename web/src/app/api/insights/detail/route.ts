@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { getLocalDateString } from "@/lib/dateUtils";
 
 type LogRow = {
   metric_id: string;
@@ -80,7 +81,7 @@ export async function GET(req: Request) {
     const days = range === "30d" ? 30 : range === "90d" ? 90 : range === "1y" ? 365 : 0;
     if (days > 0) {
       now.setDate(now.getDate() - days);
-      dateFilter = now.toISOString().slice(0, 10);
+      dateFilter = getLocalDateString(now);
     }
   }
 

@@ -14,6 +14,7 @@ import WorkoutRating from "./components/WorkoutRating";
 import CustomExerciseSheet from "./components/CustomExerciseSheet";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { DurationPicker } from "@/components/ui/mobile-pickers";
+import { getLocalDateString } from "@/lib/dateUtils";
 
 type WorkoutType = {
   id: string;
@@ -114,7 +115,7 @@ export default function WorkoutsPage() {
 
   // Form state
   const [workoutDate, setWorkoutDate] = useState(
-    new Date().toISOString().slice(0, 10)
+    getLocalDateString()
   );
   const [selectedTypeId, setSelectedTypeId] = useState("");
   const [bucketExercises, setBucketExercises] = useState<BucketExerciseData[]>([]);
@@ -536,7 +537,7 @@ export default function WorkoutsPage() {
 
   const resetForm = () => {
     setEditingWorkoutId(null);
-    setWorkoutDate(new Date().toISOString().slice(0, 10));
+    setWorkoutDate(getLocalDateString());
     setSelectedTypeId("");
     setBucketExercises([]);
     setWorkoutNotes("");

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { getLocalDateString } from "@/lib/dateUtils";
 
 type AchievementCheck = {
   achievement_id: string;
@@ -93,7 +94,7 @@ export async function POST(req: Request) {
   const today = new Date();
   const yearAgo = new Date(today);
   yearAgo.setDate(yearAgo.getDate() - 400); // 400 days to be safe for leap years
-  const startDate = yearAgo.toISOString().slice(0, 10);
+  const startDate = getLocalDateString(yearAgo);
 
   const { data: logs, error: logError } = await supabase
     .from("log")
@@ -154,13 +155,13 @@ export async function POST(req: Request) {
     if (metricLogs.length === 0) return 0;
 
     let streak = 1;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = getLocalDateString();
 
     // Check if we have a log for today or yesterday
     const latestLog = metricLogs[0];
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    const yesterdayStr = getLocalDateString(yesterday);
 
     if (latestLog !== today && latestLog !== yesterdayStr) {
       return 0; // Streak broken

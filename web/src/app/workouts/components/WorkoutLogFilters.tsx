@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { getLocalDateString } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -48,7 +49,7 @@ const FLAG_OPTIONS: { value: FlagFilter; label: string; color: string }[] = [
 ];
 
 function getPresetDates(preset: DatePreset): { start: string; end: string } {
-  const end = new Date().toISOString().slice(0, 10);
+  const end = getLocalDateString();
   if (preset === "all") return { start: "", end };
   const d = new Date();
   switch (preset) {
@@ -65,7 +66,7 @@ function getPresetDates(preset: DatePreset): { start: string; end: string } {
       d.setFullYear(d.getFullYear() - 1);
       break;
   }
-  return { start: d.toISOString().slice(0, 10), end };
+  return { start: getLocalDateString(d), end };
 }
 
 export function getInitialFilters(): FilterState {
