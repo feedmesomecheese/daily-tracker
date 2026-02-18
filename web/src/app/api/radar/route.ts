@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString } from "@/lib/dateUtils";
+import { getLocalDateString, getServerTimezone } from "@/lib/dateUtils";
 
 type MetricStats = {
   metric_id: string;
@@ -57,6 +57,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const tz = await getServerTimezone();
   const url = new URL(req.url);
   const metricIds = url.searchParams.get("metrics")?.split(",").filter(Boolean) || [];
   const view = url.searchParams.get("view") || "average"; // "day", "7d", "30d", "average"
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
   // Calculate date range for log fetch (only fetch what we need)
   let startDateForLogs: string | undefined;
   if (view === "7d" || view === "30d" || view === "day") {
-    const refDate = new Date((date || compareDate || getLocalDateString()) + "T00:00:00");
+    const refDate = new Date((date || compareDate || getLocalDateString(new Date(), tz)) + "T00:00:00");
     const daysBack = view === "30d" ? 60 : view === "7d" ? 14 : 1; // Extra buffer for comparison
     refDate.setDate(refDate.getDate() - daysBack);
     startDateForLogs = refDate.toISOString().slice(0, 10);

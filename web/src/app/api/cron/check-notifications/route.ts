@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendStreakAlertEmail } from "@/lib/email";
-import { addDays, getLocalDateString } from "@/lib/dateUtils";
+import { addDays, getLocalDateString, getServerTimezone } from "@/lib/dateUtils";
 
 type NotificationConfig = {
   streak_alerts?: {
@@ -40,7 +40,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const today = getLocalDateString();
+  const tz = await getServerTimezone();
+  const today = getLocalDateString(new Date(), tz);
   console.log(`[CRON] check-notifications starting for ${today}`);
 
   try {

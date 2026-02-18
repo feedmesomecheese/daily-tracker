@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString } from "@/lib/dateUtils";
+import { getLocalDateString, getServerTimezone } from "@/lib/dateUtils";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -48,6 +48,8 @@ export async function GET(req: Request, { params }: Params) {
   if (userError || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const tz = await getServerTimezone();
 
   // Get the exercise definition
   const { data: exercise, error: exError } = await supabase
@@ -197,8 +199,8 @@ export async function GET(req: Request, { params }: Params) {
   d30.setDate(d30.getDate() - 30);
   const d60 = new Date(now);
   d60.setDate(d60.getDate() - 60);
-  const d30Str = getLocalDateString(d30);
-  const d60Str = getLocalDateString(d60);
+  const d30Str = getLocalDateString(d30, tz);
+  const d60Str = getLocalDateString(d60, tz);
 
   let count30d = 0;
   let count60d = 0;

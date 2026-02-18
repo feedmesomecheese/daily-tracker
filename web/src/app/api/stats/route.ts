@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString, addDays } from "@/lib/dateUtils";
+import { getLocalDateString, addDays, getServerTimezone } from "@/lib/dateUtils";
 
 type CheckboxStreakRow = {
   metric_id: string;
@@ -35,6 +35,8 @@ export async function GET(req: Request) {
   if (userError || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
+
+  const tz = await getServerTimezone();
 
   // 1) Get checkbox and count metrics for this user
   const { data: metrics, error: configError } = await supabase
@@ -85,7 +87,7 @@ export async function GET(req: Request) {
     byMetric.get(row.metric_id)!.push(row);
   }
 
-  const today = getLocalDateString();
+  const today = getLocalDateString(new Date(), tz);
   const results: CheckboxStreakRow[] = [];
 
   for (const m of checkboxMetrics) {

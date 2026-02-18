@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString, addDays } from "@/lib/dateUtils";
+import { getLocalDateString, addDays, getServerTimezone } from "@/lib/dateUtils";
 import { calculateAllGoalProgress, Goal, GoalProgress } from "@/lib/goals";
 
 type TrendData = {
@@ -72,10 +72,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const tz = await getServerTimezone();
+
   // Parse query params
   const url = new URL(req.url);
   const dateParam = url.searchParams.get("date");
-  const referenceDate = dateParam || getLocalDateString();
+  const referenceDate = dateParam || getLocalDateString(new Date(), tz);
 
   // 1) Get all active metrics for this user (including calculated for goals)
   const { data: metrics, error: configError } = await supabase

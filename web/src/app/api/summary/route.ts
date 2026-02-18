@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString } from "@/lib/dateUtils";
+import { getLocalDateString, getServerTimezone } from "@/lib/dateUtils";
 
 type PeriodType = "week" | "month" | "quarter" | "year";
 
@@ -21,7 +21,8 @@ type ConfigEntry = {
 
 function getPeriodBounds(
   type: PeriodType,
-  referenceDate: string
+  referenceDate: string,
+  tz?: string
 ): { start: string; end: string; prevStart: string; prevEnd: string } {
   const [year, month, day] = referenceDate.split("-").map(Number);
   const d = new Date(year, month - 1, day);
@@ -69,10 +70,10 @@ function getPeriodBounds(
   }
 
   return {
-    start: getLocalDateString(start),
-    end: getLocalDateString(end),
-    prevStart: getLocalDateString(prevStart),
-    prevEnd: getLocalDateString(prevEnd),
+    start: getLocalDateString(start, tz),
+    end: getLocalDateString(end, tz),
+    prevStart: getLocalDateString(prevStart, tz),
+    prevEnd: getLocalDateString(prevEnd, tz),
   };
 }
 
@@ -88,16 +89,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const tz = await getServerTimezone();
   const url = new URL(req.url);
   const type = (url.searchParams.get("type") || "month") as PeriodType;
-  const dateParam = url.searchParams.get("date") || getLocalDateString();
+  const dateParam = url.searchParams.get("date") || getLocalDateString(new Date(), tz);
   const showPrivate = url.searchParams.get("show_private") === "true";
 
   if (!["week", "month", "quarter", "year"].includes(type)) {
     return NextResponse.json({ error: "Invalid period type" }, { status: 400 });
   }
 
-  const bounds = getPeriodBounds(type, dateParam);
+  const bounds = getPeriodBounds(type, dateParam, tz);
 
   // Build config query with optional privacy filter
   let configQuery = supabase
@@ -287,7 +289,7 @@ export async function GET(req: Request) {
   let d = new Date(bounds.start + "T00:00:00");
   const endDate = new Date(bounds.end + "T00:00:00");
   while (d <= endDate) {
-    daysInPeriod.add(getLocalDateString(d));
+    daysInPeriod.add(getLocalDateString(d, tz));
     d.setDate(d.getDate() + 1);
   }
 

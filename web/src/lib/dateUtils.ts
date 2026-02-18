@@ -7,15 +7,16 @@
 
 /**
  * Reads the user's timezone from the `tz` cookie on the server.
- * Returns undefined on the client (browser uses local timezone automatically).
+ * Must be awaited from an async server context (API routes, Server Components).
+ * On the client, returns the browser's local timezone (not used in practice).
  */
-function getServerTimezone(): string | undefined {
-  if (typeof window !== "undefined") return undefined;
+export async function getServerTimezone(): Promise<string> {
+  if (typeof window !== "undefined") {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
   try {
-    // Dynamic import to avoid bundling next/headers on the client
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { cookies } = require("next/headers");
-    const cookieStore = cookies();
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
     const tz = cookieStore.get("tz")?.value;
     if (tz) return decodeURIComponent(tz);
   } catch {
@@ -26,13 +27,13 @@ function getServerTimezone(): string | undefined {
 
 /**
  * Returns a date as YYYY-MM-DD string in the user's timezone.
- * On the client, uses the browser's local timezone.
- * On the server, reads the user's timezone from the `tz` cookie.
+ * On the client, uses the browser's local timezone (tz param ignored).
+ * On the server, pass the tz from `await getServerTimezone()`.
  * @param date - Date object (defaults to now)
+ * @param tz - Timezone string for server-side formatting (e.g., "America/New_York")
  * @returns YYYY-MM-DD formatted string
  */
-export function getLocalDateString(date: Date = new Date()): string {
-  const tz = getServerTimezone();
+export function getLocalDateString(date: Date = new Date(), tz?: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     year: "numeric",
     month: "2-digit",
@@ -47,15 +48,15 @@ export function getLocalDateString(date: Date = new Date()): string {
 
 /**
  * Adds or subtracts days from a YYYY-MM-DD string.
+ * Pure calendar arithmetic — no timezone conversion needed.
  * @param isoDate - Date string in YYYY-MM-DD format
  * @param deltaDays - Number of days to add (negative to subtract)
  * @returns New date as YYYY-MM-DD string
  */
 export function addDays(isoDate: string, deltaDays: number): string {
   const [year, month, day] = isoDate.split("-").map(Number);
-  const d = new Date(year, month - 1, day);
-  d.setDate(d.getDate() + deltaDays);
-  return getLocalDateString(d);
+  const d = new Date(Date.UTC(year, month - 1, day + deltaDays));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 
 /**

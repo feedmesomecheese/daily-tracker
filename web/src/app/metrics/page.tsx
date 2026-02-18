@@ -275,7 +275,7 @@ function SortableMetricRow({
         <select
           value={metric.type}
           onChange={(e) => onFieldChange(metric.metric_id, "type", e.target.value)}
-          className="w-full h-8 text-xs border rounded-md px-2 bg-transparent"
+          className="w-full h-8 text-xs border rounded-md px-2 bg-background text-foreground"
         >
           <option value="checkbox">checkbox</option>
           <option value="score">score</option>
@@ -408,7 +408,7 @@ function SortableMetricRow({
             <select
               value={metric.parent_metric_id || ""}
               onChange={(e) => onFieldChange(metric.metric_id, "parent_metric_id", e.target.value || null)}
-              className="w-full h-8 text-xs border rounded-md px-2 bg-transparent"
+              className="w-full h-8 text-xs border rounded-md px-2 bg-background text-foreground"
             >
               <option value="">(none)</option>
               {metrics
@@ -859,6 +859,10 @@ export default function MetricsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showPrivate, setShowPrivate] = useState(true);
+  const [filterGroup, setFilterGroup] = useState<string>("all");
+  const [filterType, setFilterType] = useState<string>("all");
+  const [filterRequired, setFilterRequired] = useState<string>("all");
+  const [filterCalculated, setFilterCalculated] = useState<string>("all");
   const [showFormulaHelp, setShowFormulaHelp] = useState(false);
   const [groupsExpanded, setGroupsExpanded] = useState(false);
 
@@ -945,9 +949,18 @@ export default function MetricsPage() {
     return metrics.filter((m) => {
       if (!showArchived && !m.active) return false;
       if (!showPrivate && m.private) return false;
+      if (filterGroup !== "all") {
+        const mGroup = m.group || "";
+        if (filterGroup === "__none__" ? mGroup !== "" : mGroup !== filterGroup) return false;
+      }
+      if (filterType !== "all" && m.type !== filterType) return false;
+      if (filterRequired === "yes" && !m.required) return false;
+      if (filterRequired === "no" && m.required) return false;
+      if (filterCalculated === "yes" && !m.is_calculated) return false;
+      if (filterCalculated === "no" && m.is_calculated) return false;
       return true;
     });
-  }, [metrics, showArchived, showPrivate]);
+  }, [metrics, showArchived, showPrivate, filterGroup, filterType, filterRequired, filterCalculated]);
 
   // Sort metrics by group then metric_order
   const sortedMetrics = useMemo(() => {
@@ -1463,7 +1476,7 @@ export default function MetricsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 text-sm">
+      <div className="flex items-center gap-4 text-sm flex-wrap">
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
@@ -1482,6 +1495,45 @@ export default function MetricsPage() {
           />
           Show private
         </label>
+        <select
+          value={filterGroup}
+          onChange={(e) => setFilterGroup(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background text-foreground px-2 text-sm"
+        >
+          <option value="all">All groups</option>
+          <option value="__none__">Ungrouped</option>
+          {groupNames.map((g) => (
+            <option key={g} value={g}>{g}</option>
+          ))}
+        </select>
+        <select
+          value={filterType}
+          onChange={(e) => setFilterType(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background text-foreground px-2 text-sm"
+        >
+          <option value="all">All types</option>
+          {(["checkbox", "number", "score", "count", "time", "hhmm", "text"] as MetricType[]).map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </select>
+        <select
+          value={filterRequired}
+          onChange={(e) => setFilterRequired(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background text-foreground px-2 text-sm"
+        >
+          <option value="all">Required: any</option>
+          <option value="yes">Required only</option>
+          <option value="no">Not required</option>
+        </select>
+        <select
+          value={filterCalculated}
+          onChange={(e) => setFilterCalculated(e.target.value)}
+          className="h-8 rounded-md border border-input bg-background text-foreground px-2 text-sm"
+        >
+          <option value="all">Calculated: any</option>
+          <option value="yes">Calculated only</option>
+          <option value="no">Not calculated</option>
+        </select>
       </div>
 
       {/* Error */}
@@ -1666,7 +1718,7 @@ export default function MetricsPage() {
                             onChange={(e) =>
                               setNewMetric((p) => ({ ...p, type: e.target.value as MetricType }))
                             }
-                            className="w-full h-8 text-xs border rounded-md px-2 bg-transparent"
+                            className="w-full h-8 text-xs border rounded-md px-2 bg-background text-foreground"
                           >
                             <option value="checkbox">checkbox</option>
                             <option value="score">score</option>
@@ -1819,7 +1871,7 @@ export default function MetricsPage() {
                                 onChange={(e) =>
                                   setNewMetric((p) => ({ ...p, parent_metric_id: e.target.value }))
                                 }
-                                className="w-full h-8 text-xs border rounded-md px-2 bg-transparent"
+                                className="w-full h-8 text-xs border rounded-md px-2 bg-background text-foreground"
                               >
                                 <option value="">(none)</option>
                                 {metrics.map((m) => (

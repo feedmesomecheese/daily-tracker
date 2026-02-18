@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString } from "@/lib/dateUtils";
+import { getLocalDateString, getServerTimezone } from "@/lib/dateUtils";
 
 type LogRow = {
   metric_id: string;
@@ -27,6 +27,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const tz = await getServerTimezone();
   const url = new URL(req.url);
   const type = url.searchParams.get("type");
   const metricsParam = url.searchParams.get("metrics");
@@ -81,7 +82,7 @@ export async function GET(req: Request) {
     const days = range === "30d" ? 30 : range === "90d" ? 90 : range === "1y" ? 365 : 0;
     if (days > 0) {
       now.setDate(now.getDate() - days);
-      dateFilter = getLocalDateString(now);
+      dateFilter = getLocalDateString(now, tz);
     }
   }
 

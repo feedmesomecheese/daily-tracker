@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString, addDays } from "@/lib/dateUtils";
+import { getLocalDateString, addDays, getServerTimezone } from "@/lib/dateUtils";
 import { evaluateCalculatedMetricsV2, MetricDef } from "@/lib/calc";
 import { calculateAllGoalProgress, calculateGoalHistory, Goal, GoalProgress, GoalHistoricalStats } from "@/lib/goals";
 
@@ -470,6 +470,8 @@ export async function GET(
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const tz = await getServerTimezone();
+
   const { metric_id } = await params;
   if (!metric_id) {
     return NextResponse.json({ error: "metric_id is required" }, { status: 400 });
@@ -639,7 +641,7 @@ export async function GET(
 
     logRows = allLogs;
   }
-  const today = getLocalDateString();
+  const today = getLocalDateString(new Date(), tz);
   const currentYear = new Date().getFullYear();
 
   // Determine tracking start date - use first log date for accurate stats

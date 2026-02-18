@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 import { decrypt, encrypt } from "@/lib/encryption";
-import { getLocalDateString } from "@/lib/dateUtils";
+import { getLocalDateString, getServerTimezone } from "@/lib/dateUtils";
 
 const OURA_API_BASE = "https://api.ouraring.com/v2/usercollection";
 const OURA_TOKEN_URL = "https://api.ouraring.com/oauth/token";
@@ -147,10 +147,11 @@ export async function POST(req: Request) {
   }
 
   // Default date range: last 7 days
-  const endDate = end_date || getLocalDateString();
+  const tz = await getServerTimezone();
+  const endDate = end_date || getLocalDateString(new Date(), tz);
   const startDateDefault = new Date();
   startDateDefault.setDate(startDateDefault.getDate() - 7);
-  const startDate = start_date || getLocalDateString(startDateDefault);
+  const startDate = start_date || getLocalDateString(startDateDefault, tz);
 
   const typesToSync = data_types || Object.keys(OURA_DATA_TYPES);
   const syncConfig = integration.sync_config || {};

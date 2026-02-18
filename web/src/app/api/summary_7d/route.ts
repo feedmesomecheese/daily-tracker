@@ -1,7 +1,7 @@
 // web/src/app/api/summary_7d/route.ts
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString, addDays } from "@/lib/dateUtils";
+import { getLocalDateString, addDays, getServerTimezone } from "@/lib/dateUtils";
 
 type SummaryRow = {
   metric_id: string;
@@ -25,10 +25,11 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const tz = await getServerTimezone();
   const url = new URL(req.url);
   const dateParam = url.searchParams.get("date");
 
-  const today = getLocalDateString();
+  const today = getLocalDateString(new Date(), tz);
   const endDate = dateParam && dateParam < today ? dateParam : today;
   const startDate = addDays(endDate, -6); // 7-day window
 

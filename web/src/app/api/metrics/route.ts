@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString } from "@/lib/dateUtils";
+import { getLocalDateString, getServerTimezone } from "@/lib/dateUtils";
 
 // Analytics config schema
 const AnalyticsConfigSchema = z.object({
@@ -261,7 +261,7 @@ export async function POST(req: Request) {
 
   const body = parsed.data;
 
-  const todayISO = getLocalDateString();
+  const todayISO = getLocalDateString(new Date(), await getServerTimezone());
 
   // Auto-set group_order based on existing metrics in the same group
   let groupOrder = body.group_order;
@@ -327,7 +327,7 @@ export async function PATCH(req: Request) {
   if (!supabase || !user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
-  const todayISO = getLocalDateString();
+  const todayISO = getLocalDateString(new Date(), await getServerTimezone());
 
   let json: unknown;
   try {

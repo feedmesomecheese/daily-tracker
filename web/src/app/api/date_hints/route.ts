@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
-import { getLocalDateString, addDays, compareDates } from "@/lib/dateUtils";
+import { getLocalDateString, addDays, compareDates, getServerTimezone } from "@/lib/dateUtils";
 
 type DateHints = {
   today: string;
@@ -30,7 +30,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  const today = getLocalDateString();
+  const tz = await getServerTimezone();
+  const today = getLocalDateString(new Date(), tz);
 
   // 1) last_log_date (fast + uncapped)
   const { data: lastLogRow, error: lastLogErr } = await supabase
