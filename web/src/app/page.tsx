@@ -19,6 +19,9 @@ import { MetricHoverTooltip } from "@/components/metric-hover-tooltip";
 import { MultiGoalBadge } from "@/components/ui/goal-progress-badge";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { TimeOfDayPicker, DurationPicker, NumberWheelPicker } from "@/components/ui/mobile-pickers";
+import { useTour } from "@/hooks/useTour";
+import { buttonVariants } from "@/components/ui/button";
+import "driver.js/dist/driver.css";
 
 type GoalIndicator = {
   goal_id: string;
@@ -194,6 +197,143 @@ export default function Home() {
   // Mobile detection for picker UI
   const isMobile = useMediaQuery("(max-width: 639px)");
 
+  const { status: tourStatus, loading: tourLoading, seed: tourSeed, cleanup: tourCleanup, devReset: tourDevReset } = useTour();
+
+  // A ref flag set when we want the tour to start as soon as metrics are in the DOM
+  const pendingTourLaunch = useRef(false);
+
+  const reloadMetrics = useCallback(async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/config", { headers });
+      const data = await res.json();
+      if (!res.ok) return;
+      const rows = data as any[];
+      const normalized: ConfigRow[] = rows.map((r) => ({
+        metric_id: r.metric_id,
+        metric_name: (r.metric_name ?? r.metric_id).replace(/\s*\[[0-9a-f]{8}\]$/, ""),
+        type: r.type,
+        group: r.group ?? null,
+        private: !!r.private,
+        active: r.active ?? true,
+        show_ma: !!r.show_ma,
+        ma_periods_csv: r.ma_periods_csv ?? "",
+        start_date: r.start_date ?? null,
+        required: !!r.required,
+        default_value: r.default_value ?? null,
+        min_value: r.min_value ?? null,
+        max_value: r.max_value ?? null,
+        disallowed_values: r.disallowed_values ?? null,
+        metric_order: typeof r.metric_order === "number" ? r.metric_order : null,
+        group_order: typeof r.group_order === "number" ? r.group_order : null,
+        preset_values_csv: r.preset_values_csv ?? null,
+        is_calculated: !!r.is_calculated,
+        calc_expr: r.calc_expr ?? null,
+        parent_metric_id: r.parent_metric_id ?? null,
+        analytics_config: r.analytics_config ?? null,
+      }));
+      const active = normalized.filter((r) => r.active);
+      setMetrics(sortMetricsForForm(active));
+    } catch (e) {
+      console.warn("Metrics reload failed:", e);
+    }
+  }, []);
+
+  const launchDriverTour = useCallback(() => {
+    import("driver.js").then(({ driver }) => {
+      const driverObj = driver({
+        animate: true,
+        showProgress: true,
+        allowClose: true,
+        steps: [
+          {
+            popover: {
+              title: "Welcome to Daily Tracker",
+              description:
+                "This quick tour shows you how to log your day. We've added some demo metrics so you can see everything in action. Takes about 1 minute.",
+              nextBtnText: "Let's go →",
+            },
+          },
+          {
+            element: '[data-tour="date-picker"]',
+            popover: {
+              title: "Date Navigation",
+              description:
+                "The app auto-jumps to the next date that needs data. You can navigate to any past date to log or review your entries.",
+              side: "bottom",
+              align: "start",
+            },
+          },
+          {
+            element: '[data-tour="metric-group"]',
+            popover: {
+              title: "Metric Groups",
+              description:
+                "Metrics are organized into collapsible groups. Click any group header to expand or collapse it — handy for keeping things tidy.",
+              side: "bottom",
+              align: "start",
+            },
+          },
+          {
+            element: '[data-tour="metric-row"]',
+            popover: {
+              title: "Logging Your Data",
+              description:
+                "Each row is one metric. You'll see different input types: checkboxes, numbers, scores, time values, and free text. Badges show your trend (↑↓), streak (🔥), and goal progress (%).",
+              side: "bottom",
+              align: "start",
+            },
+          },
+          {
+            element: '[data-tour="metric-label"]',
+            popover: {
+              title: "Detailed Stats",
+              description:
+                "Click any metric name to open its full history: a chart, heatmap, streaks, and more. Great for spotting long-term patterns.",
+              side: "right",
+              align: "start",
+            },
+          },
+          {
+            element: '[data-tour="save-button"]',
+            popover: {
+              title: "Save Your Day",
+              description:
+                "Hit Save Day (or Ctrl+Enter) to save all your entries. Ready to set up your own metrics?",
+              side: "bottom",
+              align: "end",
+              nextBtnText: "Go to Metrics →",
+              onNextClick: () => {
+                driverObj.destroy();
+                window.location.href = "/metrics";
+              },
+            },
+          },
+        ],
+      });
+      driverObj.drive();
+    });
+  }, [tourCleanup]);
+
+  // When metrics load (or reload) and a tour launch is pending, start the tour.
+  // Using a small timeout to let React commit the DOM after state update.
+  useEffect(() => {
+    if (!pendingTourLaunch.current) return;
+    if (metrics.length === 0) return;
+    pendingTourLaunch.current = false;
+    setTimeout(launchDriverTour, 300);
+  }, [metrics, launchDriverTour]);
+
+  // Auto-resume on page reload when status is 'seeded' (abandoned prior session)
+  const tourAutoResumed = useRef(false);
+  useEffect(() => {
+    if (tourStatus !== "seeded") return;
+    if (metrics.length === 0) return;
+    if (tourAutoResumed.current) return;
+    tourAutoResumed.current = true;
+    setTimeout(launchDriverTour, 500);
+  }, [tourStatus, metrics, launchDriverTour]);
+
   function toggleGroup(name: string) {
     setCollapsedGroups((prev) => ({
       ...prev,
@@ -341,7 +481,7 @@ export default function Home() {
 
         const normalized: ConfigRow[] = rows.map((r) => ({
           metric_id: r.metric_id,
-          metric_name: r.metric_name ?? r.metric_id,
+          metric_name: (r.metric_name ?? r.metric_id).replace(/\s*\[[0-9a-f]{8}\]$/, ""),
           type: r.type,
           group: r.group ?? null,
           private: !!r.private,
@@ -1685,12 +1825,14 @@ export default function Home() {
           {/* Row 1: DatePicker + Today + (desktop: Private, Unsaved, Days) + Save */}
           <div className="flex items-center justify-between gap-2 sm:gap-4">
             <div className="flex items-center gap-2 sm:gap-3">
-              <DatePicker
-                value={date}
-                onChange={handleDateChange}
-                maxDate={todayISO}
-                availableYears={availableYears}
-              />
+              <div data-tour="date-picker">
+                <DatePicker
+                  value={date}
+                  onChange={handleDateChange}
+                  maxDate={todayISO}
+                  availableYears={availableYears}
+                />
+              </div>
               {/* Today button */}
               {date !== todayISO && (
                 <Button
@@ -1730,7 +1872,27 @@ export default function Home() {
               <div className="hidden sm:block">
                 {acceptDefaultsBtn}
               </div>
+              {/* Tour replay button — shown only after tour was completed */}
+              {tourStatus === "completed" && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  title="Replay the tour"
+                  onClick={async () => {
+                    pendingTourLaunch.current = true;
+                    tourAutoResumed.current = true; // prevent double-launch
+                    const ok = await tourSeed();
+                    if (ok) { await reloadMetrics(); await reloadIndicators(); }
+                    else pendingTourLaunch.current = false;
+                  }}
+                  disabled={tourLoading}
+                  className="h-8 w-8 p-0 text-muted-foreground"
+                >
+                  ?
+                </Button>
+              )}
               <Button
+                data-tour="save-button"
                 onClick={save}
                 disabled={saving || metrics.length === 0 || !dirty}
                 variant={dirty ? "default" : "outline"}
@@ -1825,6 +1987,34 @@ export default function Home() {
             <p className="text-red-600">Error: {error}</p>
           ) : !metricsLoaded ? (
             <p className="text-muted-foreground">Loading metrics…</p>
+          ) : tourStatus === "idle" ? (
+            /* New user welcome banner */
+            <div className="max-w-sm mx-auto space-y-4 p-6 border rounded-xl shadow-sm bg-card">
+              <p className="text-2xl font-semibold">Welcome!</p>
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                Daily Tracker helps you log and understand your habits. Take a
+                quick tour to see how it works, or jump straight to setting up
+                your metrics.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                <Button
+                  onClick={async () => {
+                    pendingTourLaunch.current = true;
+                    tourAutoResumed.current = true; // prevent double-launch
+                    const ok = await tourSeed();
+                    if (ok) { await reloadMetrics(); await reloadIndicators(); }
+                    else pendingTourLaunch.current = false;
+                  }}
+                  disabled={tourLoading}
+                  className="gap-2"
+                >
+                  {tourLoading ? "Setting up…" : "Take the Tour"}
+                </Button>
+                <a href="/metrics" className={buttonVariants({ variant: "outline" })}>
+                  Set Up Metrics →
+                </a>
+              </div>
+            </div>
           ) : (
             <div className="space-y-2">
               <p className="text-lg font-medium">Welcome!</p>
@@ -1840,11 +2030,15 @@ export default function Home() {
         </div>
       ) : (
         <div>
-          {groupedMetrics.map((group) => {
+          {groupedMetrics.map((group, groupIndex) => {
             const isCollapsed = collapsedGroups[group.groupName] ?? false;
 
             return (
-              <Card key={group.groupName} className="mt-4 max-w-md overflow-hidden">
+              <Card
+                key={group.groupName}
+                className="mt-4 max-w-md overflow-hidden"
+                {...(groupIndex === 0 ? { "data-tour": "metric-group" } : {})}
+              >
                 {/* Group header bar */}
                 <CardHeader
                   className="bg-muted py-2 px-3 cursor-pointer border-b"
@@ -1868,7 +2062,8 @@ export default function Home() {
                 {/* Group body */}
                 {!isCollapsed && (
                   <CardContent className="p-4">
-                    {group.items.map((m) => {
+                    {group.items.map((m, itemIndex) => {
+                      const isFirstItem = groupIndex === 0 && itemIndex === 0;
                       const isCalculated = m.is_calculated;
 
                       const calcValue = isCalculated ? calculatedValues[m.metric_id] : null;
@@ -1893,9 +2088,16 @@ export default function Home() {
                       }
 
                       return (
-                        <div key={m.metric_id} className="mb-3">
+                        <div
+                          key={m.metric_id}
+                          className="mb-3"
+                          {...(isFirstItem ? { "data-tour": "metric-row" } : {})}
+                        >
                           {/* LABEL */}
-                          <label className="flex items-center gap-2 font-medium mb-1 relative">
+                          <label
+                            className="flex items-center gap-2 font-medium mb-1 relative"
+                            {...(isFirstItem ? { "data-tour": "metric-label" } : {})}
+                          >
                             {/* Indicator for metrics with dependent children - positioned left of name */}
                             {metricsWithChildren.has(m.metric_id) && (
                               <span
@@ -1909,8 +2111,8 @@ export default function Home() {
                               metricId={m.metric_id}
                               metricName={m.metric_name}
                               metricType={m.type}
-                              onClick={() => setStatsMetric(m)}
-                              hoverDelay={300}
+                              onClick={() => { if (tourStatus !== "seeded") setStatsMetric(m); }}
+                              hoverDelay={tourStatus === "seeded" ? Infinity : 300}
                             />
                             {m.required && !isCalculated && (
                               <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
@@ -2361,6 +2563,24 @@ export default function Home() {
         open={statsMetric !== null}
         onOpenChange={(open) => !open && setStatsMetric(null)}
       />
+
+      {/* Dev-only tour reset button */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs opacity-60 hover:opacity-100 bg-background"
+            title={`Tour: ${tourStatus}`}
+            onClick={async () => {
+              await tourDevReset();
+              window.location.reload();
+            }}
+          >
+            Reset Tour ({tourStatus})
+          </Button>
+        </div>
+      )}
       </main>
     </div>
   );

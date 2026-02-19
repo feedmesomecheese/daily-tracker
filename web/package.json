@@ -28,6 +28,7 @@
     "@zxing/library": "^0.21.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "driver.js": "^1.4.0",
     "lucide-react": "^0.469.0",
     "next": "^16.1.4",
     "react": "19.2.0",

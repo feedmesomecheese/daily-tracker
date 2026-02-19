@@ -36,6 +36,9 @@ import { cn } from "@/lib/utils";
 import { MetricStatsSheet } from "@/components/metric-stats-sheet";
 import { GoalConfigSheet } from "@/components/goal-config-sheet";
 import type { Goal } from "@/lib/goals";
+import { useTour } from "@/hooks/useTour";
+import { buttonVariants } from "@/components/ui/button";
+import "driver.js/dist/driver.css";
 
 // Formula help data
 const FORMULA_HELP = [
@@ -236,7 +239,7 @@ function SortableMetricRow({
             <GripVertical className="h-4 w-4 text-muted-foreground" />
           </button>
           <span className="font-mono text-xs text-muted-foreground truncate w-[120px]">
-            {metric.metric_id}
+            {metric.metric_id.replace(/^__demo_[0-9a-f]{8}_/, "")}
           </span>
         </div>
       </td>
@@ -999,7 +1002,7 @@ export default function MetricsPage() {
       const arr = Array.isArray(data) ? data : [];
       const normalized: Metric[] = arr.map((r: Record<string, unknown>) => ({
         metric_id: String(r.metric_id),
-        metric_name: (r.metric_name ?? r.metric_id) as string,
+        metric_name: String(r.metric_name ?? r.metric_id).replace(/\s*\[[0-9a-f]{8}\]$/, ""),
         type: r.type as MetricType,
         private: !!r.private,
         active: !!r.active,
@@ -1035,6 +1038,99 @@ export default function MetricsPage() {
   useEffect(() => {
     loadMetrics();
   }, [loadMetrics]);
+
+  // --- Tour ---
+  const { status: tourStatus, loading: tourLoading, devReset: tourDevReset } = useTour();
+  const tourLaunched = useRef(false);
+
+  const launchMetricsTour = useCallback(() => {
+    import("driver.js").then(({ driver }) => {
+      const driverObj = driver({
+        animate: true,
+        showProgress: true,
+        allowClose: true,
+        steps: [
+          {
+            popover: {
+              title: "Your Metrics",
+              description:
+                "The demo metrics from the Today tour are already here — one of every type — so you can see how they're configured. This is where you manage everything.",
+              nextBtnText: "Show me →",
+            },
+          },
+          {
+            element: '[data-tour="metrics-table"]',
+            popover: {
+              title: "The Metrics Table",
+              description:
+                "Each row is one metric. Click any cell to edit it inline — changes auto-save instantly. Drag the ⠿ handle to reorder. The order here is the same order metrics appear on your Today page.",
+              side: "top",
+              align: "start",
+            },
+          },
+          {
+            popover: {
+              title: "Per-Metric Actions",
+              description:
+                "Scroll right on any row to see four action buttons: view the stats chart, configure goals, set up streak notifications, and delete.",
+            },
+          },
+          {
+            element: '[data-tour="calc-col"]',
+            popover: {
+              title: "Calculated Metrics",
+              description:
+                "Check the Calc box to derive a metric from others using a formula — e.g. sleep window, net calories, or any expression. Click Formula Help at the top for available functions.",
+              side: "bottom",
+              align: "center",
+            },
+          },
+          {
+            element: '[data-tour="add-metric-btn"]',
+            popover: {
+              title: "Add Your Own Metrics",
+              description:
+                "Click here to create a new metric. Choose a name, type (checkbox, number, score, count, duration, time-of-day, or text), and group.",
+              side: "bottom",
+              align: "end",
+            },
+          },
+          {
+            element: '[data-tour="show-advanced-btn"]',
+            popover: {
+              title: "Advanced Settings",
+              description:
+                "Toggle advanced columns to set value bounds, moving averages, parent metrics (conditional fields), streak direction, and more.",
+              side: "bottom",
+              align: "start",
+            },
+          },
+          {
+            popover: {
+              title: "One More Stop",
+              description:
+                "Last up: the Log page — your full history in a spreadsheet, with inline editing, filters, and CSV export.",
+              nextBtnText: "Next: Log →",
+              onNextClick: () => {
+                driverObj.destroy();
+                window.location.href = "/log";
+              },
+            },
+          },
+        ],
+      });
+      driverObj.drive();
+    });
+  }, []);
+
+  // Auto-launch the metrics tour when demo data exists and metrics have loaded
+  useEffect(() => {
+    if (tourStatus !== "seeded") return;
+    if (loading || metrics.length === 0) return;
+    if (tourLaunched.current) return;
+    tourLaunched.current = true;
+    setTimeout(launchMetricsTour, 400);
+  }, [tourStatus, loading, metrics, launchMetricsTour]);
 
   // Focus new metric name input
   useEffect(() => {
@@ -1454,6 +1550,7 @@ export default function MetricsPage() {
           <Button
             variant="outline"
             size="sm"
+            data-tour="show-advanced-btn"
             onClick={() => setShowAdvanced(!showAdvanced)}
           >
             {showAdvanced ? "Hide Advanced" : "Show Advanced"}
@@ -1467,6 +1564,7 @@ export default function MetricsPage() {
           </Button>
           <Button
             size="sm"
+            data-tour="add-metric-btn"
             onClick={() => setShowNewMetric(true)}
             disabled={showNewMetric}
           >
@@ -1607,7 +1705,7 @@ export default function MetricsPage() {
       </Card>
 
       {/* Metrics table */}
-      <Card>
+      <Card data-tour="metrics-table">
         <CardHeader className="py-3 px-4 border-b">
           <CardTitle className="text-sm font-medium text-muted-foreground">
             Drag to reorder. Click any cell to edit (changes auto-save).
@@ -1637,7 +1735,7 @@ export default function MetricsPage() {
                       <th className="text-left py-2 px-2 min-w-[120px]">Group</th>
                       <th className="text-center py-2 px-2 min-w-[100px]">Order</th>
                       <th className="text-center py-2 px-2 min-w-[120px]">Type</th>
-                      <th className="text-center py-2 px-2 w-[40px]" title="Calculated">Calc</th>
+                      <th className="text-center py-2 px-2 w-[40px]" title="Calculated" data-tour="calc-col">Calc</th>
                       <th className="text-left py-2 px-2 min-w-[180px]">Formula</th>
                       {showAdvanced && (
                         <>
@@ -2115,6 +2213,24 @@ export default function MetricsPage() {
       />
 
       {/* Goals config sheet */}
+      {/* Dev-only tour reset button */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-xs opacity-60 hover:opacity-100 bg-background"
+            title={`Tour: ${tourStatus}`}
+            onClick={async () => {
+              await tourDevReset();
+              window.location.reload();
+            }}
+          >
+            Reset Tour ({tourStatus})
+          </Button>
+        </div>
+      )}
+
       {goalsMetric && (
         <GoalConfigSheet
           open={goalsMetric !== null}

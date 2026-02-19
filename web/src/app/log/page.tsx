@@ -12,6 +12,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useTour } from "@/hooks/useTour";
+import "driver.js/dist/driver.css";
 
 type LogRow = { date: string; metric_id: string; value: number | null; value_text?: string | null };
 type ConfigRow = {
@@ -410,6 +412,10 @@ export default function DailyLogPage() {
   const [savingCells, setSavingCells] = useState<Set<string>>(new Set());
   const [cellErrors, setCellErrors] = useState<Map<string, string>>(new Map());
 
+  // Tour
+  const { status: tourStatus, cleanup: tourCleanup, devReset: tourDevReset } = useTour();
+  const tourLaunched = useRef(false);
+
   // Filtered config based on visibility toggles
   const config = useMemo(() => {
     return allConfig.filter((c) => {
@@ -485,7 +491,8 @@ export default function DailyLogPage() {
   const nameMap = useMemo(() => {
     const m = new Map<string, string>();
     config.forEach(c => {
-      m.set(c.metric_id, c.metric_name || c.metric_id);
+      const raw = c.metric_name || c.metric_id;
+      m.set(c.metric_id, raw.replace(/\s*\[[0-9a-f]{8}\]$/, ""));
     });
     return m;
   }, [config]);
@@ -598,6 +605,72 @@ export default function DailyLogPage() {
     [configMap]
   );
 
+  // --- Log Tour ---
+  const launchLogTour = useCallback(() => {
+    import("driver.js").then(({ driver }) => {
+      const driverObj = driver({
+        animate: true,
+        showProgress: true,
+        allowClose: false,
+        steps: [
+          {
+            popover: {
+              title: "Your Complete History",
+              description:
+                "The Log is a full spreadsheet of every day you've logged. All your metrics, side by side — great for spotting patterns or making quick corrections.",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='log-table']",
+            popover: {
+              title: "Inline Editing",
+              description:
+                "Click any cell to edit it in place. Tab moves to the next cell, Enter saves, Escape cancels. Changes sync instantly — no save button needed.",
+              side: "top",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='log-filters']",
+            popover: {
+              title: "Filters & Pagination",
+              description:
+                "Change the date range, show archived or private metrics, adjust how many days appear per page, or jump to a specific page.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='log-export-btn']",
+            popover: {
+              title: "Export & Finish",
+              description:
+                "Download your data as a CSV for use in Excel, Google Sheets, or any other tool. When you're ready, remove the demo data and start with your own metrics.",
+              nextBtnText: "Finish & Remove Demo →",
+              onNextClick: () => {
+                driverObj.destroy();
+                tourCleanup("/");
+              },
+            },
+          },
+        ],
+      });
+      driverObj.drive();
+    });
+  }, [tourCleanup]);
+
+  // Auto-launch log tour when demo data exists and log has loaded
+  useEffect(() => {
+    if (tourStatus !== "seeded") return;
+    if (loading || logRows.length === 0) return;
+    if (tourLaunched.current) return;
+    tourLaunched.current = true;
+    setTimeout(launchLogTour, 400);
+  }, [tourStatus, loading, logRows, launchLogTour]);
+
   if (loading) {
     return (
       <main className="p-6 max-w-5xl mx-auto">
@@ -637,6 +710,7 @@ export default function DailyLogPage() {
         </div>
 
         <Button
+          data-tour="log-export-btn"
           variant="outline"
           size="sm"
           onClick={async () => {
@@ -675,7 +749,7 @@ export default function DailyLogPage() {
       </div>
 
       {/* Controls row */}
-      <div className="flex items-center gap-4 flex-wrap">
+      <div data-tour="log-filters" className="flex items-center gap-4 flex-wrap">
         {/* Visibility toggles */}
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
@@ -814,7 +888,7 @@ export default function DailyLogPage() {
         </div>
       )}
 
-      <Card>
+      <Card data-tour="log-table">
         <CardHeader className="py-3 px-4 border-b">
           <CardTitle className="text-sm font-medium text-muted-foreground">
             Showing {paginatedDates.length} of {filteredDates.length} days. Click any cell to edit.
@@ -876,6 +950,19 @@ export default function DailyLogPage() {
           </div>
         </CardContent>
       </Card>
+
+      {process.env.NODE_ENV === "development" && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button
+            onClick={async () => {
+              await tourDevReset();
+              window.location.reload();
+            }}
+          >
+            Reset Tour ({tourStatus})
+          </Button>
+        </div>
+      )}
     </main>
   );
 }
