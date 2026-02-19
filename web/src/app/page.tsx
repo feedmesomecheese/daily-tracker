@@ -2115,12 +2115,12 @@ export default function Home() {
                               hoverDelay={tourStatus === "seeded" ? Infinity : 300}
                             />
                             {m.required && !isCalculated && (
-                              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                              <Badge variant="destructive" className="text-[10px] px-1.5 py-0" title="This metric must be filled in before saving">
                                 required
                               </Badge>
                             )}
                             {isCalculated && (
-                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                              <Badge variant="secondary" className="text-[10px] px-1.5 py-0" title="Calculated automatically from other metrics — read only">
                                 calc
                               </Badge>
                             )}
@@ -2459,12 +2459,13 @@ export default function Home() {
                             /* Desktop or fallback: text input */
                             <div>
                               {defaultPopulated.has(m.metric_id) && !touchedMetrics.has(m.metric_id) && (
-                                <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1">
+                                <Badge variant="outline" className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/30 mb-1" title="Pre-filled with a default value — adjust as needed">
                                   default
                                 </Badge>
                               )}
                               <Input
                                 inputMode={["number", "score", "count"].includes(m.type) ? "numeric" : undefined}
+                                placeholder={m.type === "hhmm" ? "e.g. 22:30" : m.type === "time" ? "e.g. 90 or 1:30" : m.type === "score" ? "1–10" : m.type === "count" ? "0, 1, 2…" : undefined}
                                 value={raw}
                                 onFocus={() => markAsTouched(m.metric_id)}
                                 onChange={(e) => {

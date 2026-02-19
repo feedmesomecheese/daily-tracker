@@ -1069,15 +1069,15 @@ export default function WorkoutsPage() {
                                     <span key={si}>
                                       {si > 0 && ", "}
                                       {s.is_pr ? (
-                                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-amber-600/30 bg-amber-600/10 text-amber-700">
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-amber-600/30 bg-amber-600/10 text-amber-700" title="PR — Personal Record (manually flagged with P or Ctrl+P)">
                                           {s.reps || 0}x{s.weight || 0}
                                         </span>
                                       ) : s.is_cycle_max ? (
-                                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-emerald-700/30 bg-emerald-700/10 text-emerald-700">
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-emerald-700/30 bg-emerald-700/10 text-emerald-700" title="Cycle Max — planned training peak for this cycle">
                                           {s.reps || 0}x{s.weight || 0}
                                         </span>
                                       ) : s.is_missed ? (
-                                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-red-700/30 bg-red-700/10 text-red-700">
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-red-700/30 bg-red-700/10 text-red-700" title="Missed set">
                                           {s.reps || 0}x{s.weight || 0}
                                         </span>
                                       ) : (
@@ -1159,15 +1159,15 @@ export default function WorkoutsPage() {
                                 <span key={si}>
                                   {si > 0 && ", "}
                                   {s.is_pr ? (
-                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-amber-600/30 bg-amber-600/10 text-amber-700">
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-amber-600/30 bg-amber-600/10 text-amber-700" title="PR — Personal Record (manually flagged with P or Ctrl+P)">
                                       {s.reps || 0}x{s.weight || 0}
                                     </span>
                                   ) : s.is_cycle_max ? (
-                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-emerald-700/30 bg-emerald-700/10 text-emerald-700">
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-emerald-700/30 bg-emerald-700/10 text-emerald-700" title="Cycle Max — planned training peak for this cycle">
                                       {s.reps || 0}x{s.weight || 0}
                                     </span>
                                   ) : s.is_missed ? (
-                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-red-700/30 bg-red-700/10 text-red-700">
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-red-700/30 bg-red-700/10 text-red-700" title="Missed set">
                                       {s.reps || 0}x{s.weight || 0}
                                     </span>
                                   ) : (
