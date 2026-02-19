@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { createSupabaseServerClient } from "@/lib/supabaseServer";
 import { encrypt } from "@/lib/encryption";
 
 const OURA_TOKEN_URL = "https://api.ouraring.com/oauth/token";
 
 export async function GET(req: Request) {
-  const supabase = supabaseServerFromRequest(req);
+  const supabase = await createSupabaseServerClient();
 
   const {
     data: { user },
