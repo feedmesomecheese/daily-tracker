@@ -592,13 +592,15 @@ export default function ExerciseLibraryPage() {
     });
   }, [tourComplete, workoutTourCleanup]);
 
-  // Auto-launch when arriving from the workouts tour (status === "seeded")
+  // Auto-launch when arriving from the workouts tour (status === "seeded").
+  // Intentionally ignores tourCompleted — if the workout tour is seeded we always want
+  // to show the exercises tour regardless of whether the user has seen it before.
   useEffect(() => {
-    if (loading || tourLaunched.current || tourCompleted) return;
+    if (loading || tourLaunched.current) return;
     if (workoutTourStatus !== "seeded") return;
     tourLaunched.current = true;
     setTimeout(() => launchExercisesTour(false), 400);
-  }, [loading, workoutTourStatus, tourCompleted, launchExercisesTour]);
+  }, [loading, workoutTourStatus, launchExercisesTour]);
 
   if (loading) {
     return (

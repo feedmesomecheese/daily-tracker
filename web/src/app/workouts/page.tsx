@@ -1215,6 +1215,8 @@ export default function WorkoutsPage() {
           <Button
             onClick={async () => {
               await tourDevReset();
+              // Also clear the exercises page tour so the full chain resets
+              localStorage.removeItem("tour_workouts-exercises_completed");
               tourLaunched.current = false;
               setShowWelcomeBanner(false);
               await fetchData();
