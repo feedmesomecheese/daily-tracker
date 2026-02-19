@@ -17,6 +17,8 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { DurationPicker } from "@/components/ui/mobile-pickers";
 import { getLocalDateString } from "@/lib/dateUtils";
 import { useWorkoutTour } from "@/hooks/useWorkoutTour";
+import ExerciseHoverTooltip from "./components/ExerciseHoverTooltip";
+import ExerciseStatsSheet from "./components/ExerciseStatsSheet";
 import "driver.js/dist/driver.css";
 
 type WorkoutType = {
@@ -130,6 +132,7 @@ export default function WorkoutsPage() {
   const [saving, setSaving] = useState(false);
   const [showCustomSheet, setShowCustomSheet] = useState(false);
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<{ id: string; name: string } | null>(null);
 
   const bucketRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
@@ -1112,7 +1115,15 @@ export default function WorkoutsPage() {
                                 )}
                               >
                                 <td className="text-right font-medium pr-3 py-1 whitespace-nowrap align-top">
-                                  {ex.exercise_name_display}
+                                  {ex.exercise_id ? (
+                                    <ExerciseHoverTooltip
+                                      exerciseId={ex.exercise_id}
+                                      exerciseName={ex.exercise_name_display}
+                                      onClick={() => setSelectedExercise({ id: ex.exercise_id!, name: ex.exercise_name_display })}
+                                    />
+                                  ) : (
+                                    ex.exercise_name_display
+                                  )}
                                 </td>
                                 <td className="w-px bg-border py-1" />
                                 <td className="pl-3 py-1 tabular-nums align-top">
@@ -1200,6 +1211,14 @@ export default function WorkoutsPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Exercise Stats Sheet */}
+      <ExerciseStatsSheet
+        exerciseId={selectedExercise?.id ?? null}
+        exerciseName={selectedExercise?.name ?? null}
+        open={!!selectedExercise}
+        onOpenChange={(open) => { if (!open) setSelectedExercise(null); }}
+      />
 
       {/* Custom Exercise Sheet */}
       <CustomExerciseSheet

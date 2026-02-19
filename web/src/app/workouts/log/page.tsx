@@ -27,6 +27,7 @@ export default function WorkoutLogPage() {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(getInitialFilters);
   const [activeTab, setActiveTab] = useState("workout");
+  const [exporting, setExporting] = useState(false);
 
   // Fetch reference data once
   const fetchRefData = useCallback(async () => {
@@ -192,40 +193,50 @@ export default function WorkoutLogPage() {
             {filteredWorkouts.length === 1 ? "workout" : "workouts"}
           </Badge>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            try {
-              const headers = await getAuthHeaders();
-              const params = new URLSearchParams();
-              if (filters.startDate) params.set("start", filters.startDate);
-              if (filters.endDate) params.set("end", filters.endDate);
-              const queryStr = params.toString();
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {filteredWorkouts.length} {filteredWorkouts.length === 1 ? "workout" : "workouts"}
+            {filters.startDate || filters.endDate ? " in range" : " total"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const headers = await getAuthHeaders();
+                const params = new URLSearchParams();
+                if (filters.startDate) params.set("start", filters.startDate);
+                if (filters.endDate) params.set("end", filters.endDate);
+                const queryStr = params.toString();
 
-              const res = await fetch(`/api/export/workout-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
-              if (!res.ok) {
-                let msg = `Export failed (${res.status})`;
-                try { const j = await res.json(); msg = j?.error || msg; } catch {}
-                throw new Error(msg);
+                const res = await fetch(`/api/export/workout-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
+                if (!res.ok) {
+                  let msg = `Export failed (${res.status})`;
+                  try { const j = await res.json(); msg = j?.error || msg; } catch {}
+                  throw new Error(msg);
+                }
+
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `workout-log${filters.startDate ? `_${filters.startDate}` : ""}${filters.endDate ? `_to_${filters.endDate}` : ""}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+              } catch (e: unknown) {
+                alert(e instanceof Error ? e.message : String(e));
+              } finally {
+                setExporting(false);
               }
-
-              const blob = await res.blob();
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `workout-log${filters.startDate ? `_${filters.startDate}` : ""}${filters.endDate ? `_to_${filters.endDate}` : ""}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              window.URL.revokeObjectURL(url);
-            } catch (e: unknown) {
-              alert(e instanceof Error ? e.message : String(e));
-            }
-          }}
-        >
-          Export CSV
-        </Button>
+            }}
+          >
+            {exporting ? "Exporting..." : "Export CSV"}
+          </Button>
+        </div>
       </div>
 
       {error && (

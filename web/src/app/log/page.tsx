@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useTour } from "@/hooks/useTour";
+import { getLocalDateString } from "@/lib/dateUtils";
 import "driver.js/dist/driver.css";
 
 type LogRow = { date: string; metric_id: string; value: number | null; value_text?: string | null };
@@ -28,6 +29,26 @@ type ConfigRow = {
 };
 
 const PAGE_SIZE_OPTIONS = [7, 14, 30, 90] as const;
+
+type DatePreset = "30d" | "60d" | "90d" | "1y" | "all";
+
+const DATE_PRESETS: { value: DatePreset; label: string }[] = [
+  { value: "30d", label: "30d" },
+  { value: "60d", label: "60d" },
+  { value: "90d", label: "90d" },
+  { value: "1y", label: "1y" },
+  { value: "all", label: "All" },
+];
+
+function getPresetDates(preset: DatePreset): { start: string; end: string } {
+  if (preset === "all") return { start: "", end: "" };
+  const d = new Date();
+  if (preset === "30d") d.setDate(d.getDate() - 30);
+  else if (preset === "60d") d.setDate(d.getDate() - 60);
+  else if (preset === "90d") d.setDate(d.getDate() - 90);
+  else if (preset === "1y") d.setFullYear(d.getFullYear() - 1);
+  return { start: getLocalDateString(d), end: getLocalDateString() };
+}
 
 // --- Utility functions for parsing/formatting ---
 function parseHHMM(raw: string): number | null {
@@ -403,9 +424,19 @@ export default function DailyLogPage() {
   const [pageSize, setPageSize] = useState<number>(30);
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Date range filter (optional custom range)
+  // Date range filter
+  const [datePreset, setDatePreset] = useState<DatePreset | null>("all");
+  const [showCustomDates, setShowCustomDates] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  const handleDatePreset = (preset: DatePreset) => {
+    const { start, end } = getPresetDates(preset);
+    setDatePreset(preset);
+    setStartDate(start);
+    setEndDate(end);
+  };
 
   // Editing state
   const [editingCell, setEditingCell] = useState<EditingCell>(null);
@@ -709,43 +740,53 @@ export default function DailyLogPage() {
           <Badge variant="outline" className="text-blue-600">Click cells to edit</Badge>
         </div>
 
-        <Button
-          data-tour="log-export-btn"
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-            try {
-              const headers = await getAuthHeaders();
-              const params = new URLSearchParams();
-              if (showArchived) params.set("archived", "1");
-              if (showPrivate) params.set("private", "1");
-              if (startDate) params.set("start", startDate);
-              if (endDate) params.set("end", endDate);
-              const queryStr = params.toString();
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {filteredDates.length} {filteredDates.length === 1 ? "day" : "days"}
+            {startDate || endDate ? " in range" : " total"}
+          </span>
+          <Button
+            data-tour="log-export-btn"
+            variant="outline"
+            size="sm"
+            disabled={exporting}
+            onClick={async () => {
+              setExporting(true);
+              try {
+                const headers = await getAuthHeaders();
+                const params = new URLSearchParams();
+                if (showArchived) params.set("archived", "1");
+                if (showPrivate) params.set("private", "1");
+                if (startDate) params.set("start", startDate);
+                if (endDate) params.set("end", endDate);
+                const queryStr = params.toString();
 
-              const res = await fetch(`/api/export/daily-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
-              if (!res.ok) {
-                let msg = `Export failed (${res.status})`;
-                try { const j = await res.json(); msg = j?.error || msg; } catch {}
-                throw new Error(msg);
+                const res = await fetch(`/api/export/daily-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
+                if (!res.ok) {
+                  let msg = `Export failed (${res.status})`;
+                  try { const j = await res.json(); msg = j?.error || msg; } catch {}
+                  throw new Error(msg);
+                }
+
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `daily-tracker${startDate ? `_${startDate}` : ""}${endDate ? `_to_${endDate}` : ""}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+              } catch (e: unknown) {
+                alert(e instanceof Error ? e.message : String(e));
+              } finally {
+                setExporting(false);
               }
-
-              const blob = await res.blob();
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `daily-tracker${startDate ? `_${startDate}` : ""}${endDate ? `_to_${endDate}` : ""}.csv`;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              window.URL.revokeObjectURL(url);
-            } catch (e: unknown) {
-              alert(e instanceof Error ? e.message : String(e));
-            }
-          }}
-        >
-          Export CSV
-        </Button>
+            }}
+          >
+            {exporting ? "Exporting..." : "Export CSV"}
+          </Button>
+        </div>
       </div>
 
       {/* Controls row */}
@@ -791,35 +832,64 @@ export default function DailyLogPage() {
           </select>
         </div>
 
-        {/* Date range filter */}
+        {/* Date range preset buttons */}
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">From:</label>
-          <Input
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-            className="w-36 h-9"
-          />
-          <label className="text-sm text-muted-foreground">To:</label>
-          <Input
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-            className="w-36 h-9"
-          />
-          {(startDate || endDate) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setStartDate("");
-                setEndDate("");
-              }}
-            >
-              Clear
-            </Button>
-          )}
+          <label className="text-sm text-muted-foreground">Range:</label>
+          <div className="flex">
+            {DATE_PRESETS.map((p) => (
+              <button
+                key={p.value}
+                onClick={() => handleDatePreset(p.value)}
+                className={`px-2.5 py-1.5 text-xs font-medium border transition-colors first:rounded-l-md last:rounded-r-md ${
+                  datePreset === p.value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background border-input hover:bg-accent"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowCustomDates((v) => !v)}
+            className={`h-8 px-2 border rounded-md text-xs transition-colors ${
+              showCustomDates
+                ? "bg-accent border-primary/50"
+                : "bg-background border-input hover:bg-accent"
+            }`}
+          >
+            Custom
+          </button>
         </div>
+
+        {/* Custom date inputs (collapsible) */}
+        {showCustomDates && (
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-muted-foreground">From:</label>
+            <Input
+              type="date"
+              value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setDatePreset(null); }}
+              className="w-36 h-9"
+            />
+            <label className="text-sm text-muted-foreground">To:</label>
+            <Input
+              type="date"
+              value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setDatePreset(null); }}
+              className="w-36 h-9"
+            />
+            {(startDate || endDate) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setStartDate(""); setEndDate(""); setDatePreset("all"); }}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+        )}
 
         {/* Pagination controls */}
         <div className="flex items-center gap-2 ml-auto">
