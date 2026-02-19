@@ -16,6 +16,8 @@ import CustomExerciseSheet from "./components/CustomExerciseSheet";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { DurationPicker } from "@/components/ui/mobile-pickers";
 import { getLocalDateString } from "@/lib/dateUtils";
+import { usePageTour } from "@/hooks/usePageTour";
+import "driver.js/dist/driver.css";
 
 type WorkoutType = {
   id: string;
@@ -131,6 +133,10 @@ export default function WorkoutsPage() {
 
   const bucketRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
+
+  // Tour
+  const { completed: tourCompleted, complete: tourComplete, devReset: tourDevReset } = usePageTour("workouts");
+  const tourLaunched = useRef(false);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
@@ -656,6 +662,81 @@ export default function WorkoutsPage() {
     return workoutTypes.find((t) => t.id === typeId)?.name || null;
   };
 
+  // --- Workouts Tour ---
+  const launchWorkoutsTour = useCallback(() => {
+    import("driver.js").then(({ driver }) => {
+      const driverObj = driver({
+        animate: true,
+        showProgress: true,
+        allowClose: false,
+        steps: [
+          {
+            popover: {
+              title: "Your Workout Log",
+              description:
+                "Log every session, track sets and reps, see PRs auto-detected, and review your full history. Supports strength, cardio, HIIT, and sport activities.",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='workout-entry-card']",
+            popover: {
+              title: "Logging a Workout",
+              description:
+                "Pick a date and workout type. Exercise groups appear so you can click any exercise to add it to your session. Your last session's numbers show as hints in each set — so you always know what to beat.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='exercise-library-btn']",
+            popover: {
+              title: "Exercise Library",
+              description:
+                "Set up your workout types, muscle groups, and exercises here before your first session. You can also create custom exercises and add modifiers (e.g. 'Paused', 'Wide Grip').",
+              side: "bottom",
+              align: "end",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='recent-workouts-section']",
+            popover: {
+              title: "Recent Workouts",
+              description:
+                "Your 20 most recent sessions appear here. PRs are highlighted in amber, cycle maxes in green, missed sets in red. Click Edit to load any past workout for editing.",
+              side: "top",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            popover: {
+              title: "Quick Stats & Full History",
+              description:
+                "Hover any exercise name in your history for a quick stats preview — tonnage trend, last session, and all-time PR. Use the Log page (in the nav) for your full history with date filters and an exercise-centric view.",
+              nextBtnText: "Got it!",
+              onNextClick: () => {
+                driverObj.destroy();
+                tourComplete();
+              },
+            },
+          },
+        ],
+      });
+      driverObj.drive();
+    });
+  }, [tourComplete]);
+
+  // Auto-launch on first visit when no workouts logged
+  useEffect(() => {
+    if (loading || tourCompleted || tourLaunched.current) return;
+    if (workouts.length > 0) return;
+    tourLaunched.current = true;
+    setTimeout(launchWorkoutsTour, 400);
+  }, [loading, tourCompleted, workouts.length, launchWorkoutsTour]);
+
   if (loading) {
     return (
       <main className="p-6 max-w-5xl mx-auto">
@@ -669,9 +750,20 @@ export default function WorkoutsPage() {
     <main className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-semibold">Workouts</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Workouts</h1>
+          {tourCompleted && (
+            <button
+              onClick={() => { tourDevReset(); setTimeout(launchWorkoutsTour, 50); }}
+              className="text-xs text-muted-foreground hover:text-foreground border rounded-full w-5 h-5 flex items-center justify-center"
+              title="Replay tour"
+            >
+              ?
+            </button>
+          )}
+        </div>
         <Link href="/workouts/exercises">
-          <Button variant="outline" size="sm">
+          <Button data-tour="exercise-library-btn" variant="outline" size="sm">
             Exercise Library
           </Button>
         </Link>
@@ -687,7 +779,7 @@ export default function WorkoutsPage() {
       )}
 
       {/* ── WORKOUT ENTRY AREA ── */}
-      <Card ref={formRef}>
+      <Card ref={formRef} data-tour="workout-entry-card">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base">
@@ -796,7 +888,7 @@ export default function WorkoutsPage() {
       </Card>
 
       {/* ── RECENT WORKOUTS ── */}
-      <div className="space-y-4">
+      <div data-tour="recent-workouts-section" className="space-y-4">
         <h2 className="text-lg font-medium">Recent Workouts</h2>
         {workouts.length === 0 ? (
           <Card>
@@ -1060,6 +1152,19 @@ export default function WorkoutsPage() {
         modifiers={modifiers}
         onCreated={handleCustomExerciseCreated}
       />
+
+      {process.env.NODE_ENV === "development" && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button
+            onClick={() => {
+              tourDevReset();
+              tourLaunched.current = false;
+            }}
+          >
+            Reset Tour ({tourCompleted ? "completed" : "not started"})
+          </Button>
+        </div>
+      )}
     </main>
   );
 }
