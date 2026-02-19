@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { usePageTour } from "@/hooks/usePageTour";
+import "driver.js/dist/driver.css";
 
 type StatusFilter = "all" | "to_read" | "reading" | "completed" | "dnf";
 
@@ -92,6 +94,10 @@ export default function BooksPage() {
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+
+  // Tour
+  const { completed: tourCompleted, complete: tourComplete, devReset: tourDevReset } = usePageTour("books");
+  const tourLaunched = useRef(false);
 
   // Read filters from URL params
   const statusFilter = (searchParams.get("status") || "all") as StatusFilter;
@@ -227,17 +233,103 @@ export default function BooksPage() {
 
   const genres = stats?.topGenres?.map((g) => g.genre) || [];
 
+  // --- Books Tour ---
+  const launchBooksTour = useCallback(() => {
+    import("driver.js").then(({ driver }) => {
+      const driverObj = driver({
+        animate: true,
+        showProgress: true,
+        allowClose: false,
+        steps: [
+          {
+            popover: {
+              title: "Your Reading Log",
+              description:
+                "Track every book you've read, want to read, or are currently reading — with ratings, notes, reading dates, and stats.",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='add-book-btn']",
+            popover: {
+              title: "Adding Books",
+              description:
+                "Search millions of books by title, author, or ISBN. Cover art, page count, and genre fill in automatically from Open Library — no manual entry needed.",
+              side: "bottom",
+              align: "end",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='books-tabs']",
+            popover: {
+              title: "Reading Status",
+              description:
+                "Filter by To Read, Reading, Completed, or DNF (Did Not Finish). Books marked 'Would Reread' also appear in your To Read queue when that option is on.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='books-filters']",
+            popover: {
+              title: "Sort & Filter",
+              description:
+                "Sort by rating, page count, time-to-read, or finish date. Filter by format (physical, ebook, audio), source (owned vs. library), or genre.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            popover: {
+              title: "Stats & Book Details",
+              description:
+                "Click any book to edit its status, rating (1–10), notes, and dates. The Stats page (link in the nav) shows yearly charts, genre breakdowns, and reading pace.",
+              nextBtnText: "Got it!",
+              onNextClick: () => {
+                driverObj.destroy();
+                tourComplete();
+              },
+            },
+          },
+        ],
+      });
+      driverObj.drive();
+    });
+  }, [tourComplete]);
+
+  // Auto-launch on first visit when library is empty
+  useEffect(() => {
+    if (loading || tourCompleted || tourLaunched.current) return;
+    if (books.length > 0) return;
+    tourLaunched.current = true;
+    setTimeout(launchBooksTour, 400);
+  }, [loading, tourCompleted, books.length, launchBooksTour]);
+
   return (
     <main className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold">Books</h1>
-        <Button onClick={() => setAddSheetOpen(true)}>Add Book</Button>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Books</h1>
+          {tourCompleted && (
+            <button
+              onClick={() => { tourDevReset(); setTimeout(launchBooksTour, 50); }}
+              className="text-xs text-muted-foreground hover:text-foreground border rounded-full w-5 h-5 flex items-center justify-center"
+              title="Replay tour"
+            >
+              ?
+            </button>
+          )}
+        </div>
+        <Button data-tour="add-book-btn" onClick={() => setAddSheetOpen(true)}>Add Book</Button>
       </div>
 
       {/* Stats Cards */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div data-tour="books-stats" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-card border rounded-lg p-3">
             <p className="text-xs text-muted-foreground">Total Books</p>
             <p className="text-2xl font-bold">{stats.overview.total}</p>
@@ -277,7 +369,7 @@ export default function BooksPage() {
       </div>
 
       {/* Filters Row */}
-      <div className="flex flex-wrap gap-2 items-center">
+      <div data-tour="books-filters" className="flex flex-wrap gap-2 items-center">
         <Select
           value={sortValue}
           onValueChange={(v) => {
@@ -378,7 +470,7 @@ export default function BooksPage() {
       )}
 
       {/* Status Tabs */}
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div data-tour="books-tabs" className="flex gap-2 overflow-x-auto pb-1">
         {statusTabs.map((tab) => (
           <Button
             key={tab.value}
@@ -469,6 +561,19 @@ export default function BooksPage() {
         onBookUpdated={handleBookUpdated}
         onBookDeleted={handleBookDeleted}
       />
+
+      {process.env.NODE_ENV === "development" && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <Button
+            onClick={() => {
+              tourDevReset();
+              tourLaunched.current = false;
+            }}
+          >
+            Reset Tour ({tourCompleted ? "completed" : "not started"})
+          </Button>
+        </div>
+      )}
     </main>
   );
 }
