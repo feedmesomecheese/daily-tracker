@@ -300,13 +300,14 @@ export default function BooksPage() {
     });
   }, [tourComplete]);
 
-  // Auto-launch on first visit when library is empty
+  // Auto-launch on first visit when library is empty (use stats total, not filtered books.length)
   useEffect(() => {
     if (loading || tourCompleted || tourLaunched.current) return;
-    if (books.length > 0) return;
+    if (stats === null) return; // wait for stats to confirm total count
+    if ((stats?.overview?.total ?? 1) > 0) return;
     tourLaunched.current = true;
     setTimeout(launchBooksTour, 400);
-  }, [loading, tourCompleted, books.length, launchBooksTour]);
+  }, [loading, tourCompleted, stats, launchBooksTour]);
 
   return (
     <main className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">

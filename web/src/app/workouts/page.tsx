@@ -16,7 +16,7 @@ import CustomExerciseSheet from "./components/CustomExerciseSheet";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { DurationPicker } from "@/components/ui/mobile-pickers";
 import { getLocalDateString } from "@/lib/dateUtils";
-import { usePageTour } from "@/hooks/usePageTour";
+import { useWorkoutTour } from "@/hooks/useWorkoutTour";
 import "driver.js/dist/driver.css";
 
 type WorkoutType = {
@@ -135,8 +135,16 @@ export default function WorkoutsPage() {
   const formRef = useRef<HTMLDivElement>(null);
 
   // Tour
-  const { completed: tourCompleted, complete: tourComplete, devReset: tourDevReset } = usePageTour("workouts");
+  const {
+    status: tourStatus,
+    everCompleted: tourEverCompleted,
+    loading: tourLoading,
+    seed: tourSeed,
+    cleanup: tourCleanup,
+    devReset: tourDevReset,
+  } = useWorkoutTour();
   const tourLaunched = useRef(false);
+  const [showWelcomeBanner, setShowWelcomeBanner] = useState(false);
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
@@ -663,7 +671,7 @@ export default function WorkoutsPage() {
   };
 
   // --- Workouts Tour ---
-  const launchWorkoutsTour = useCallback(() => {
+  const launchWorkoutsTour = useCallback((isReplay = false) => {
     import("driver.js").then(({ driver }) => {
       const driverObj = driver({
         animate: true,
@@ -673,8 +681,9 @@ export default function WorkoutsPage() {
           {
             popover: {
               title: "Your Workout Log",
-              description:
-                "Log every session, track sets and reps, see PRs auto-detected, and review your full history. Supports strength, cardio, HIIT, and sport activities.",
+              description: isReplay
+                ? "Log every session, track sets and reps, see PRs auto-detected, and review your full history. Supports strength, cardio, HIIT, and sport."
+                : "We've loaded some demo data so you can see all the features in action. Let's take a quick look around.",
               nextBtnText: "Next →",
             },
           },
@@ -683,7 +692,7 @@ export default function WorkoutsPage() {
             popover: {
               title: "Logging a Workout",
               description:
-                "Pick a date and workout type. Exercise groups appear so you can click any exercise to add it to your session. Your last session's numbers show as hints in each set — so you always know what to beat.",
+                "Pick a date and workout type (Push Day, Pull Day, Leg Day). Exercise groups appear so you can click any exercise to add it to your session. Your last session's numbers show as hints — so you always know what to beat.",
               side: "bottom",
               align: "start",
               nextBtnText: "Next →",
@@ -694,7 +703,7 @@ export default function WorkoutsPage() {
             popover: {
               title: "Exercise Library",
               description:
-                "Set up your workout types, muscle groups, and exercises here before your first session. You can also create custom exercises and add modifiers (e.g. 'Paused', 'Wide Grip').",
+                "Customize your workout types, muscle groups, and exercises here. Add modifiers like 'Paused' or 'Wide Grip' to track variations. The demo data includes Push/Pull/Leg splits as a starting point.",
               side: "bottom",
               align: "end",
               nextBtnText: "Next →",
@@ -705,7 +714,7 @@ export default function WorkoutsPage() {
             popover: {
               title: "Recent Workouts",
               description:
-                "Your 20 most recent sessions appear here. PRs are highlighted in amber, cycle maxes in green, missed sets in red. Click Edit to load any past workout for editing.",
+                "Your logged sessions appear here. Amber = PR, green = cycle max (planned peak), red = missed set. Click Edit to load any past session back into the entry form.",
               side: "top",
               align: "start",
               nextBtnText: "Next →",
@@ -713,13 +722,16 @@ export default function WorkoutsPage() {
           },
           {
             popover: {
-              title: "Quick Stats & Full History",
-              description:
-                "Hover any exercise name in your history for a quick stats preview — tonnage trend, last session, and all-time PR. Use the Log page (in the nav) for your full history with date filters and an exercise-centric view.",
-              nextBtnText: "Got it!",
+              title: isReplay ? "That's the Tour!" : "Ready to Start?",
+              description: isReplay
+                ? "Head to the Exercise Library to set up your exercises, then log your first workout. Hover any exercise name in your history for quick stats."
+                : "The demo data will be removed now. Head to the Exercise Library to customize your setup, then log your first real workout.",
+              nextBtnText: isReplay ? "Got it!" : "Remove Demo & Finish",
               onNextClick: () => {
                 driverObj.destroy();
-                tourComplete();
+                if (!isReplay) {
+                  tourCleanup().then(() => fetchData());
+                }
               },
             },
           },
@@ -727,15 +739,25 @@ export default function WorkoutsPage() {
       });
       driverObj.drive();
     });
-  }, [tourComplete]);
+  }, [tourCleanup, fetchData]);
 
-  // Auto-launch on first visit when no workouts logged
+  // Show welcome banner for brand-new empty accounts
   useEffect(() => {
-    if (loading || tourCompleted || tourLaunched.current) return;
-    if (workouts.length > 0) return;
+    if (loading || tourLoading) return;
+    if (tourStatus !== "idle" || tourEverCompleted) return;
+    if (workouts.length > 0 || exercises.length > 0 || workoutTypes.length > 0) return;
+    setShowWelcomeBanner(true);
+  }, [loading, tourLoading, tourStatus, tourEverCompleted, workouts.length, exercises.length, workoutTypes.length]);
+
+  // Auto-resume tour when status is "seeded" (page was reloaded mid-tour)
+  useEffect(() => {
+    if (loading || tourLaunched.current) return;
+    if (tourStatus !== "seeded") return;
+    if (workouts.length === 0) return; // wait for demo data to load
     tourLaunched.current = true;
-    setTimeout(launchWorkoutsTour, 400);
-  }, [loading, tourCompleted, workouts.length, launchWorkoutsTour]);
+    setShowWelcomeBanner(false);
+    setTimeout(() => launchWorkoutsTour(false), 400);
+  }, [loading, tourStatus, workouts.length, launchWorkoutsTour]);
 
   if (loading) {
     return (
@@ -752,9 +774,9 @@ export default function WorkoutsPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold">Workouts</h1>
-          {tourCompleted && (
+          {tourEverCompleted && (
             <button
-              onClick={() => { tourDevReset(); setTimeout(launchWorkoutsTour, 50); }}
+              onClick={() => { tourLaunched.current = false; launchWorkoutsTour(true); }}
               className="text-xs text-muted-foreground hover:text-foreground border rounded-full w-5 h-5 flex items-center justify-center"
               title="Replay tour"
             >
@@ -768,6 +790,41 @@ export default function WorkoutsPage() {
           </Button>
         </Link>
       </div>
+
+      {/* Welcome Banner — shown to new users with no data */}
+      {showWelcomeBanner && (
+        <div className="bg-primary/5 border border-primary/20 rounded-xl p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex-1">
+            <p className="font-semibold text-base">Welcome to Workouts!</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              Take a quick tour to see how workout types, exercise groups, and modifiers work — with demo data loaded so everything is visible.
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
+            <Button
+              size="sm"
+              disabled={tourLoading}
+              onClick={async () => {
+                const ok = await tourSeed();
+                if (!ok) return;
+                await fetchData();
+                tourLaunched.current = true;
+                setShowWelcomeBanner(false);
+                setTimeout(() => launchWorkoutsTour(false), 400);
+              }}
+            >
+              {tourLoading ? "Loading…" : "Take a Tour"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowWelcomeBanner(false)}
+            >
+              Skip
+            </Button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="bg-destructive/10 text-destructive p-3 rounded-lg text-sm">
@@ -1156,12 +1213,14 @@ export default function WorkoutsPage() {
       {process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 right-4 z-50">
           <Button
-            onClick={() => {
-              tourDevReset();
+            onClick={async () => {
+              await tourDevReset();
               tourLaunched.current = false;
+              setShowWelcomeBanner(false);
+              await fetchData();
             }}
           >
-            Reset Tour ({tourCompleted ? "completed" : "not started"})
+            Reset Tour ({tourStatus})
           </Button>
         </div>
       )}
