@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,8 +55,6 @@ type Exercise = {
 };
 
 export default function ExerciseLibraryPage() {
-  const router = useRouter();
-
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
@@ -575,16 +572,16 @@ export default function ExerciseLibraryPage() {
           },
           {
             popover: {
-              title: isReplay ? "That's the Library!" : "Ready to Set Up",
+              title: isReplay ? "That's the Library!" : "You're Ready to Start",
               description: isReplay
                 ? "Groups → Exercises → Types is the recommended setup order. Use the search box to quickly find any exercise."
-                : "The demo data has been removed. Create your groups first, add exercises to them, then build your workout types. Head back to Workouts when ready.",
-              nextBtnText: isReplay ? "Got it!" : "Remove Demo & Go to Workouts →",
+                : "The demo data has been removed. Start by creating your Groups, then add Exercises to them, then build your Workout Types.",
+              nextBtnText: isReplay ? "Got it!" : "Remove Demo & Start Setup",
               onNextClick: () => {
                 driverObj.destroy();
                 tourComplete();
                 if (!isReplay) {
-                  workoutTourCleanup().then(() => router.push("/workouts"));
+                  workoutTourCleanup();
                 }
               },
             },
@@ -593,7 +590,7 @@ export default function ExerciseLibraryPage() {
       });
       driverObj.drive();
     });
-  }, [tourComplete, workoutTourCleanup, router]);
+  }, [tourComplete, workoutTourCleanup]);
 
   // Auto-launch when arriving from the workouts tour (status === "seeded")
   useEffect(() => {
