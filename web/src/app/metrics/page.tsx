@@ -38,6 +38,7 @@ import { GoalConfigSheet } from "@/components/goal-config-sheet";
 import type { Goal } from "@/lib/goals";
 import { useTour } from "@/hooks/useTour";
 import { buttonVariants } from "@/components/ui/button";
+import { Hint } from "@/components/ui/hint";
 import "driver.js/dist/driver.css";
 
 // Formula help data
@@ -1683,8 +1684,8 @@ export default function MetricsPage() {
                     <tr className="text-muted-foreground text-xs">
                       <th className="w-8"></th>
                       <th className="text-left py-1 px-2">Group</th>
-                      <th className="text-right py-1 px-2">Metrics</th>
-                      <th className="text-right py-1 px-2">Order</th>
+                      <th className="text-right py-1 px-2"><Hint text="Number of active metrics in this group">Metrics</Hint></th>
+                      <th className="text-right py-1 px-2"><Hint text="Drag rows to set the display order on the Today page">Order</Hint></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1728,39 +1729,39 @@ export default function MetricsPage() {
                       <th className="text-left py-2 px-1 sticky left-0 z-20 bg-muted border-r">
                         <div className="flex items-center gap-1">
                           <span className="w-6"></span>
-                          <span className="w-[120px]">ID</span>
+                          <span className="w-[120px]"><Hint text="Unique identifier used in formulas and exports. Cannot be changed after creation.">ID</Hint></span>
                         </div>
                       </th>
                       <th className="text-left py-2 px-2 min-w-[140px]">Name</th>
-                      <th className="text-left py-2 px-2 min-w-[120px]">Group</th>
-                      <th className="text-center py-2 px-2 min-w-[100px]">Order</th>
-                      <th className="text-center py-2 px-2 min-w-[120px]">Type</th>
-                      <th className="text-center py-2 px-2 w-[40px]" title="Calculated" data-tour="calc-col">Calc</th>
-                      <th className="text-left py-2 px-2 min-w-[180px]">Formula</th>
+                      <th className="text-left py-2 px-2 min-w-[120px]"><Hint text="Metrics are grouped together on the Today page. Drag group rows above to reorder groups.">Group</Hint></th>
+                      <th className="text-center py-2 px-2 min-w-[100px]"><Hint text="Display order within the group. Drag metric rows to reorder.">Order</Hint></th>
+                      <th className="text-center py-2 px-2 min-w-[120px]"><Hint text="Input type: checkbox, number, count (integer), score (rated scale), text, time (duration h:mm), or hhmm (time of day)">Type</Hint></th>
+                      <th className="text-center py-2 px-2 w-[40px]" data-tour="calc-col"><Hint text="Calculated — value is derived from a formula using other metrics rather than entered manually">Calc</Hint></th>
+                      <th className="text-left py-2 px-2 min-w-[180px]"><Hint text="Formula for calculated metrics. Reference other metrics by their ID. Click the formula help button above for available functions.">Formula</Hint></th>
                       {showAdvanced && (
                         <>
-                          <th className="text-center py-2 px-2 min-w-[90px]">Default</th>
-                          <th className="text-center py-2 px-2 min-w-[90px]">Min</th>
-                          <th className="text-center py-2 px-2 min-w-[90px]">Max</th>
-                          <th className="text-center py-2 px-2 min-w-[110px]">Disallow</th>
+                          <th className="text-center py-2 px-2 min-w-[90px]"><Hint text="Default value pre-filled on the Today page. Leave blank for no default.">Default</Hint></th>
+                          <th className="text-center py-2 px-2 min-w-[90px]"><Hint text="Minimum allowed value. Entry is rejected if below this.">Min</Hint></th>
+                          <th className="text-center py-2 px-2 min-w-[90px]"><Hint text="Maximum allowed value. Entry is rejected if above this.">Max</Hint></th>
+                          <th className="text-center py-2 px-2 min-w-[110px]"><Hint text="Comma-separated list of values that are not permitted (e.g. 0,1 to block those specific entries).">Disallow</Hint></th>
                         </>
                       )}
-                      <th className="text-center py-2 px-2 w-[40px]" title="Private">Priv</th>
-                      <th className="text-center py-2 px-2 w-[40px]" title="Required">Req</th>
-                      <th className="text-center py-2 px-2 w-[40px]" title="Active">Act</th>
+                      <th className="text-center py-2 px-2 w-[40px]"><Hint text="Private — hidden from CSV exports and any shared views">Priv</Hint></th>
+                      <th className="text-center py-2 px-2 w-[40px]"><Hint text="Required — you'll be reminded if this metric is missing when you save the day">Req</Hint></th>
+                      <th className="text-center py-2 px-2 w-[40px]"><Hint text="Active — inactive metrics are hidden from the Today page but all historical data is preserved">Act</Hint></th>
                       {showAdvanced && (
                         <>
-                          <th className="text-center py-2 px-2 w-[50px]" title="Show Moving Average">MA</th>
-                          <th className="text-center py-2 px-2 min-w-[120px]">MA Periods</th>
-                          <th className="text-center py-2 px-2 min-w-[140px]">Start Date</th>
-                          <th className="text-center py-2 px-2 min-w-[180px]">Parent</th>
-                          <th className="text-center py-2 px-2 min-w-[150px]">Presets</th>
-                          <th className="text-center py-2 px-2 w-[50px]" title="Hide trend indicator on main page">No Trend</th>
-                          <th className="text-center py-2 px-2 w-[50px]" title="Lower values are better (green when down)">Low Good</th>
-                          <th className="text-center py-2 px-2 w-[50px]" title="Show streak indicator">Streak</th>
-                          <th className="text-center py-2 px-2 w-[80px]" title="Direction: Increase (positive streaks good), Decrease (negative streaks good), Neutral (no flame)">Direction</th>
-                          <th className="text-center py-2 px-2 w-[50px]" title="Track all-time streak (no 365-day limit)">Lifetime</th>
-                          <th className="text-center py-2 px-2 w-[60px]" title="Pre-log days to add to streak">Seed</th>
+                          <th className="text-center py-2 px-2 w-[50px]"><Hint text="Moving Average — shows a rolling average line on this metric's chart">MA</Hint></th>
+                          <th className="text-center py-2 px-2 min-w-[120px]"><Hint text="Number of days in the moving average window (e.g. 7 for a weekly average)">MA Periods</Hint></th>
+                          <th className="text-center py-2 px-2 min-w-[140px]"><Hint text="Only show this metric on the Today page from this date onwards. Useful for metrics you started tracking mid-way.">Start Date</Hint></th>
+                          <th className="text-center py-2 px-2 min-w-[180px]"><Hint text="Link to a parent metric. Used to group related metrics together in the stats view.">Parent</Hint></th>
+                          <th className="text-center py-2 px-2 min-w-[150px]"><Hint text="Comma-separated quick-pick values shown as buttons on the Today page (e.g. 15,30,60 for reading minutes).">Presets</Hint></th>
+                          <th className="text-center py-2 px-2 w-[50px]"><Hint text="No Trend — hides the trend arrow (↑↓) next to this metric on the Today page">No Trend</Hint></th>
+                          <th className="text-center py-2 px-2 w-[50px]"><Hint text="Low Good — lower values are better. Reverses trend arrow colors so down = green (e.g. for weight, screen time, drinks).">Low Good</Hint></th>
+                          <th className="text-center py-2 px-2 w-[50px]"><Hint text="Show a streak counter (🔥) on the Today page for this metric">Streak</Hint></th>
+                          <th className="text-center py-2 px-2 w-[80px]"><Hint text="Increase: logging = streak. Decrease: not logging = streak. Neutral: no streak. Affects streak direction and color.">Direction</Hint></th>
+                          <th className="text-center py-2 px-2 w-[50px]"><Hint text="Lifetime — tracks an all-time streak with no 365-day limit (default cap is 1 year)">Lifetime</Hint></th>
+                          <th className="text-center py-2 px-2 w-[60px]"><Hint text="Seed days — pre-log days added to the streak when you first start tracking. Useful for metrics you've been doing a while.">Seed</Hint></th>
                         </>
                       )}
                       <th className="text-center py-2 px-2 w-[110px]">Actions</th>
