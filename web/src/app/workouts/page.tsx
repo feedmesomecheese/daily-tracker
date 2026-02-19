@@ -722,15 +722,15 @@ export default function WorkoutsPage() {
           },
           {
             popover: {
-              title: isReplay ? "That's the Tour!" : "Ready to Start?",
+              title: isReplay ? "That's the Tour!" : "One More Stop →",
               description: isReplay
                 ? "Head to the Exercise Library to set up your exercises, then log your first workout. Hover any exercise name in your history for quick stats."
-                : "The demo data will be removed now. Head to the Exercise Library to customize your setup, then log your first real workout.",
-              nextBtnText: isReplay ? "Got it!" : "Remove Demo & Finish",
+                : "Next we'll walk through the Exercise Library — that's where you'll set up your own groups, exercises, and types before your first real session.",
+              nextBtnText: isReplay ? "Got it!" : "Next: Exercise Library →",
               onNextClick: () => {
                 driverObj.destroy();
                 if (!isReplay) {
-                  tourCleanup().then(() => fetchData());
+                  router.push("/workouts/exercises");
                 }
               },
             },

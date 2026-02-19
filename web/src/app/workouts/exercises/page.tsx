@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useWorkoutTour } from "@/hooks/useWorkoutTour";
+import { usePageTour } from "@/hooks/usePageTour";
+import "driver.js/dist/driver.css";
 
 type WorkoutType = {
   id: string;
@@ -52,6 +56,8 @@ type Exercise = {
 };
 
 export default function ExerciseLibraryPage() {
+  const router = useRouter();
+
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
@@ -98,6 +104,16 @@ export default function ExerciseLibraryPage() {
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [showArchived, setShowArchived] = useState(false);
   const [activeTab, setActiveTab] = useState("exercises");
+  const [exerciseSearch, setExerciseSearch] = useState("");
+
+  // Tour
+  const {
+    status: workoutTourStatus,
+    everCompleted: workoutTourEverCompleted,
+    cleanup: workoutTourCleanup,
+  } = useWorkoutTour();
+  const { completed: tourCompleted, complete: tourComplete, devReset: tourDevReset } = usePageTour("workouts-exercises");
+  const tourLaunched = useRef(false);
 
   // Import state
   const [typesCsv, setTypesCsv] = useState("");
@@ -488,6 +504,7 @@ export default function ExerciseLibraryPage() {
   const filteredExercises = exercises.filter((ex) => {
     if (!showArchived && ex.is_archived) return false;
     if (selectedGroup !== "all" && !ex.group_ids.includes(selectedGroup)) return false;
+    if (exerciseSearch && !ex.name.toLowerCase().includes(exerciseSearch.toLowerCase())) return false;
     return true;
   });
 
@@ -495,6 +512,96 @@ export default function ExerciseLibraryPage() {
 
   const getTypesForGroup = (groupId: string) =>
     workoutTypes.filter((t) => t.group_ids.includes(groupId)).map((t) => t.name);
+
+  // --- Exercises Library Tour ---
+  const launchExercisesTour = useCallback((isReplay = false) => {
+    import("driver.js").then(({ driver }) => {
+      const driverObj = driver({
+        animate: true,
+        showProgress: true,
+        allowClose: false,
+        steps: [
+          {
+            popover: {
+              title: "Your Exercise Library",
+              description:
+                "The four tabs here connect to each other in a specific way. Let's cover the setup order so your first session goes smoothly.",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='ex-groups-tab']",
+            popover: {
+              title: "1. Start with Groups",
+              description:
+                "Groups are the exercise panels you see when logging — Chest, Back, Legs, etc. Each group has an input type: Strength (sets/reps/weight), HIIT, Cardio, or Sport. Create your groups first.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='ex-types-tab']",
+            popover: {
+              title: "2. Then Workout Types",
+              description:
+                "Types bundle groups into a named session plan — 'Push Day' shows Chest, Shoulders, and Arms. Selecting a type when logging filters which groups and exercises appear.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='ex-modifiers-tab']",
+            popover: {
+              title: "Modifiers (Optional)",
+              description:
+                "Modifiers are adjective prefixes: 'Paused Bench Press', 'Wide Grip Pull-up'. Each exercise opts in to which modifiers apply. Modifier variations stay linked to the base exercise in your stats.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            element: "[data-tour='ex-exercises-tab']",
+            popover: {
+              title: "3. Finally, Exercises",
+              description:
+                "Exercises live inside groups and can have modifiers. You can also link similar exercises (e.g. 'Raised Heel Squat' linked to 'Squat') to combine them in your stats.",
+              side: "bottom",
+              align: "start",
+              nextBtnText: "Next →",
+            },
+          },
+          {
+            popover: {
+              title: isReplay ? "That's the Library!" : "Ready to Set Up",
+              description: isReplay
+                ? "Groups → Exercises → Types is the recommended setup order. Use the search box to quickly find any exercise."
+                : "The demo data has been removed. Create your groups first, add exercises to them, then build your workout types. Head back to Workouts when ready.",
+              nextBtnText: isReplay ? "Got it!" : "Remove Demo & Go to Workouts →",
+              onNextClick: () => {
+                driverObj.destroy();
+                tourComplete();
+                if (!isReplay) {
+                  workoutTourCleanup().then(() => router.push("/workouts"));
+                }
+              },
+            },
+          },
+        ],
+      });
+      driverObj.drive();
+    });
+  }, [tourComplete, workoutTourCleanup, router]);
+
+  // Auto-launch when arriving from the workouts tour (status === "seeded")
+  useEffect(() => {
+    if (loading || tourLaunched.current || tourCompleted) return;
+    if (workoutTourStatus !== "seeded") return;
+    tourLaunched.current = true;
+    setTimeout(() => launchExercisesTour(false), 400);
+  }, [loading, workoutTourStatus, tourCompleted, launchExercisesTour]);
 
   if (loading) {
     return (
@@ -508,7 +615,18 @@ export default function ExerciseLibraryPage() {
   return (
     <main className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Exercise Library</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">Exercise Library</h1>
+          {(tourCompleted || workoutTourEverCompleted) && (
+            <button
+              onClick={() => { tourDevReset(); tourLaunched.current = false; launchExercisesTour(true); }}
+              className="text-xs text-muted-foreground hover:text-foreground border rounded-full w-5 h-5 flex items-center justify-center"
+              title="Replay tour"
+            >
+              ?
+            </button>
+          )}
+        </div>
         <Link href="/workouts">
           <Button variant="outline" size="sm">Log Workout</Button>
         </Link>
@@ -525,10 +643,10 @@ export default function ExerciseLibraryPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="exercises">Exercises</TabsTrigger>
-          <TabsTrigger value="types">Types</TabsTrigger>
-          <TabsTrigger value="groups">Groups</TabsTrigger>
-          <TabsTrigger value="modifiers">Modifiers</TabsTrigger>
+          <TabsTrigger data-tour="ex-exercises-tab" value="exercises">Exercises</TabsTrigger>
+          <TabsTrigger data-tour="ex-types-tab" value="types">Types</TabsTrigger>
+          <TabsTrigger data-tour="ex-groups-tab" value="groups">Groups</TabsTrigger>
+          <TabsTrigger data-tour="ex-modifiers-tab" value="modifiers">Modifiers</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
         </TabsList>
 
@@ -615,13 +733,20 @@ export default function ExerciseLibraryPage() {
 
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <CardTitle className="text-base">
                   Exercises ({filteredExercises.length})
                 </CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="search"
+                    placeholder="Search exercises…"
+                    value={exerciseSearch}
+                    onChange={(e) => setExerciseSearch(e.target.value)}
+                    className="h-8 w-[160px] px-3 border rounded-md text-sm"
+                  />
                   <Select value={selectedGroup} onValueChange={setSelectedGroup}>
-                    <SelectTrigger className="w-[150px]">
+                    <SelectTrigger className="w-[140px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
