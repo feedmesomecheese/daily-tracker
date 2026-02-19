@@ -581,7 +581,7 @@ export default function ExerciseLibraryPage() {
                 driverObj.destroy();
                 tourComplete();
                 if (!isReplay) {
-                  workoutTourCleanup();
+                  workoutTourCleanup().then(() => fetchData());
                 }
               },
             },
@@ -590,7 +590,7 @@ export default function ExerciseLibraryPage() {
       });
       driverObj.drive();
     });
-  }, [tourComplete, workoutTourCleanup]);
+  }, [tourComplete, workoutTourCleanup, fetchData]);
 
   // Auto-launch when arriving from the workouts tour (status === "seeded").
   // Intentionally ignores tourCompleted — if the workout tour is seeded we always want

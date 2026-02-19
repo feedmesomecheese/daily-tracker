@@ -714,7 +714,7 @@ export default function WorkoutsPage() {
             popover: {
               title: "Recent Workouts",
               description:
-                "Your logged sessions appear here. Amber = PR, green = cycle max (planned peak), red = missed set. Click Edit to load any past session back into the entry form.",
+                "Your logged sessions appear here. While entering a set, press P (or Ctrl+P) to manually flag it as a PR — highlighted amber. Green = cycle max (your planned training peak), red = missed set. Click Edit to load any past session back into the form.",
               side: "top",
               align: "start",
               nextBtnText: "Next →",
