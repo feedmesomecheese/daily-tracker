@@ -88,8 +88,7 @@ export default function OuraIntegrationPage() {
       if (!res.ok) {
         alert(data.error || "Sync failed");
       } else {
-        console.log("Oura sync result:", JSON.stringify(data, null, 2));
-        alert(`Synced ${data.synced} records\n\nCheck browser console (F12) for raw Oura data.`);
+        alert(`Synced ${data.synced} records\n\n${JSON.stringify(data.details, null, 2)}`);
         fetchConfig();
       }
     } catch (e) {
