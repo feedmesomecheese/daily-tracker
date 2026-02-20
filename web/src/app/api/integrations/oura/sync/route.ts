@@ -189,7 +189,7 @@ export async function POST(req: Request) {
       const data = await res.json();
       let items: Record<string, unknown>[] = data.data || [];
 
-      details[dataType] = { fetched: items.length };
+      details[dataType] = { fetched: items.length, sample: items[0] ?? null };
 
       // For endpoints that return multiple records per day (e.g. sleep sessions),
       // keep only the record with the highest value of dedupByDay per day.
