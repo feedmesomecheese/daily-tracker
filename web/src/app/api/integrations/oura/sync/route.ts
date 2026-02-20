@@ -7,23 +7,32 @@ const OURA_API_BASE = "https://api.ouraring.com/v2/usercollection";
 const OURA_TOKEN_URL = "https://api.ouraring.com/oauth/token";
 
 // Oura data types and their corresponding metrics
-const OURA_DATA_TYPES = {
+// Sleep durations, RHR, and HRV come from /sleep (actual measured values).
+// /daily_sleep contributors are 0-100 scores, not durations.
+// /daily_readiness contributors.resting_heart_rate and hrv_balance are also scores, not real values.
+// /sleep can return multiple sessions per day (naps + main sleep); dedupByDay picks the longest.
+const OURA_DATA_TYPES: Record<string, {
+  endpoint: string;
+  dedupByDay?: string;
+  metrics: Record<string, { field: string; transform: string | null }>;
+}> = {
   sleep: {
-    endpoint: "/daily_sleep",
+    endpoint: "/sleep",
+    dedupByDay: "total_sleep_duration", // take the longest session per day
     metrics: {
-      sleep_duration: { field: "contributors.total_sleep", transform: "seconds_to_minutes" },
-      sleep_efficiency: { field: "score", transform: null },
-      deep_sleep: { field: "contributors.deep_sleep", transform: "seconds_to_minutes" },
-      rem_sleep: { field: "contributors.rem_sleep", transform: "seconds_to_minutes" },
-      light_sleep: { field: "contributors.total_sleep", transform: "calc_light_sleep" },
+      sleep_duration: { field: "total_sleep_duration", transform: "seconds_to_minutes" },
+      sleep_efficiency: { field: "efficiency", transform: null },
+      deep_sleep: { field: "deep_sleep_duration", transform: "seconds_to_minutes" },
+      rem_sleep: { field: "rem_sleep_duration", transform: "seconds_to_minutes" },
+      light_sleep: { field: "light_sleep_duration", transform: "seconds_to_minutes" },
+      resting_heart_rate: { field: "lowest_heart_rate", transform: null },
+      hrv_average: { field: "average_hrv", transform: null },
     },
   },
   readiness: {
     endpoint: "/daily_readiness",
     metrics: {
       readiness_score: { field: "score", transform: null },
-      resting_heart_rate: { field: "contributors.resting_heart_rate", transform: null },
-      hrv_average: { field: "contributors.hrv_balance", transform: null },
     },
   },
   activity: {
@@ -178,9 +187,24 @@ export async function POST(req: Request) {
       }
 
       const data = await res.json();
-      const items = data.data || [];
+      let items: Record<string, unknown>[] = data.data || [];
 
       details[dataType] = { fetched: items.length };
+
+      // For endpoints that return multiple records per day (e.g. sleep sessions),
+      // keep only the record with the highest value of dedupByDay per day.
+      if (config.dedupByDay) {
+        const field = config.dedupByDay;
+        const byDay = new Map<string, Record<string, unknown>>();
+        for (const item of items) {
+          const day = item.day as string;
+          const existing = byDay.get(day);
+          if (!existing || ((item[field] as number) ?? 0) > ((existing[field] as number) ?? 0)) {
+            byDay.set(day, item);
+          }
+        }
+        items = Array.from(byDay.values());
+      }
 
       for (const item of items) {
         const date = item.day;
