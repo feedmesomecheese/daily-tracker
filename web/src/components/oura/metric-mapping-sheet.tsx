@@ -61,12 +61,14 @@ export function MetricMappingSheet({
     }));
   };
 
+  const NONE = "__none__";
+
   const handleMetricChange = (ouraMetricId: string, metricId: string) => {
     setLocalMapping((prev) => ({
       ...prev,
       [ouraMetricId]: {
         enabled: prev[ouraMetricId]?.enabled ?? true,
-        metric_id: metricId,
+        metric_id: metricId === NONE ? "" : metricId,
       },
     }));
   };
@@ -125,7 +127,7 @@ export function MetricMappingSheet({
                         <div className="text-xs text-muted-foreground">{ouraMetric.unit}</div>
                       </div>
                       <Select
-                        value={currentMapping.metric_id}
+                        value={currentMapping.metric_id || NONE}
                         onValueChange={(v) => handleMetricChange(ouraMetric.id, v)}
                         disabled={!currentMapping.enabled}
                       >
@@ -133,7 +135,7 @@ export function MetricMappingSheet({
                           <SelectValue placeholder="Select metric" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">-- Create new --</SelectItem>
+                          <SelectItem value={NONE}>— not mapped —</SelectItem>
                           {availableMetrics.map((m) => (
                             <SelectItem key={m.metric_id} value={m.metric_id}>
                               {m.metric_name}
