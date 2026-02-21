@@ -217,18 +217,19 @@ export async function POST(req: Request) {
           if (!targetMetricId) continue;
 
           // Get value from nested path
-          let value = item;
+          let value: unknown = item;
           for (const key of metricConfig.field.split(".")) {
-            value = value?.[key];
+            value = (value as Record<string, unknown>)?.[key];
           }
 
           if (value == null) continue;
 
           // Apply transform
+          let numValue = value as number;
           if (metricConfig.transform === "seconds_to_minutes") {
-            value = Math.round(value / 60);
+            numValue = Math.round(numValue / 60);
           } else if (metricConfig.transform === "seconds_to_hours") {
-            value = Math.round((value / 3600) * 10) / 10;
+            numValue = Math.round((numValue / 3600) * 10) / 10;
           }
 
           // Check if we should overwrite
@@ -252,7 +253,7 @@ export async function POST(req: Request) {
                 owner_id: user.id,
                 date,
                 metric_id: targetMetricId,
-                value,
+                value: numValue,
               },
               { onConflict: "owner_id,date,metric_id" }
             );
