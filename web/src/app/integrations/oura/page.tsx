@@ -88,7 +88,7 @@ export default function OuraIntegrationPage() {
       if (!res.ok) {
         alert(data.error || "Sync failed");
       } else {
-        alert(`Synced ${data.synced} records\n\n${JSON.stringify(data.details, null, 2)}`);
+        alert(`Synced ${data.synced} records`);
         fetchConfig();
       }
     } catch (e) {
