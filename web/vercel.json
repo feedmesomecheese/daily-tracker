@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/check-notifications",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/oura-sync",
+      "schedule": "0 * * * *"
     }
   ]
 }
