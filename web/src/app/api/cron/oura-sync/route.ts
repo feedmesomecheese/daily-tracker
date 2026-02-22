@@ -20,16 +20,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const tz = process.env.USER_TIMEZONE || "America/New_York";
+  const defaultTz = process.env.USER_TIMEZONE || "America/New_York";
   const now = new Date();
-
-  // Get current local hour (0–23). % 24 handles midnight edge case in some environments.
-  const currentHour =
-    parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(now), 10) % 24;
-  const today = getLocalDateString(now, tz);
-  const yesterday = getLocalDateString(new Date(now.getTime() - 86_400_000), tz);
-
-  console.log(`[CRON] oura-sync: ${today}, hour=${currentHour} (${tz})`);
+  console.log(`[CRON] oura-sync: UTC=${now.toISOString()}`);
 
   const { data: integrations, error } = await supabaseAdmin
     .from("integrations")
@@ -48,6 +41,12 @@ export async function GET(req: Request) {
     const syncConfig = integration.sync_config || {};
 
     if (!syncConfig.auto_sync) { skipped++; continue; }
+
+    const tz: string = syncConfig.timezone || defaultTz;
+    const currentHour =
+      parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(now), 10) % 24;
+    const today = getLocalDateString(now, tz);
+    const yesterday = getLocalDateString(new Date(now.getTime() - 86_400_000), tz);
 
     const syncHour: number = syncConfig.auto_sync_hour ?? 7;
     if (currentHour !== syncHour) { skipped++; continue; }

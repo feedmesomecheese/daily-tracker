@@ -134,6 +134,7 @@ export default function OuraIntegrationPage() {
       const syncConfig = {
         ...config?.integration?.sync_config,
         [key]: value,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       };
 
       await fetch("/api/integrations/oura/config", {
