@@ -173,7 +173,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                                 })}
                                 {workout.activity_sessions?.map((a) => (
                                   <tr key={`act-${a.id}`}>
-                                    <td className="text-right font-medium pr-3 py-1 align-top w-32 sm:w-48">
+                                    <td className="text-right font-medium pr-3 py-1 align-top w-2/5">
                                       {a.activity_type}
                                     </td>
                                     <td className="w-px bg-border py-1" />
