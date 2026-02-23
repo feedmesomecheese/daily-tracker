@@ -358,12 +358,17 @@ type DurationPickerFieldProps = {
   className?: string;
 };
 
+// Repeat count for wrap-around columns — gives plenty of room to scroll either direction
+const WRAP_REPS = 10;
+const WRAP_HALF = WRAP_REPS / 2; // start in the middle repetition
+
 export function DurationPicker({ value, onChange, maxHours = 23, className }: DurationPickerFieldProps) {
   const [open, setOpen] = useState(false);
 
   const hours = useMemo(() => Array.from({ length: maxHours + 1 }, (_, i) => i), [maxHours]);
-  const minuteOptions = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
-  const secondOptions = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
+  // Minutes and seconds use a large repeated list so the drum wraps freely in both directions
+  const minuteOptions = useMemo(() => Array.from({ length: 60 * WRAP_REPS }, (_, i) => i), []);
+  const secondOptions = useMemo(() => Array.from({ length: 60 * WRAP_REPS }, (_, i) => i), []);
 
   const totalSeconds = value != null ? Math.round(value * 60) : 0;
   const currentHour = value != null ? Math.min(Math.floor(totalSeconds / 3600), maxHours) : 0;
@@ -372,27 +377,27 @@ export function DurationPicker({ value, onChange, maxHours = 23, className }: Du
 
   const [pickerValue, setPickerValue] = useState({
     hour: currentHour,
-    minute: currentMinute,
-    second: currentSecond,
+    minute: 60 * WRAP_HALF + currentMinute,
+    second: 60 * WRAP_HALF + currentSecond,
   });
 
-  // Reset to current value when opening
+  // Reset to current value when opening (always land in the middle repetition)
   const handleOpen = () => {
     setPickerValue({
       hour: currentHour,
-      minute: currentMinute,
-      second: currentSecond,
+      minute: 60 * WRAP_HALF + currentMinute,
+      second: 60 * WRAP_HALF + currentSecond,
     });
     setOpen(true);
   };
 
   const handleConfirm = () => {
-    const decimalMinutes = pickerValue.hour * 60 + pickerValue.minute + pickerValue.second / 60;
+    const decimalMinutes = pickerValue.hour * 60 + (pickerValue.minute % 60) + (pickerValue.second % 60) / 60;
     onChange(decimalMinutes);
     setOpen(false);
   };
 
-  const displayTotal = pickerValue.hour * 3600 + pickerValue.minute * 60 + pickerValue.second;
+  const displayTotal = pickerValue.hour * 3600 + (pickerValue.minute % 60) * 60 + (pickerValue.second % 60);
 
   const formatDisplay = (val: number | null) => {
     if (val == null) return "Set duration";
@@ -437,22 +442,22 @@ export function DurationPicker({ value, onChange, maxHours = 23, className }: Du
                   ))}
                 </Picker.Column>
                 <Picker.Column name="minute">
-                  {minuteOptions.map((m) => (
-                    <Picker.Item key={m} value={m}>
+                  {minuteOptions.map((i) => (
+                    <Picker.Item key={i} value={i}>
                       {({ selected }) => (
                         <div className={`${pickerItemClass} ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
-                          {m}m
+                          {i % 60}m
                         </div>
                       )}
                     </Picker.Item>
                   ))}
                 </Picker.Column>
                 <Picker.Column name="second">
-                  {secondOptions.map((s) => (
-                    <Picker.Item key={s} value={s}>
+                  {secondOptions.map((i) => (
+                    <Picker.Item key={i} value={i}>
                       {({ selected }) => (
                         <div className={`${pickerItemClass} ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
-                          {s}s
+                          {i % 60}s
                         </div>
                       )}
                     </Picker.Item>
