@@ -147,50 +147,48 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                       <td colSpan={7} className="p-0">
                         <div className="px-4 py-2 bg-muted/20">
                           {exCount > 0 && (
-                            <table className="w-full text-sm border-collapse table-fixed">
-                              <tbody>
-                                {workout.exercises?.map((ex, ei) => {
-                                  const colorMap = computeSupersetColorMap(
-                                    workout.exercises!
-                                  );
-                                  const ssIdx =
-                                    ex.superset_group != null
-                                      ? colorMap.get(ex.superset_group)
-                                      : undefined;
-                                  const ssStyle =
-                                    ssIdx != null
-                                      ? SUPERSET_COLORS[ssIdx]
-                                      : null;
+                            <div>
+                              {workout.exercises?.map((ex, ei) => {
+                                const colorMap = computeSupersetColorMap(
+                                  workout.exercises!
+                                );
+                                const ssIdx =
+                                  ex.superset_group != null
+                                    ? colorMap.get(ex.superset_group)
+                                    : undefined;
+                                const ssStyle =
+                                  ssIdx != null
+                                    ? SUPERSET_COLORS[ssIdx]
+                                    : null;
 
-                                  return (
-                                    <ExerciseDetailRow
-                                      key={`ex-${ei}`}
-                                      exercise={ex}
-                                      supersetStyle={ssStyle}
-                                      onExerciseClick={handleExerciseClick}
-                                    />
-                                  );
-                                })}
-                                {workout.activity_sessions?.map((a) => (
-                                  <tr key={`act-${a.id}`}>
-                                    <td className="text-right font-medium pr-3 py-1 align-top w-2/5">
-                                      {a.activity_type}
-                                    </td>
-                                    <td className="w-px bg-border py-1" />
-                                    <td className="pl-3 py-1 text-muted-foreground">
-                                      {a.duration_minutes && (
-                                        <span>{formatDuration(a.duration_minutes)}</span>
-                                      )}
-                                      {a.notes && (
-                                        <span className="italic ml-2 text-xs">
-                                          {a.notes}
-                                        </span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                                return (
+                                  <ExerciseDetailRow
+                                    key={`ex-${ei}`}
+                                    exercise={ex}
+                                    supersetStyle={ssStyle}
+                                    onExerciseClick={handleExerciseClick}
+                                  />
+                                );
+                              })}
+                              {workout.activity_sessions?.map((a) => (
+                                <div key={`act-${a.id}`} className="flex items-start py-1 text-sm">
+                                  <div className="w-2/5 shrink-0 text-right font-medium pr-3 leading-normal">
+                                    {a.activity_type}
+                                  </div>
+                                  <div className="w-px self-stretch bg-border shrink-0" />
+                                  <div className="flex-1 pl-3 text-muted-foreground leading-normal min-w-0">
+                                    {a.duration_minutes && (
+                                      <span>{formatDuration(a.duration_minutes)}</span>
+                                    )}
+                                    {a.notes && (
+                                      <span className="italic ml-2 text-xs">
+                                        {a.notes}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           )}
                           {tonnage > 0 && (
                             <div className="text-xs text-muted-foreground/60 text-right pt-2 border-t mt-2">

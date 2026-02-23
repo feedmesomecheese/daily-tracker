@@ -110,13 +110,14 @@ export default function ExerciseDetailRow({ exercise, supersetStyle, onExerciseC
   const showTooltip = exerciseId && onExerciseClick;
 
   return (
-    <tr
+    <div
       className={cn(
+        "flex items-start py-1 text-sm",
         supersetStyle &&
           `border-l-2 ${supersetStyle.border} ${supersetStyle.bg}`
       )}
     >
-      <td className="text-right font-medium pr-3 py-1 align-top w-2/5">
+      <div className="w-2/5 shrink-0 text-right font-medium pr-3 leading-normal">
         {showTooltip ? (
           <ExerciseHoverTooltip
             exerciseId={exerciseId}
@@ -129,16 +130,16 @@ export default function ExerciseDetailRow({ exercise, supersetStyle, onExerciseC
         ) : (
           exercise.exercise_name_display
         )}
-      </td>
-      <td className="w-px bg-border py-1" />
-      <td className="pl-3 py-1 tabular-nums align-top">
+      </div>
+      <div className="w-px self-stretch bg-border shrink-0" />
+      <div className="flex-1 pl-3 tabular-nums leading-normal min-w-0">
         {detailElements}
         {exercise.notes && (
           <span className="text-muted-foreground italic ml-2 text-xs">
             {exercise.notes}
           </span>
         )}
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }
