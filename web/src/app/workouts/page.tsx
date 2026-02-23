@@ -19,6 +19,8 @@ import { getLocalDateString } from "@/lib/dateUtils";
 import { useWorkoutTour } from "@/hooks/useWorkoutTour";
 import ExerciseHoverTooltip from "./components/ExerciseHoverTooltip";
 import ExerciseStatsSheet from "./components/ExerciseStatsSheet";
+import { useWorkoutTimer } from "@/hooks/useWorkoutTimer";
+import { WorkoutTimerFAB, WorkoutTimerSheet } from "@/components/workout-timer/WorkoutTimerSheet";
 import "driver.js/dist/driver.css";
 
 type WorkoutType = {
@@ -136,6 +138,10 @@ export default function WorkoutsPage() {
 
   const bucketRef = useRef<HTMLDivElement>(null);
   const formRef = useRef<HTMLDivElement>(null);
+
+  // Timer
+  const timer = useWorkoutTimer();
+  const [timerOpen, setTimerOpen] = useState(false);
 
   // Tour
   const {
@@ -1295,6 +1301,10 @@ export default function WorkoutsPage() {
         open={!!selectedExercise}
         onOpenChange={(open) => { if (!open) setSelectedExercise(null); }}
       />
+
+      {/* Workout Timer */}
+      <WorkoutTimerFAB timer={timer} onClick={() => setTimerOpen(true)} />
+      <WorkoutTimerSheet timer={timer} open={timerOpen} onOpenChange={setTimerOpen} />
 
       {/* Custom Exercise Sheet */}
       <CustomExerciseSheet
