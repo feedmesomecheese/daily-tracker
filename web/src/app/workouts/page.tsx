@@ -352,6 +352,78 @@ export default function WorkoutsPage() {
     });
   };
 
+  const copyWorkoutForNew = (workout: WorkoutHistory) => {
+    if (
+      bucketExercises.length > 0 &&
+      !confirm("Copying this workout will discard your current entry. Continue?")
+    ) {
+      return;
+    }
+
+    // New workout: today's date, same type, no notes/rating/duration
+    setEditingWorkoutId(null);
+    setWorkoutDate(getLocalDateString());
+    setSelectedTypeId(workout.workout_type_id || "");
+    setWorkoutNotes("");
+    setWorkoutRating(null);
+    setWorkoutDuration("");
+
+    const bucketData: BucketExerciseData[] = (workout.exercises || []).map((ex) => {
+      let inputType = "strength";
+      if (ex.exercise_id) {
+        const exerciseDef = exercises.find((e) => e.id === ex.exercise_id);
+        if (exerciseDef) {
+          inputType = getExerciseInputType(exerciseDef);
+        }
+      }
+      if (inputType === "strength" && (!ex.sets || ex.sets.length === 0)) {
+        if (ex.time_on_seconds || ex.time_off_seconds || ex.cycles) inputType = "hiit";
+        else if (ex.duration_minutes || ex.distance_miles || ex.incline_pct) inputType = "cardio";
+        else if (ex.notes) inputType = "sport";
+      }
+
+      return {
+        id: crypto.randomUUID(),
+        exercise_id: ex.exercise_id || null,
+        exercise_name_display: ex.exercise_name_display,
+        modifier_ids: ex.modifier_ids || [],
+        input_type: inputType,
+        sets: inputType === "strength" && ex.sets && ex.sets.length > 0
+          ? ex.sets.map((s) => ({
+              reps: s.reps !== null ? String(s.reps) : "",
+              weight: s.weight !== null ? String(s.weight) : "",
+              is_pr: false,
+              is_cycle_max: false,
+              is_missed: false,
+            }))
+          : inputType === "strength"
+            ? Array.from({ length: 5 }, () => ({
+                reps: "",
+                weight: "",
+                is_pr: false,
+                is_cycle_max: false,
+                is_missed: false,
+              }))
+            : [],
+        superset_group: ex.superset_group ?? null,
+        duration_minutes: ex.duration_minutes != null ? String(ex.duration_minutes) : "",
+        distance_miles: ex.distance_miles != null ? String(ex.distance_miles) : "",
+        incline_pct: ex.incline_pct != null ? String(ex.incline_pct) : "",
+        cardio_weight: ex.weight != null ? String(ex.weight) : "",
+        cycles: ex.cycles != null ? String(ex.cycles) : "",
+        time_on: secondsToTimeStr(ex.time_on_seconds),
+        time_off: secondsToTimeStr(ex.time_off_seconds),
+        exercise_notes: ex.notes || "",
+      };
+    });
+
+    setBucketExercises(bucketData);
+
+    requestAnimationFrame(() => {
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
   // Load workout for editing from ?edit=<id> query param
   const editParamHandled = useRef(false);
   useEffect(() => {
@@ -1026,6 +1098,13 @@ export default function WorkoutsPage() {
                       </CardTitle>
                     </div>
                     <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copyWorkoutForNew(workout)}
+                      >
+                        Copy
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
