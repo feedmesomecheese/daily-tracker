@@ -1046,9 +1046,8 @@ export default function WorkoutsPage() {
                 <CardContent>
                   {hasExercises ? (
                     <div>
-                      <table className="w-full text-sm border-collapse">
-                        <tbody>
-                          {workout.exercises!.map((ex, i) => {
+                      <div>
+                        {workout.exercises!.map((ex, i) => {
                             const hasSets = ex.sets && ex.sets.length > 0;
                             const hasCardioData = ex.duration_minutes || ex.distance_miles || ex.incline_pct || ex.weight;
                             const hasHiitData = ex.time_on_seconds || ex.time_off_seconds || ex.cycles;
@@ -1108,13 +1107,14 @@ export default function WorkoutsPage() {
                             }
 
                             return (
-                              <tr
+                              <div
                                 key={i}
                                 className={cn(
+                                  "flex items-start py-1 text-sm",
                                   ssStyle && `border-l-2 ${ssStyle.border} ${ssStyle.bg}`
                                 )}
                               >
-                                <td className="text-right font-medium pr-3 py-1 whitespace-nowrap align-top">
+                                <div className="w-2/5 shrink-0 text-right font-medium pr-3 leading-normal">
                                   {ex.exercise_id ? (
                                     <ExerciseHoverTooltip
                                       exerciseId={ex.exercise_id}
@@ -1124,21 +1124,20 @@ export default function WorkoutsPage() {
                                   ) : (
                                     ex.exercise_name_display
                                   )}
-                                </td>
-                                <td className="w-px bg-border py-1" />
-                                <td className="pl-3 py-1 tabular-nums align-top">
+                                </div>
+                                <div className="w-px self-stretch bg-border shrink-0" />
+                                <div className="flex-1 pl-3 tabular-nums leading-normal min-w-0">
                                   {detailElements}
                                   {ex.notes && (
                                     <span className="text-muted-foreground italic ml-2 text-xs">
                                       {ex.notes}
                                     </span>
                                   )}
-                                </td>
-                              </tr>
+                                </div>
+                              </div>
                             );
                           })}
-                        </tbody>
-                      </table>
+                      </div>
                       {workoutTonnage > 0 && (
                         <div className="text-xs text-muted-foreground/60 text-right pt-2 border-t mt-2">
                           Total tonnage: {workoutTonnage.toLocaleString()} lbs
@@ -1146,15 +1145,14 @@ export default function WorkoutsPage() {
                       )}
                     </div>
                   ) : workout.sets && workout.sets.length > 0 ? (
-                    <table className="w-full text-sm border-collapse">
-                      <tbody>
-                        {groupSetsByExercise(workout.sets).map((group, gIdx) => (
-                          <tr key={gIdx}>
-                            <td className="text-right font-medium pr-3 py-1 whitespace-nowrap align-top">
-                              {group.name}
-                            </td>
-                            <td className="w-px bg-border py-1" />
-                            <td className="pl-3 py-1 text-muted-foreground tabular-nums align-top">
+                    <div>
+                      {groupSetsByExercise(workout.sets).map((group, gIdx) => (
+                        <div key={gIdx} className="flex items-start py-1 text-sm">
+                          <div className="w-2/5 shrink-0 text-right font-medium pr-3 leading-normal">
+                            {group.name}
+                          </div>
+                          <div className="w-px self-stretch bg-border shrink-0" />
+                          <div className="flex-1 pl-3 text-muted-foreground tabular-nums leading-normal min-w-0">
                               {group.sets.map((s, si) => (
                                 <span key={si}>
                                   {si > 0 && ", "}
@@ -1175,11 +1173,10 @@ export default function WorkoutsPage() {
                                   )}
                                 </span>
                               ))}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       No sets recorded
