@@ -17,7 +17,6 @@ type OuraConfig = {
     last_sync_at: string | null;
     sync_config: {
       auto_sync?: boolean;
-      auto_sync_hour?: number;
       overwrite_manual?: boolean;
       metric_mapping?: MetricMapping;
     };
@@ -127,7 +126,7 @@ export default function OuraIntegrationPage() {
     }
   };
 
-  const handleToggleSetting = async (key: "auto_sync" | "overwrite_manual" | "auto_sync_hour", value: boolean | number) => {
+  const handleToggleSetting = async (key: "auto_sync" | "overwrite_manual", value: boolean) => {
     setSavingConfig(true);
     try {
       const headers = await getAuthHeaders();
@@ -245,30 +244,7 @@ export default function OuraIntegrationPage() {
             />
           </div>
 
-          {config.integration?.sync_config?.auto_sync && (
-            <div className="flex items-center justify-between pl-1">
-              <div>
-                <div className="font-medium text-sm">Sync time</div>
-                <div className="text-xs text-muted-foreground">
-                  Your local time (set your timezone in Vercel as USER_TIMEZONE)
-                </div>
-              </div>
-              <select
-                className="border rounded px-2 py-1 text-sm bg-background"
-                value={config.integration.sync_config.auto_sync_hour ?? 7}
-                onChange={(e) => handleToggleSetting("auto_sync_hour", Number(e.target.value) as never)}
-                disabled={savingConfig}
-              >
-                {Array.from({ length: 24 }, (_, h) => (
-                  <option key={h} value={h}>
-                    {new Date(2000, 0, 1, h).toLocaleString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between">
+<div className="flex items-center justify-between">
             <div>
               <div className="font-medium text-sm">Overwrite manual entries</div>
               <div className="text-xs text-muted-foreground">

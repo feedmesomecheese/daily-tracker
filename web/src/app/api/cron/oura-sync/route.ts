@@ -7,11 +7,9 @@ import { refreshOuraToken, performOuraSync } from "@/lib/oura-sync";
 /**
  * GET /api/cron/oura-sync
  *
- * Runs hourly via Vercel Cron. For each Oura integration with auto_sync enabled,
- * checks if the current local hour matches the user's configured sync hour,
- * then syncs yesterday + today if not already synced today.
- *
- * Timezone is read from USER_TIMEZONE env var (set in Vercel project settings).
+ * Runs daily at noon UTC via Vercel Cron (≈ 7am EST / 6am CST / 4am PST).
+ * Syncs yesterday + today for all Oura integrations with auto_sync enabled,
+ * skipping any that have already been synced today.
  */
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization");
@@ -20,7 +18,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const defaultTz = process.env.USER_TIMEZONE || "America/New_York";
   const now = new Date();
   console.log(`[CRON] oura-sync: UTC=${now.toISOString()}`);
 
@@ -42,14 +39,9 @@ export async function GET(req: Request) {
 
     if (!syncConfig.auto_sync) { skipped++; continue; }
 
-    const tz: string = syncConfig.timezone || defaultTz;
-    const currentHour =
-      parseInt(new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", hour12: false }).format(now), 10) % 24;
+    const tz: string = syncConfig.timezone || process.env.USER_TIMEZONE || "America/New_York";
     const today = getLocalDateString(now, tz);
     const yesterday = getLocalDateString(new Date(now.getTime() - 86_400_000), tz);
-
-    const syncHour: number = syncConfig.auto_sync_hour ?? 7;
-    if (currentHour !== syncHour) { skipped++; continue; }
 
     // Skip if already synced today
     if (integration.last_sync_at) {
@@ -57,7 +49,7 @@ export async function GET(req: Request) {
       if (lastSyncDate >= today) { skipped++; continue; }
     }
 
-    console.log(`[CRON] Syncing Oura for user ${integration.owner_id}`);
+    console.log(`[CRON] Syncing Oura for user ${integration.owner_id} (${tz})`);
 
     try {
       let accessToken = decrypt(integration.access_token);
