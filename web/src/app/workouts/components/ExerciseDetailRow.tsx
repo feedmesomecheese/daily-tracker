@@ -116,7 +116,7 @@ export default function ExerciseDetailRow({ exercise, supersetStyle, onExerciseC
           `border-l-2 ${supersetStyle.border} ${supersetStyle.bg}`
       )}
     >
-      <td className="text-right font-medium pr-3 py-1 whitespace-nowrap align-top w-32 sm:w-48">
+      <td className="text-right font-medium pr-3 py-1 align-top w-32 sm:w-48">
         {showTooltip ? (
           <ExerciseHoverTooltip
             exerciseId={exerciseId}

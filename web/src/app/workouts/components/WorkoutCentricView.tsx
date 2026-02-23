@@ -146,10 +146,10 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                     <tr>
                       <td colSpan={7} className="p-0">
                         <div className="px-4 py-2 bg-muted/20">
-                          {workout.exercises && workout.exercises.length > 0 && (
-                            <table className="w-full text-sm border-collapse">
+                          {exCount > 0 && (
+                            <table className="w-full text-sm border-collapse table-fixed">
                               <tbody>
-                                {workout.exercises.map((ex, ei) => {
+                                {workout.exercises?.map((ex, ei) => {
                                   const colorMap = computeSupersetColorMap(
                                     workout.exercises!
                                   );
@@ -164,23 +164,16 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
 
                                   return (
                                     <ExerciseDetailRow
-                                      key={ei}
+                                      key={`ex-${ei}`}
                                       exercise={ex}
                                       supersetStyle={ssStyle}
                                       onExerciseClick={handleExerciseClick}
                                     />
                                   );
                                 })}
-                              </tbody>
-                            </table>
-                          )}
-                          {/* Activity sessions (tennis, racquetball, etc.) */}
-                          {workout.activity_sessions && workout.activity_sessions.length > 0 && (
-                            <table className={`w-full text-sm border-collapse ${workout.exercises?.length ? "mt-2 pt-2 border-t" : ""}`}>
-                              <tbody>
-                                {workout.activity_sessions.map((a) => (
-                                  <tr key={a.id}>
-                                    <td className="text-right font-medium pr-3 py-1 whitespace-nowrap align-top w-32 sm:w-48">
+                                {workout.activity_sessions?.map((a) => (
+                                  <tr key={`act-${a.id}`}>
+                                    <td className="text-right font-medium pr-3 py-1 align-top w-32 sm:w-48">
                                       {a.activity_type}
                                     </td>
                                     <td className="w-px bg-border py-1" />
