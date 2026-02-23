@@ -242,7 +242,7 @@ export default function BucketExerciseRow({
         )}
 
         {data.input_type === "hiit" && (
-          <div className="flex flex-wrap items-end gap-2 sm:gap-3 py-1">
+          <div className="flex flex-wrap items-start gap-2 pb-1">
             <LabeledInput
               label="On (m:ss)"
               value={data.time_on}
@@ -274,7 +274,7 @@ export default function BucketExerciseRow({
         )}
 
         {data.input_type === "cardio" && (
-          <div className="flex flex-wrap items-end gap-2 sm:gap-3 py-1">
+          <div className="flex flex-wrap items-start gap-2 pb-1">
             <LabeledInput
               label="Minutes"
               value={data.duration_minutes}
@@ -315,7 +315,7 @@ export default function BucketExerciseRow({
         )}
 
         {data.input_type === "sport" && (
-          <div className="py-1">
+          <div className="flex flex-wrap items-start gap-2 pb-1">
             <LabeledInput
               label="Notes"
               value={data.exercise_notes}
