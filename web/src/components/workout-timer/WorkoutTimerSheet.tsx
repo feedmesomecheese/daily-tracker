@@ -558,10 +558,12 @@ function TabataTab({
       <div className="flex flex-col items-center gap-6 py-6">
         <div className="text-4xl font-bold">Done ✓</div>
         <p className="text-sm text-muted-foreground">{tabSelectedSplit?.name}</p>
-        {/* Show total workout time */}
         {timer.swDisplay > 0 && (
-          <div className="text-sm text-muted-foreground font-mono">
-            Workout total: {formatHMS(timer.swDisplay)}
+          <div className="flex flex-col items-center gap-1">
+            <div className="font-mono text-4xl font-bold tabular-nums tracking-tight text-muted-foreground">
+              {formatHMS(timer.swDisplay)}
+            </div>
+            <div className="text-xs text-muted-foreground uppercase tracking-widest">Workout total</div>
           </div>
         )}
         <div className="flex gap-3">
@@ -634,12 +636,18 @@ function TabataTab({
         <Button onClick={timer.tabReset} variant="ghost" size="sm">Reset</Button>
       </div>
 
-      {/* Total workout timer */}
-      {timer.swDisplay > 0 && (
-        <div className="text-center text-xs text-muted-foreground font-mono border-t pt-2">
-          Workout total: {formatHMS(timer.swDisplay)}
+      {/* Total workout timer — large so it's readable from across the room */}
+      <div
+        className="rounded-xl flex flex-col items-center justify-center py-4 gap-1"
+        style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
+      >
+        <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
+          {formatHMS(timer.swDisplay)}
         </div>
-      )}
+        <div className="text-xs text-muted-foreground uppercase tracking-widest">
+          {timer.swRunning ? "Workout" : timer.swDisplay > 0 ? "Workout (paused)" : "Start stopwatch to track total"}
+        </div>
+      </div>
     </div>
   );
 }

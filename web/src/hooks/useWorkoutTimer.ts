@@ -93,6 +93,27 @@ const DEFAULT_SPLIT: TabataSplit = {
 
 const STORAGE_KEY = "workout_timer_splits";
 
+// ─── Sound file map ─────────────────────────────────────────────────────────────
+// Files go in /public/sounds/. If a file is missing, synthesis is used as fallback.
+
+const SOUND_FILES: Partial<Record<SoundType, string>> = {
+  "boxing-bell": "/sounds/boxing-bell.mp3",
+  "air-horn":    "/sounds/air-horn.mp3",
+  "whistle":     "/sounds/whistle.mp3",
+  "chime":       "/sounds/chime.mp3",
+  "buzzer":      "/sounds/buzzer.mp3",
+};
+
+function playFileSound(path: string, onFail: () => void) {
+  try {
+    const audio = new Audio(path);
+    audio.volume = 0.8;
+    audio.play().catch(onFail);
+  } catch {
+    onFail();
+  }
+}
+
 // ─── Audio helpers ─────────────────────────────────────────────────────────────
 
 function playOscTone(ctx: AudioContext, audio: AudioSettings) {
@@ -198,20 +219,32 @@ function playBuzzer(ctx: AudioContext) {
   osc.onended = () => ctx.close();
 }
 
-export function playTone(audio: AudioSettings) {
-  if (!audio.enabled) return;
+function playSynthesized(soundType: SoundType, audio: AudioSettings) {
   try {
     const ctx = new AudioContext();
-    switch (audio.soundType ?? "tone") {
+    switch (soundType) {
       case "boxing-bell": playBoxingBell(ctx); break;
       case "air-horn":    playAirHorn(ctx);    break;
-      case "whistle":     playWhistle(ctx);     break;
-      case "chime":       playChime(ctx);       break;
-      case "buzzer":      playBuzzer(ctx);      break;
+      case "whistle":     playWhistle(ctx);    break;
+      case "chime":       playChime(ctx);      break;
+      case "buzzer":      playBuzzer(ctx);     break;
       default:            playOscTone(ctx, audio); break;
     }
   } catch {
     // Web Audio not available (SSR, etc.)
+  }
+}
+
+export function playTone(audio: AudioSettings) {
+  if (!audio.enabled) return;
+  const soundType = audio.soundType ?? "tone";
+  const filePath = SOUND_FILES[soundType];
+
+  if (filePath) {
+    // Try file first; fall back to synthesis if missing or blocked
+    playFileSound(filePath, () => playSynthesized(soundType, audio));
+  } else {
+    playSynthesized(soundType, audio);
   }
 }
 
