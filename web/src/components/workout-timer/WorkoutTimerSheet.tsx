@@ -18,6 +18,7 @@ import {
   type TabataSplit,
   type AudioSettings,
   type OscType,
+  type SoundType,
   playTone,
 } from "@/hooks/useWorkoutTimer";
 
@@ -74,10 +75,17 @@ function newSplitId(): string {
   return `split-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const DEFAULT_AUDIO: AudioSettings = { enabled: false, frequency: 440, oscType: "sine" };
+const SOUND_TYPES: { value: SoundType; label: string }[] = [
+  { value: "tone",        label: "Tone (custom)" },
+  { value: "boxing-bell", label: "Boxing Bell" },
+  { value: "air-horn",    label: "Air Horn" },
+  { value: "whistle",     label: "Whistle" },
+  { value: "chime",       label: "Chime" },
+  { value: "buzzer",      label: "Buzzer" },
+];
 
 function emptyAudio(): AudioSettings {
-  return { enabled: true, frequency: 440, oscType: "sine" };
+  return { enabled: true, soundType: "tone", frequency: 440, oscType: "sine" };
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -91,6 +99,7 @@ function AudioRow({
   value: AudioSettings;
   onChange: (v: AudioSettings) => void;
 }) {
+  const soundType = value.soundType ?? "tone";
   return (
     <div className="flex items-center gap-2 flex-wrap text-sm">
       <label className="w-20 shrink-0 font-medium text-muted-foreground">{label}</label>
@@ -103,36 +112,50 @@ function AudioRow({
         />
         <span className="text-xs">On</span>
       </label>
-      <div className="flex items-center gap-1 flex-1 min-w-[140px]">
-        <span className="text-xs text-muted-foreground w-8">{value.frequency}Hz</span>
-        <input
-          type="range"
-          min={100}
-          max={2000}
-          step={10}
-          value={value.frequency}
-          disabled={!value.enabled}
-          onChange={(e) => onChange({ ...value, frequency: Number(e.target.value) })}
-          className="flex-1 h-1.5 accent-primary"
-        />
-      </div>
       <select
-        value={value.oscType}
+        value={soundType}
         disabled={!value.enabled}
-        onChange={(e) => onChange({ ...value, oscType: e.target.value as OscType })}
+        onChange={(e) => onChange({ ...value, soundType: e.target.value as SoundType })}
         className="h-7 text-xs border rounded px-1 bg-background"
       >
-        <option value="sine">Sine</option>
-        <option value="square">Square</option>
-        <option value="sawtooth">Sawtooth</option>
-        <option value="triangle">Triangle</option>
+        {SOUND_TYPES.map((s) => (
+          <option key={s.value} value={s.value}>{s.label}</option>
+        ))}
       </select>
+      {soundType === "tone" && (
+        <>
+          <div className="flex items-center gap-1 flex-1 min-w-[120px]">
+            <span className="text-xs text-muted-foreground w-8">{value.frequency}Hz</span>
+            <input
+              type="range"
+              min={100}
+              max={2000}
+              step={10}
+              value={value.frequency}
+              disabled={!value.enabled}
+              onChange={(e) => onChange({ ...value, frequency: Number(e.target.value) })}
+              className="flex-1 h-1.5 accent-primary"
+            />
+          </div>
+          <select
+            value={value.oscType}
+            disabled={!value.enabled}
+            onChange={(e) => onChange({ ...value, oscType: e.target.value as OscType })}
+            className="h-7 text-xs border rounded px-1 bg-background"
+          >
+            <option value="sine">Sine</option>
+            <option value="square">Square</option>
+            <option value="sawtooth">Sawtooth</option>
+            <option value="triangle">Triangle</option>
+          </select>
+        </>
+      )}
       <button
         type="button"
         disabled={!value.enabled}
         onClick={() => playTone(value)}
         className="text-xs px-2 py-1 rounded border hover:bg-muted disabled:opacity-40"
-        title="Test tone"
+        title="Test sound"
       >
         ▶
       </button>
@@ -161,11 +184,21 @@ function SplitEditor({
   const [onColor, setOnColor] = useState(initial?.on_color ?? "#22c55e");
   const [offColor, setOffColor] = useState(initial?.off_color ?? "#ef4444");
   const [cooldownColor, setCooldownColor] = useState(initial?.cooldown_color ?? "#a855f7");
-  const [warmupAudio, setWarmupAudio] = useState<AudioSettings>(initial?.warmup_audio ?? { ...emptyAudio(), frequency: 440 });
-  const [onAudio, setOnAudio] = useState<AudioSettings>(initial?.on_audio ?? { ...emptyAudio(), frequency: 880 });
-  const [offAudio, setOffAudio] = useState<AudioSettings>(initial?.off_audio ?? { ...emptyAudio(), frequency: 330 });
-  const [cooldownAudio, setCooldownAudio] = useState<AudioSettings>(initial?.cooldown_audio ?? { ...emptyAudio(), frequency: 440 });
-  const [doneAudio, setDoneAudio] = useState<AudioSettings>(initial?.done_audio ?? { ...emptyAudio(), frequency: 660 });
+  const [warmupAudio, setWarmupAudio] = useState<AudioSettings>(
+    initial?.warmup_audio ?? { ...emptyAudio(), soundType: "tone", frequency: 440 }
+  );
+  const [onAudio, setOnAudio] = useState<AudioSettings>(
+    initial?.on_audio ?? { ...emptyAudio(), soundType: "boxing-bell", frequency: 880 }
+  );
+  const [offAudio, setOffAudio] = useState<AudioSettings>(
+    initial?.off_audio ?? { ...emptyAudio(), soundType: "buzzer", frequency: 330 }
+  );
+  const [cooldownAudio, setCooldownAudio] = useState<AudioSettings>(
+    initial?.cooldown_audio ?? { ...emptyAudio(), soundType: "tone", frequency: 440 }
+  );
+  const [doneAudio, setDoneAudio] = useState<AudioSettings>(
+    initial?.done_audio ?? { ...emptyAudio(), soundType: "chime", frequency: 660 }
+  );
 
   const handleSave = () => {
     const split: TabataSplit = {
@@ -285,7 +318,7 @@ function SplitEditor({
 
       {/* Audio */}
       <div className="space-y-2">
-        <p className="text-xs text-muted-foreground">Audio Tones</p>
+        <p className="text-xs text-muted-foreground">Audio</p>
         <AudioRow label="Warmup" value={warmupAudio} onChange={setWarmupAudio} />
         <AudioRow label="On" value={onAudio} onChange={setOnAudio} />
         <AudioRow label="Off" value={offAudio} onChange={setOffAudio} />
@@ -307,20 +340,26 @@ function SplitsView({
   splits,
   onEdit,
   onDelete,
+  onCopy,
   onNew,
   onBack,
   onImport,
   onExport,
+  onReorder,
 }: {
   splits: TabataSplit[];
   onEdit: (split: TabataSplit) => void;
   onDelete: (id: string) => void;
+  onCopy: (split: TabataSplit) => void;
   onNew: () => void;
   onBack: () => void;
   onImport: (json: string) => void;
   onExport: () => void;
+  onReorder: (from: number, to: number) => void;
 }) {
   const importRef = useRef<HTMLInputElement>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -332,6 +371,14 @@ function SplitsView({
     };
     reader.readAsText(file);
     e.target.value = "";
+  };
+
+  const handleDragEnd = () => {
+    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
+      onReorder(dragIndex, dragOverIndex);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
   };
 
   return (
@@ -348,32 +395,61 @@ function SplitsView({
         {splits.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-4">No splits saved.</p>
         )}
-        {splits.map((split) => (
-          <div key={split.id} className="flex items-center justify-between border rounded-lg px-3 py-2 gap-2">
-            <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{split.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{splitSummary(split)}</p>
-            </div>
-            <div className="flex gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={() => onEdit(split)}
-                className="text-xs px-2 py-1 rounded border hover:bg-muted"
+        {splits.map((split, index) => {
+          const isDragging = dragIndex === index;
+          const isOver = dragOverIndex === index && dragIndex !== index;
+          return (
+            <div
+              key={split.id}
+              draggable
+              onDragStart={() => setDragIndex(index)}
+              onDragEnter={() => setDragOverIndex(index)}
+              onDragOver={(e) => e.preventDefault()}
+              onDragEnd={handleDragEnd}
+              className={`flex items-center justify-between border rounded-lg px-3 py-2 gap-2 transition-opacity ${
+                isDragging ? "opacity-40" : "opacity-100"
+              } ${isOver ? "border-primary border-2" : "border-border"}`}
+            >
+              {/* Drag handle */}
+              <span
+                className="text-muted-foreground cursor-grab select-none text-lg shrink-0"
+                title="Drag to reorder"
               >
-                Edit
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm(`Delete "${split.name}"?`)) onDelete(split.id);
-                }}
-                className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
-              >
-                Delete
-              </button>
+                ⠿
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">{split.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{splitSummary(split)}</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onCopy(split)}
+                  className="text-xs px-2 py-1 rounded border hover:bg-muted"
+                  title="Duplicate"
+                >
+                  Copy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onEdit(split)}
+                  className="text-xs px-2 py-1 rounded border hover:bg-muted"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm(`Delete "${split.name}"?`)) onDelete(split.id);
+                  }}
+                  className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <div className="flex gap-2 border-t pt-3">
@@ -482,6 +558,12 @@ function TabataTab({
       <div className="flex flex-col items-center gap-6 py-6">
         <div className="text-4xl font-bold">Done ✓</div>
         <p className="text-sm text-muted-foreground">{tabSelectedSplit?.name}</p>
+        {/* Show total workout time */}
+        {timer.swDisplay > 0 && (
+          <div className="text-sm text-muted-foreground font-mono">
+            Workout total: {formatHMS(timer.swDisplay)}
+          </div>
+        )}
         <div className="flex gap-3">
           <Button onClick={timer.tabStart}>Repeat</Button>
           <Button variant="outline" onClick={timer.tabReset}>Choose Different</Button>
@@ -492,10 +574,19 @@ function TabataTab({
 
   // Active / Paused
   return (
-    <div className="flex flex-col gap-4">
-      {/* Phase block */}
+    <div className="flex flex-col gap-3">
+      {/* Phase block — tap to pause/resume */}
       <div
-        className="rounded-xl flex flex-col items-center justify-center py-8 gap-2 transition-colors duration-300"
+        role="button"
+        tabIndex={0}
+        aria-label={tabRunning ? "Tap to pause" : "Tap to resume"}
+        onClick={tabRunning ? timer.tabPause : timer.tabResume}
+        onKeyDown={(e) => {
+          if (e.key === " " || e.key === "Enter") {
+            tabRunning ? timer.tabPause() : timer.tabResume();
+          }
+        }}
+        className="rounded-xl flex flex-col items-center justify-center py-8 gap-2 transition-colors duration-300 cursor-pointer select-none"
         style={{ backgroundColor: color + "22", borderColor: color + "66", borderWidth: 2 }}
       >
         <div
@@ -512,16 +603,43 @@ function TabataTab({
             Cycle {tabCurrentCycle} / {tabSelectedSplit.cycles}
           </div>
         )}
+        <div className="text-xs mt-1" style={{ color: color + "99" }}>
+          {tabRunning ? "Tap to pause" : "Tap to resume"}
+        </div>
       </div>
 
-      <div className="flex gap-3 justify-center">
+      {/* Controls row */}
+      <div className="flex gap-2 justify-center items-center">
+        <button
+          type="button"
+          onClick={timer.tabPrevPhase}
+          className="w-10 h-10 rounded-full border flex items-center justify-center text-lg hover:bg-muted"
+          title="Previous section"
+        >
+          ⏮
+        </button>
         {tabRunning ? (
           <Button onClick={timer.tabPause} variant="outline" className="w-28">Pause</Button>
         ) : (
           <Button onClick={timer.tabResume} className="w-28">Resume</Button>
         )}
-        <Button onClick={timer.tabReset} variant="ghost">Reset</Button>
+        <button
+          type="button"
+          onClick={timer.tabNextPhase}
+          className="w-10 h-10 rounded-full border flex items-center justify-center text-lg hover:bg-muted"
+          title="Next section"
+        >
+          ⏭
+        </button>
+        <Button onClick={timer.tabReset} variant="ghost" size="sm">Reset</Button>
       </div>
+
+      {/* Total workout timer */}
+      {timer.swDisplay > 0 && (
+        <div className="text-center text-xs text-muted-foreground font-mono border-t pt-2">
+          Workout total: {formatHMS(timer.swDisplay)}
+        </div>
+      )}
     </div>
   );
 }
@@ -572,6 +690,7 @@ export function WorkoutTimerSheet({
 }) {
   const [view, setView] = useState<InternalView>("main");
   const [editingSplit, setEditingSplit] = useState<TabataSplit | null>(null);
+  const [activeTab, setActiveTab] = useState("stopwatch");
 
   const handleExport = () => {
     const json = timer.exportSplits();
@@ -588,6 +707,20 @@ export function WorkoutTimerSheet({
     timer.saveSplit(split);
     setView("splits");
     setEditingSplit(null);
+  };
+
+  const handleCopySplit = (split: TabataSplit) => {
+    const copy: TabataSplit = {
+      ...split,
+      id: newSplitId(),
+      name: `${split.name} (copy)`,
+    };
+    timer.saveSplit(copy);
+  };
+
+  const goBackToTabata = () => {
+    setView("main");
+    setActiveTab("tabata");
   };
 
   return (
@@ -608,17 +741,19 @@ export function WorkoutTimerSheet({
             splits={timer.splits}
             onEdit={(split) => { setEditingSplit(split); setView("editor"); }}
             onDelete={timer.deleteSplit}
+            onCopy={handleCopySplit}
             onNew={() => { setEditingSplit(null); setView("editor"); }}
-            onBack={() => setView("main")}
+            onBack={goBackToTabata}
             onImport={timer.importSplits}
             onExport={handleExport}
+            onReorder={timer.reorderSplits}
           />
         )}
 
         {view === "main" && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">Workout Timer</h2>
-            <Tabs defaultValue="stopwatch">
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="w-full">
                 <TabsTrigger value="stopwatch" className="flex-1">Stopwatch</TabsTrigger>
                 <TabsTrigger value="tabata" className="flex-1">Tabata / HIIT</TabsTrigger>

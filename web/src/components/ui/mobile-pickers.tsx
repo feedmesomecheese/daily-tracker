@@ -487,6 +487,7 @@ export function DurationPicker({ value, onChange, maxHours = 23, className }: Du
 
 /**
  * NumberWheelPickerField - tap to open number wheel picker
+ * Uses repeated list (wrap-around) so the drum can spin freely in both directions.
  */
 type NumberWheelPickerFieldProps = {
   value: number | null;
@@ -496,6 +497,9 @@ type NumberWheelPickerFieldProps = {
   disallowedValues?: string | null;
   className?: string;
 };
+
+const NUM_WRAP_REPS = 10;
+const NUM_WRAP_HALF = NUM_WRAP_REPS / 2;
 
 export function NumberWheelPicker({
   value,
@@ -531,32 +535,39 @@ export function NumberWheelPicker({
     return result;
   }, [min, max, disallowedSet]);
 
-  // Find closest allowed value
-  const closestAllowed = useMemo(() => {
-    if (value == null || numbers.length === 0) return numbers[0] ?? min;
-    if (numbers.includes(value)) return value;
-    let closest = numbers[0];
-    let closestDist = Math.abs(value - closest);
-    for (const n of numbers) {
-      const dist = Math.abs(value - n);
-      if (dist < closestDist) {
-        closest = n;
-        closestDist = dist;
-      }
+  // Repeated list for wrap-around scrolling (indices 0 .. numbers.length * REPS - 1)
+  const repeatedIndices = useMemo(
+    () => Array.from({ length: numbers.length * NUM_WRAP_REPS }, (_, i) => i),
+    [numbers.length]
+  );
+
+  // Find closest allowed value index
+  const closestIdx = useMemo(() => {
+    if (numbers.length === 0) return 0;
+    if (value == null) return 0;
+    const exact = numbers.indexOf(value);
+    if (exact >= 0) return exact;
+    let best = 0;
+    let bestDist = Math.abs(value - numbers[0]);
+    for (let i = 1; i < numbers.length; i++) {
+      const d = Math.abs(value - numbers[i]);
+      if (d < bestDist) { best = i; bestDist = d; }
     }
-    return closest;
-  }, [value, numbers, min]);
+    return best;
+  }, [value, numbers]);
 
-  const [pickerValue, setPickerValue] = useState({ num: closestAllowed });
+  // Start in middle repetition so user can scroll both ways
+  const [pickerValue, setPickerValue] = useState({ num: numbers.length * NUM_WRAP_HALF + closestIdx });
 
-  // Reset to current value when opening
   const handleOpen = () => {
-    setPickerValue({ num: closestAllowed });
+    setPickerValue({ num: numbers.length * NUM_WRAP_HALF + closestIdx });
     setOpen(true);
   };
 
   const handleConfirm = () => {
-    onChange(pickerValue.num);
+    if (numbers.length > 0) {
+      onChange(numbers[pickerValue.num % numbers.length]);
+    }
     setOpen(false);
   };
 
@@ -582,11 +593,11 @@ export function NumberWheelPicker({
                 height={180}
               >
                 <Picker.Column name="num">
-                  {numbers.map((n) => (
-                    <Picker.Item key={n} value={n}>
+                  {repeatedIndices.map((i) => (
+                    <Picker.Item key={i} value={i}>
                       {({ selected }) => (
                         <div className={`${pickerItemClass} text-lg ${selected ? pickerItemSelectedClass : pickerItemUnselectedClass}`}>
-                          {n}
+                          {numbers[i % numbers.length]}
                         </div>
                       )}
                     </Picker.Item>
