@@ -492,6 +492,12 @@ function TabataTab({
     timer.tabReset();
   };
 
+  // Reset HIIT timer but stay on the ready screen for the same split
+  const handleReset = () => {
+    setPendingSplit(tabSelectedSplit);
+    timer.tabReset();
+  };
+
   // Stopwatch controls for the active HIIT screen
   const swToggle = timer.swRunning ? timer.swPause : timer.swStart;
   const swHint = timer.swRunning
@@ -565,6 +571,31 @@ function TabataTab({
           <Button onClick={handleStart} className="w-28">Start</Button>
           <Button variant="ghost" onClick={() => setPendingSplit(null)}>← Back</Button>
         </div>
+
+        {/* Stopwatch — visible on ready screen too */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={swHint}
+          onClick={swToggle}
+          onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") swToggle(); }}
+          className="rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none"
+          style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
+        >
+          <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
+            {formatHMS(timer.swDisplay)}
+          </div>
+          <div className="text-xs text-muted-foreground uppercase tracking-widest">
+            {swHint}
+          </div>
+        </div>
+        {timer.swDisplay > 0 && (
+          <div className="flex justify-center">
+            <Button variant="ghost" size="sm" onClick={timer.swReset} className="text-xs text-muted-foreground">
+              Reset Stopwatch
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -647,7 +678,7 @@ function TabataTab({
         >
           ⏭
         </button>
-        <Button onClick={handleChooseDifferent} variant="ghost" size="sm">Reset</Button>
+        <Button onClick={handleReset} variant="ghost" size="sm">Reset</Button>
       </div>
 
       {/* Stopwatch — tappable to start/pause/resume, with reset button */}
