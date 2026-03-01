@@ -13,11 +13,11 @@ import {
   TabsContent,
 } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { DurationPicker } from "@/components/ui/mobile-pickers";
 import {
   type WorkoutTimerState,
   type TabataSplit,
   type AudioSettings,
-  type OscType,
   type SoundType,
   playTone,
 } from "@/hooks/useWorkoutTimer";
@@ -76,7 +76,7 @@ function newSplitId(): string {
 }
 
 const SOUND_TYPES: { value: SoundType; label: string }[] = [
-  { value: "tone",        label: "Tone (custom)" },
+  { value: "tone",        label: "Tone" },
   { value: "boxing-bell", label: "Boxing Bell" },
   { value: "air-horn",    label: "Air Horn" },
   { value: "whistle",     label: "Whistle" },
@@ -88,7 +88,8 @@ function emptyAudio(): AudioSettings {
   return { enabled: true, soundType: "tone", frequency: 440, oscType: "sine" };
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── AudioRow ─────────────────────────────────────────────────────────────────
+// Simplified: only sound type selector + on/off + test button.
 
 function AudioRow({
   label,
@@ -101,9 +102,9 @@ function AudioRow({
 }) {
   const soundType = value.soundType ?? "tone";
   return (
-    <div className="flex items-center gap-2 flex-wrap text-sm">
-      <label className="w-20 shrink-0 font-medium text-muted-foreground">{label}</label>
-      <label className="flex items-center gap-1 cursor-pointer">
+    <div className="flex items-center gap-2 text-sm">
+      <span className="w-20 shrink-0 font-medium text-muted-foreground">{label}</span>
+      <label className="flex items-center gap-1 cursor-pointer shrink-0">
         <input
           type="checkbox"
           checked={value.enabled}
@@ -116,45 +117,17 @@ function AudioRow({
         value={soundType}
         disabled={!value.enabled}
         onChange={(e) => onChange({ ...value, soundType: e.target.value as SoundType })}
-        className="h-7 text-xs border rounded px-1 bg-background"
+        className="flex-1 h-7 text-xs border rounded px-1 bg-background"
       >
         {SOUND_TYPES.map((s) => (
           <option key={s.value} value={s.value}>{s.label}</option>
         ))}
       </select>
-      {soundType === "tone" && (
-        <>
-          <div className="flex items-center gap-1 flex-1 min-w-[120px]">
-            <span className="text-xs text-muted-foreground w-8">{value.frequency}Hz</span>
-            <input
-              type="range"
-              min={100}
-              max={2000}
-              step={10}
-              value={value.frequency}
-              disabled={!value.enabled}
-              onChange={(e) => onChange({ ...value, frequency: Number(e.target.value) })}
-              className="flex-1 h-1.5 accent-primary"
-            />
-          </div>
-          <select
-            value={value.oscType}
-            disabled={!value.enabled}
-            onChange={(e) => onChange({ ...value, oscType: e.target.value as OscType })}
-            className="h-7 text-xs border rounded px-1 bg-background"
-          >
-            <option value="sine">Sine</option>
-            <option value="square">Square</option>
-            <option value="sawtooth">Sawtooth</option>
-            <option value="triangle">Triangle</option>
-          </select>
-        </>
-      )}
       <button
         type="button"
         disabled={!value.enabled}
         onClick={() => playTone(value)}
-        className="text-xs px-2 py-1 rounded border hover:bg-muted disabled:opacity-40"
+        className="text-xs px-2 py-1 rounded border hover:bg-muted disabled:opacity-40 shrink-0"
         title="Test sound"
       >
         ▶
@@ -175,40 +148,41 @@ function SplitEditor({
   onCancel: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "New Split");
-  const [warmup, setWarmup] = useState(String(initial?.warmup_seconds ?? 0));
+  // Duration fields stored as total seconds (integers)
+  const [warmup, setWarmup] = useState(initial?.warmup_seconds ?? 0);
   const [cycles, setCycles] = useState(String(initial?.cycles ?? 8));
-  const [on, setOn] = useState(String(initial?.on_seconds ?? 20));
-  const [off, setOff] = useState(String(initial?.off_seconds ?? 10));
-  const [cooldown, setCooldown] = useState(String(initial?.cooldown_seconds ?? 0));
+  const [on, setOn] = useState(initial?.on_seconds ?? 20);
+  const [off, setOff] = useState(initial?.off_seconds ?? 10);
+  const [cooldown, setCooldown] = useState(initial?.cooldown_seconds ?? 0);
   const [warmupColor, setWarmupColor] = useState(initial?.warmup_color ?? "#3b82f6");
   const [onColor, setOnColor] = useState(initial?.on_color ?? "#22c55e");
   const [offColor, setOffColor] = useState(initial?.off_color ?? "#ef4444");
   const [cooldownColor, setCooldownColor] = useState(initial?.cooldown_color ?? "#a855f7");
   const [warmupAudio, setWarmupAudio] = useState<AudioSettings>(
-    initial?.warmup_audio ?? { ...emptyAudio(), soundType: "tone", frequency: 440 }
+    initial?.warmup_audio ?? { ...emptyAudio(), soundType: "tone" }
   );
   const [onAudio, setOnAudio] = useState<AudioSettings>(
-    initial?.on_audio ?? { ...emptyAudio(), soundType: "boxing-bell", frequency: 880 }
+    initial?.on_audio ?? { ...emptyAudio(), soundType: "boxing-bell" }
   );
   const [offAudio, setOffAudio] = useState<AudioSettings>(
-    initial?.off_audio ?? { ...emptyAudio(), soundType: "buzzer", frequency: 330 }
+    initial?.off_audio ?? { ...emptyAudio(), soundType: "buzzer" }
   );
   const [cooldownAudio, setCooldownAudio] = useState<AudioSettings>(
-    initial?.cooldown_audio ?? { ...emptyAudio(), soundType: "tone", frequency: 440 }
+    initial?.cooldown_audio ?? { ...emptyAudio(), soundType: "tone" }
   );
   const [doneAudio, setDoneAudio] = useState<AudioSettings>(
-    initial?.done_audio ?? { ...emptyAudio(), soundType: "chime", frequency: 660 }
+    initial?.done_audio ?? { ...emptyAudio(), soundType: "chime" }
   );
 
   const handleSave = () => {
     const split: TabataSplit = {
       id: initial?.id ?? newSplitId(),
       name: name.trim() || "Split",
-      warmup_seconds: Math.max(0, parseInt(warmup) || 0),
+      warmup_seconds: Math.max(0, warmup),
       cycles: Math.max(1, parseInt(cycles) || 1),
-      on_seconds: Math.max(1, parseInt(on) || 1),
-      off_seconds: Math.max(0, parseInt(off) || 0),
-      cooldown_seconds: Math.max(0, parseInt(cooldown) || 0),
+      on_seconds: Math.max(1, on),
+      off_seconds: Math.max(0, off),
+      cooldown_seconds: Math.max(0, cooldown),
       warmup_color: warmupColor,
       on_color: onColor,
       off_color: offColor,
@@ -239,55 +213,45 @@ function SplitEditor({
             className="block w-full h-9 px-3 border rounded-md text-sm mt-0.5"
           />
         </div>
-        <div className="grid grid-cols-3 gap-3">
+
+        {/* Duration fields use h/m/s drum pickers; Cycles stays a number input */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-xs text-muted-foreground">Warmup (s)</label>
-            <input
-              type="number"
-              min={0}
-              value={warmup}
-              onChange={(e) => setWarmup(e.target.value)}
-              className="block w-full h-9 px-3 border rounded-md text-sm mt-0.5"
+            <label className="text-xs text-muted-foreground block mb-0.5">Warmup</label>
+            <DurationPicker
+              value={warmup / 60}
+              onChange={(mins) => setWarmup(Math.round(mins * 60))}
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Cycles</label>
+            <label className="text-xs text-muted-foreground block mb-0.5">Cycles</label>
             <input
               type="number"
               min={1}
               value={cycles}
               onChange={(e) => setCycles(e.target.value)}
-              className="block w-full h-9 px-3 border rounded-md text-sm mt-0.5"
+              className="block w-full h-10 px-3 border rounded-md text-sm"
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Cooldown (s)</label>
-            <input
-              type="number"
-              min={0}
-              value={cooldown}
-              onChange={(e) => setCooldown(e.target.value)}
-              className="block w-full h-9 px-3 border rounded-md text-sm mt-0.5"
+            <label className="text-xs text-muted-foreground block mb-0.5">On</label>
+            <DurationPicker
+              value={on / 60}
+              onChange={(mins) => setOn(Math.max(1, Math.round(mins * 60)))}
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">On (s)</label>
-            <input
-              type="number"
-              min={1}
-              value={on}
-              onChange={(e) => setOn(e.target.value)}
-              className="block w-full h-9 px-3 border rounded-md text-sm mt-0.5"
+            <label className="text-xs text-muted-foreground block mb-0.5">Off</label>
+            <DurationPicker
+              value={off / 60}
+              onChange={(mins) => setOff(Math.round(mins * 60))}
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Off (s)</label>
-            <input
-              type="number"
-              min={0}
-              value={off}
-              onChange={(e) => setOff(e.target.value)}
-              className="block w-full h-9 px-3 border rounded-md text-sm mt-0.5"
+            <label className="text-xs text-muted-foreground block mb-0.5">Cooldown</label>
+            <DurationPicker
+              value={cooldown / 60}
+              onChange={(mins) => setCooldown(Math.round(mins * 60))}
             />
           </div>
         </div>
@@ -410,38 +374,17 @@ function SplitsView({
                 isDragging ? "opacity-40" : "opacity-100"
               } ${isOver ? "border-primary border-2" : "border-border"}`}
             >
-              {/* Drag handle */}
-              <span
-                className="text-muted-foreground cursor-grab select-none text-lg shrink-0"
-                title="Drag to reorder"
-              >
-                ⠿
-              </span>
+              <span className="text-muted-foreground cursor-grab select-none text-lg shrink-0" title="Drag to reorder">⠿</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium truncate">{split.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{splitSummary(split)}</p>
               </div>
               <div className="flex gap-1 shrink-0">
+                <button type="button" onClick={() => onCopy(split)} className="text-xs px-2 py-1 rounded border hover:bg-muted" title="Duplicate">Copy</button>
+                <button type="button" onClick={() => onEdit(split)} className="text-xs px-2 py-1 rounded border hover:bg-muted">Edit</button>
                 <button
                   type="button"
-                  onClick={() => onCopy(split)}
-                  className="text-xs px-2 py-1 rounded border hover:bg-muted"
-                  title="Duplicate"
-                >
-                  Copy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onEdit(split)}
-                  className="text-xs px-2 py-1 rounded border hover:bg-muted"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm(`Delete "${split.name}"?`)) onDelete(split.id);
-                  }}
+                  onClick={() => { if (confirm(`Delete "${split.name}"?`)) onDelete(split.id); }}
                   className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
                 >
                   Delete
@@ -455,13 +398,7 @@ function SplitsView({
       <div className="flex gap-2 border-t pt-3">
         <Button variant="outline" size="sm" onClick={onExport}>Export JSON</Button>
         <Button variant="outline" size="sm" onClick={() => importRef.current?.click()}>Import JSON</Button>
-        <input
-          ref={importRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={handleFileImport}
-        />
+        <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileImport} />
       </div>
     </div>
   );
@@ -532,13 +469,39 @@ function TabataTab({
   timer: WorkoutTimerState;
   onManageSplits: () => void;
 }) {
+  // Local state: split selected but timer not yet started
+  const [pendingSplit, setPendingSplit] = useState<TabataSplit | null>(null);
+
   const { tabPhase, tabRunning, tabSelectedSplit, tabPhaseRemaining, tabCurrentCycle } = timer;
   const isActive = tabPhase !== "idle" && tabPhase !== "done";
   const isDone = tabPhase === "done";
   const color = phaseColor(tabPhase, tabSelectedSplit);
 
-  // Idle — split selector
-  if (tabPhase === "idle" && !tabRunning) {
+  const handleSelectSplit = (split: TabataSplit) => {
+    timer.tabSelectSplit(split);
+    setPendingSplit(split);
+  };
+
+  const handleStart = () => {
+    setPendingSplit(null);
+    timer.tabStart();
+  };
+
+  const handleChooseDifferent = () => {
+    setPendingSplit(null);
+    timer.tabReset();
+  };
+
+  // Stopwatch controls for the active HIIT screen
+  const swToggle = timer.swRunning ? timer.swPause : timer.swStart;
+  const swHint = timer.swRunning
+    ? "Tap to pause stopwatch"
+    : timer.swDisplay > 0
+    ? "Tap to resume stopwatch"
+    : "Tap to start stopwatch";
+
+  // ── Idle — split selector ────────────────────────────────────────────────────
+  if (tabPhase === "idle" && !tabRunning && !pendingSplit) {
     return (
       <div className="space-y-4 py-2">
         <div className="space-y-2">
@@ -547,26 +510,19 @@ function TabataTab({
               No splits. Create one via Manage Splits.
             </p>
           )}
-          {timer.splits.map((split) => {
-            const isSelected = timer.tabSelectedSplit?.id === split.id;
-            return (
-              <button
-                key={split.id}
-                type="button"
-                onClick={() => timer.tabSelectSplit(split)}
-                className={`w-full text-left border rounded-lg px-3 py-2.5 transition-colors ${
-                  isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:bg-muted"
-                }`}
-              >
-                <p className="text-sm font-medium">{split.name}</p>
-                <p className="text-xs text-muted-foreground">{splitSummary(split)}</p>
-              </button>
-            );
-          })}
+          {timer.splits.map((split) => (
+            <button
+              key={split.id}
+              type="button"
+              onClick={() => handleSelectSplit(split)}
+              className="w-full text-left border rounded-lg px-3 py-2.5 transition-colors border-border hover:bg-muted active:bg-muted"
+            >
+              <p className="text-sm font-medium">{split.name}</p>
+              <p className="text-xs text-muted-foreground">{splitSummary(split)}</p>
+            </button>
+          ))}
         </div>
-        <div className="flex items-center justify-between pt-1">
+        <div className="flex justify-end pt-1">
           <button
             type="button"
             onClick={onManageSplits}
@@ -574,18 +530,46 @@ function TabataTab({
           >
             Manage Splits →
           </button>
-          <Button
-            disabled={!timer.tabSelectedSplit}
-            onClick={timer.tabStart}
-          >
-            Start
-          </Button>
         </div>
       </div>
     );
   }
 
-  // Done
+  // ── Ready — split selected, not yet started ──────────────────────────────────
+  if (tabPhase === "idle" && pendingSplit) {
+    const firstPhase = pendingSplit.warmup_seconds > 0 ? "warmup" : "on";
+    const firstDuration = pendingSplit.warmup_seconds > 0 ? pendingSplit.warmup_seconds : pendingSplit.on_seconds;
+    const readyColor = firstPhase === "warmup" ? pendingSplit.warmup_color : pendingSplit.on_color;
+    const readyLabel = firstPhase === "warmup" ? "Warmup" : "Go!";
+
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-center text-muted-foreground font-medium">{pendingSplit.name}</p>
+        {/* Tap to start */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Tap to start"
+          onClick={handleStart}
+          onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") handleStart(); }}
+          className="rounded-xl flex flex-col items-center justify-center py-8 gap-2 cursor-pointer select-none"
+          style={{ backgroundColor: readyColor + "22", borderColor: readyColor + "66", borderWidth: 2 }}
+        >
+          <div className="text-5xl font-mono font-bold tabular-nums tracking-tight" style={{ color: readyColor }}>
+            {formatMS(firstDuration)}
+          </div>
+          <div className="text-xl font-semibold" style={{ color: readyColor }}>{readyLabel}</div>
+          <div className="text-xs mt-1" style={{ color: readyColor + "99" }}>Tap to start</div>
+        </div>
+        <div className="flex gap-3 justify-center">
+          <Button onClick={handleStart} className="w-28">Start</Button>
+          <Button variant="ghost" onClick={() => setPendingSplit(null)}>← Back</Button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Done ─────────────────────────────────────────────────────────────────────
   if (isDone) {
     return (
       <div className="flex flex-col items-center gap-6 py-6">
@@ -601,13 +585,13 @@ function TabataTab({
         )}
         <div className="flex gap-3">
           <Button onClick={timer.tabStart}>Repeat</Button>
-          <Button variant="outline" onClick={timer.tabReset}>Choose Different</Button>
+          <Button variant="outline" onClick={handleChooseDifferent}>Choose Different</Button>
         </div>
       </div>
     );
   }
 
-  // Active / Paused
+  // ── Active / Paused ──────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col gap-3">
       {/* Phase block — tap to pause/resume */}
@@ -624,10 +608,7 @@ function TabataTab({
         className="rounded-xl flex flex-col items-center justify-center py-8 gap-2 transition-colors duration-300 cursor-pointer select-none"
         style={{ backgroundColor: color + "22", borderColor: color + "66", borderWidth: 2 }}
       >
-        <div
-          className="text-5xl font-mono font-bold tabular-nums tracking-tight"
-          style={{ color }}
-        >
+        <div className="text-5xl font-mono font-bold tabular-nums tracking-tight" style={{ color }}>
           {formatMS(tabPhaseRemaining)}
         </div>
         <div className="text-xl font-semibold" style={{ color }}>
@@ -666,21 +647,38 @@ function TabataTab({
         >
           ⏭
         </button>
-        <Button onClick={timer.tabReset} variant="ghost" size="sm">Reset</Button>
+        <Button onClick={handleChooseDifferent} variant="ghost" size="sm">Reset</Button>
       </div>
 
-      {/* Total workout timer — large so it's readable from across the room */}
+      {/* Stopwatch — tappable to start/pause/resume, with reset button */}
       <div
-        className="rounded-xl flex flex-col items-center justify-center py-4 gap-1"
+        role="button"
+        tabIndex={0}
+        aria-label={swHint}
+        onClick={swToggle}
+        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") swToggle(); }}
+        className="rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none"
         style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
       >
         <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
           {formatHMS(timer.swDisplay)}
         </div>
         <div className="text-xs text-muted-foreground uppercase tracking-widest">
-          {timer.swRunning ? "Workout" : timer.swDisplay > 0 ? "Workout (paused)" : "Start stopwatch to track total"}
+          {swHint}
         </div>
       </div>
+      {timer.swDisplay > 0 && (
+        <div className="flex justify-center">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={timer.swReset}
+            className="text-xs text-muted-foreground"
+          >
+            Reset Stopwatch
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
