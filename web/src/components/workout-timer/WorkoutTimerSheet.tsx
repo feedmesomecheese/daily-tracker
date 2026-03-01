@@ -469,20 +469,53 @@ function SplitsView({
 
 // ─── Stopwatch Tab ─────────────────────────────────────────────────────────────
 
-function StopwatchTab({ timer }: { timer: WorkoutTimerState }) {
+function StopwatchTab({
+  timer,
+  onSendToWorkout,
+}: {
+  timer: WorkoutTimerState;
+  onSendToWorkout?: (seconds: number) => void;
+}) {
+  const toggleSw = timer.swRunning ? timer.swPause : timer.swStart;
+  const swHint = timer.swRunning
+    ? "Tap to pause"
+    : timer.swDisplay > 0
+    ? "Tap to resume"
+    : "Tap to start";
+
   return (
     <div className="flex flex-col items-center gap-6 py-4">
-      <div className="font-mono text-5xl font-bold tabular-nums tracking-tight">
+      {/* Tappable time display */}
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={swHint}
+        onClick={toggleSw}
+        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") toggleSw(); }}
+        className="font-mono text-5xl font-bold tabular-nums tracking-tight cursor-pointer select-none active:opacity-70"
+      >
         {formatHMS(timer.swDisplay)}
       </div>
+      <p className="text-xs text-muted-foreground -mt-4">{swHint}</p>
       <div className="flex gap-3">
         {!timer.swRunning ? (
-          <Button onClick={timer.swStart} className="w-28">Start</Button>
+          <Button onClick={timer.swStart} className="w-28">
+            {timer.swDisplay > 0 ? "Resume" : "Start"}
+          </Button>
         ) : (
           <Button onClick={timer.swPause} variant="outline" className="w-28">Pause</Button>
         )}
         <Button onClick={timer.swReset} variant="ghost">Reset</Button>
       </div>
+      {onSendToWorkout && timer.swDisplay > 0 && (
+        <Button
+          variant="secondary"
+          className="w-full"
+          onClick={() => onSendToWorkout(timer.swDisplay)}
+        >
+          Send to Workout Duration
+        </Button>
+      )}
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         Keeps running when the panel is closed.
       </p>
@@ -691,10 +724,12 @@ export function WorkoutTimerSheet({
   timer,
   open,
   onOpenChange,
+  onSendToWorkout,
 }: {
   timer: WorkoutTimerState;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSendToWorkout?: (seconds: number) => void;
 }) {
   const [view, setView] = useState<InternalView>("main");
   const [editingSplit, setEditingSplit] = useState<TabataSplit | null>(null);
@@ -767,7 +802,7 @@ export function WorkoutTimerSheet({
                 <TabsTrigger value="tabata" className="flex-1">Tabata / HIIT</TabsTrigger>
               </TabsList>
               <TabsContent value="stopwatch">
-                <StopwatchTab timer={timer} />
+                <StopwatchTab timer={timer} onSendToWorkout={onSendToWorkout} />
               </TabsContent>
               <TabsContent value="tabata">
                 <TabataTab

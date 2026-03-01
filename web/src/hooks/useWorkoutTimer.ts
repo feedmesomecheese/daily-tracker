@@ -92,6 +92,7 @@ const DEFAULT_SPLIT: TabataSplit = {
 };
 
 const STORAGE_KEY = "workout_timer_splits";
+const SW_STORAGE_KEY = "workout_sw_state";
 
 // ─── Sound file map ─────────────────────────────────────────────────────────────
 // Files go in /public/sounds/. If a file is missing, synthesis is used as fallback.
@@ -104,14 +105,45 @@ const SOUND_FILES: Partial<Record<SoundType, string>> = {
   "buzzer":      "/sounds/buzzer.mp3",
 };
 
-function playFileSound(path: string, onFail: () => void) {
-  try {
-    const audio = new Audio(path);
-    audio.volume = 0.8;
-    audio.play().catch(onFail);
-  } catch {
-    onFail();
+// ─── Shared AudioContext (persists across sounds for screen-off support) ─────────
+// A single AudioContext is kept alive so we can call ctx.resume() before each
+// sound — this works even when the screen is off on Android Chrome.
+let _ctx: AudioContext | null = null;
+const _bufferCache = new Map<string, AudioBuffer>();
+
+function getCtx(): AudioContext {
+  if (typeof window === "undefined") throw new Error("SSR");
+  if (!_ctx || _ctx.state === "closed") {
+    _ctx = new AudioContext();
+    _bufferCache.clear(); // old buffers are invalid for a new context
   }
+  return _ctx;
+}
+
+async function getBuffer(path: string): Promise<AudioBuffer | null> {
+  if (_bufferCache.has(path)) return _bufferCache.get(path)!;
+  try {
+    const ctx = getCtx();
+    const res = await fetch(path);
+    const ab = await res.arrayBuffer();
+    const buf = await ctx.decodeAudioData(ab);
+    _bufferCache.set(path, buf);
+    return buf;
+  } catch {
+    return null;
+  }
+}
+
+/** Call on user gesture to warm up the AudioContext and pre-fetch sound files. */
+export function preloadSounds() {
+  if (typeof window === "undefined") return;
+  try {
+    const ctx = getCtx();
+    ctx.resume().catch(() => {});
+    for (const path of Object.values(SOUND_FILES)) {
+      getBuffer(path as string);
+    }
+  } catch {}
 }
 
 // ─── Audio helpers ─────────────────────────────────────────────────────────────
@@ -127,7 +159,6 @@ function playOscTone(ctx: AudioContext, audio: AudioSettings) {
   gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.5);
-  osc.onended = () => ctx.close();
 }
 
 function playBoxingBell(ctx: AudioContext) {
@@ -149,7 +180,6 @@ function playBoxingBell(ctx: AudioContext) {
   gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur * 0.5);
   osc1.start(ctx.currentTime); osc1.stop(ctx.currentTime + dur);
   osc2.start(ctx.currentTime); osc2.stop(ctx.currentTime + dur * 0.5);
-  osc1.onended = () => ctx.close();
 }
 
 function playAirHorn(ctx: AudioContext) {
@@ -167,7 +197,6 @@ function playAirHorn(ctx: AudioContext) {
   gain.gain.setValueAtTime(0.5, ctx.currentTime + dur - 0.12);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
   osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
-  osc.onended = () => ctx.close();
 }
 
 function playWhistle(ctx: AudioContext) {
@@ -184,7 +213,6 @@ function playWhistle(ctx: AudioContext) {
   gain.gain.setValueAtTime(0.4, ctx.currentTime + 0.5);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
   osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
-  osc.onended = () => ctx.close();
 }
 
 function playChime(ctx: AudioContext) {
@@ -201,7 +229,6 @@ function playChime(ctx: AudioContext) {
     gain.gain.linearRampToValueAtTime(0.3, t + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
     osc.start(t); osc.stop(t + dur);
-    if (i === freqs.length - 1) osc.onended = () => ctx.close();
   });
 }
 
@@ -216,22 +243,16 @@ function playBuzzer(ctx: AudioContext) {
   gain.gain.setValueAtTime(0.3, ctx.currentTime + dur - 0.05);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
   osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
-  osc.onended = () => ctx.close();
 }
 
-function playSynthesized(soundType: SoundType, audio: AudioSettings) {
-  try {
-    const ctx = new AudioContext();
-    switch (soundType) {
-      case "boxing-bell": playBoxingBell(ctx); break;
-      case "air-horn":    playAirHorn(ctx);    break;
-      case "whistle":     playWhistle(ctx);    break;
-      case "chime":       playChime(ctx);      break;
-      case "buzzer":      playBuzzer(ctx);     break;
-      default:            playOscTone(ctx, audio); break;
-    }
-  } catch {
-    // Web Audio not available (SSR, etc.)
+function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioContext) {
+  switch (soundType) {
+    case "boxing-bell": playBoxingBell(ctx); break;
+    case "air-horn":    playAirHorn(ctx);    break;
+    case "whistle":     playWhistle(ctx);    break;
+    case "chime":       playChime(ctx);      break;
+    case "buzzer":      playBuzzer(ctx);     break;
+    default:            playOscTone(ctx, audio); break;
   }
 }
 
@@ -240,12 +261,26 @@ export function playTone(audio: AudioSettings) {
   const soundType = audio.soundType ?? "tone";
   const filePath = SOUND_FILES[soundType];
 
-  if (filePath) {
-    // Try file first; fall back to synthesis if missing or blocked
-    playFileSound(filePath, () => playSynthesized(soundType, audio));
-  } else {
-    playSynthesized(soundType, audio);
-  }
+  const run = async () => {
+    let ctx: AudioContext;
+    try { ctx = getCtx(); await ctx.resume(); } catch { return; }
+    if (filePath) {
+      const buf = await getBuffer(filePath);
+      if (buf) {
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.8, ctx.currentTime);
+        src.connect(gain);
+        gain.connect(ctx.destination);
+        src.start();
+        return;
+      }
+    }
+    playSynthesized(soundType, audio, ctx);
+  };
+
+  run();
 }
 
 // ─── Phase logic (pure) ────────────────────────────────────────────────────────
@@ -376,7 +411,23 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const swStartedAt = useRef<number | null>(null);
   const [swDisplay, setSwDisplay] = useState(0);
 
+  // Restore persisted stopwatch time on mount (survives sheet close / page refresh)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(SW_STORAGE_KEY);
+      if (raw) {
+        const { accumulated } = JSON.parse(raw) as { accumulated: number };
+        if (typeof accumulated === "number" && accumulated > 0) {
+          swAccumulated.current = accumulated;
+          setSwDisplay(Math.floor(accumulated));
+        }
+      }
+    } catch {}
+  }, []);
+
   const swStart = useCallback(() => {
+    preloadSounds(); // warm up AudioContext on first user gesture
     swStartedAt.current = Date.now();
     setSwRunning(true);
   }, []);
@@ -387,6 +438,9 @@ export function useWorkoutTimer(): WorkoutTimerState {
       swStartedAt.current = null;
     }
     setSwRunning(false);
+    try {
+      localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: swAccumulated.current }));
+    } catch {}
   }, []);
 
   const swReset = useCallback(() => {
@@ -394,6 +448,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
     swStartedAt.current = null;
     setSwRunning(false);
     setSwDisplay(0);
+    try { localStorage.removeItem(SW_STORAGE_KEY); } catch {}
   }, []);
 
   // ── Tabata ───────────────────────────────────────────────────────────────────
@@ -497,6 +552,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
   const tabStart = useCallback(() => {
     if (!tabSplitRef.current) return;
+    preloadSounds(); // warm up AudioContext + pre-fetch sound files
     setTabPhase("idle");
     tabPhaseRef.current = "idle";
     setTabCurrentCycle(0);
@@ -518,6 +574,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
   }, []);
 
   const tabResume = useCallback(() => {
+    preloadSounds(); // ensure AudioContext is running after potential suspend
     if (tabPausedRemaining.current > 0) {
       tabPhaseEndAt.current = Date.now() + tabPausedRemaining.current * 1000;
     }

@@ -1304,7 +1304,15 @@ export default function WorkoutsPage() {
 
       {/* Workout Timer */}
       <WorkoutTimerFAB timer={timer} onClick={() => setTimerOpen(true)} />
-      <WorkoutTimerSheet timer={timer} open={timerOpen} onOpenChange={setTimerOpen} />
+      <WorkoutTimerSheet
+        timer={timer}
+        open={timerOpen}
+        onOpenChange={setTimerOpen}
+        onSendToWorkout={(seconds) => {
+          setWorkoutDuration(minutesToDurationStr(seconds / 60));
+          setTimerOpen(false);
+        }}
+      />
 
       {/* Custom Exercise Sheet */}
       <CustomExerciseSheet
