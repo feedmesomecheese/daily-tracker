@@ -465,9 +465,11 @@ function StopwatchTab({
 function TabataTab({
   timer,
   onManageSplits,
+  onSendToWorkout,
 }: {
   timer: WorkoutTimerState;
   onManageSplits: () => void;
+  onSendToWorkout?: (seconds: number) => void;
 }) {
   // Local state: split selected but timer not yet started
   const [pendingSplit, setPendingSplit] = useState<TabataSplit | null>(null);
@@ -590,10 +592,15 @@ function TabataTab({
           </div>
         </div>
         {timer.swDisplay > 0 && (
-          <div className="flex justify-center">
+          <div className="flex justify-center gap-2">
             <Button variant="ghost" size="sm" onClick={timer.swReset} className="text-xs text-muted-foreground">
               Reset Stopwatch
             </Button>
+            {onSendToWorkout && (
+              <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
+                Send to Workout Duration
+              </Button>
+            )}
           </div>
         )}
       </div>
@@ -708,6 +715,11 @@ function TabataTab({
           >
             Reset Stopwatch
           </Button>
+          {onSendToWorkout && (
+            <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
+              Send to Workout Duration
+            </Button>
+          )}
         </div>
       )}
     </div>
@@ -837,6 +849,7 @@ export function WorkoutTimerSheet({
                 <TabataTab
                   timer={timer}
                   onManageSplits={() => setView("splits")}
+                  onSendToWorkout={onSendToWorkout}
                 />
               </TabsContent>
             </Tabs>
