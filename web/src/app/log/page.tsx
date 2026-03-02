@@ -26,6 +26,16 @@ type ConfigRow = {
   min_value?: number | null;
   max_value?: number | null;
   disallowed_values?: string | null;
+  group?: string | null;
+  group_order?: number | null;
+  metric_order?: number | null;
+};
+
+type GroupInfo = {
+  name: string;       // raw value — "" means ungrouped
+  displayName: string;
+  order: number;
+  metricIds: string[];
 };
 
 const PAGE_SIZE_OPTIONS = [7, 14, 30, 90] as const;
@@ -48,6 +58,11 @@ function getPresetDates(preset: DatePreset): { start: string; end: string } {
   else if (preset === "90d") d.setDate(d.getDate() - 90);
   else if (preset === "1y") d.setFullYear(d.getFullYear() - 1);
   return { start: getLocalDateString(d), end: getLocalDateString() };
+}
+
+function csvEscape(val: string): string {
+  if (/[,"\n\r]/.test(val)) return `"${val.replace(/"/g, '""')}"`;
+  return val;
 }
 
 // --- Utility functions for parsing/formatting ---
@@ -410,6 +425,181 @@ function EditableCell({
   );
 }
 
+// ─── Column Picker ────────────────────────────────────────────────────────────
+
+function GroupCheckbox({
+  checked,
+  indeterminate,
+  onChange,
+  onClick,
+}: {
+  checked: boolean;
+  indeterminate: boolean;
+  onChange: () => void;
+  onClick: (e: React.MouseEvent) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminate;
+  }, [indeterminate]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={checked}
+      onChange={onChange}
+      onClick={onClick}
+      className="h-4 w-4 cursor-pointer"
+    />
+  );
+}
+
+function ColumnPickerDialog({
+  open,
+  onClose,
+  groups,
+  allMetricIds,
+  nameMap,
+  selectedMetricIds,
+  onSelectionChange,
+  collapsedGroups,
+  onToggleCollapse,
+}: {
+  open: boolean;
+  onClose: () => void;
+  groups: GroupInfo[];
+  allMetricIds: string[];
+  nameMap: Map<string, string>;
+  selectedMetricIds: Set<string> | null;
+  onSelectionChange: (ids: Set<string> | null) => void;
+  collapsedGroups: Set<string>;
+  onToggleCollapse: (name: string) => void;
+}) {
+  const [draft, setDraft] = useState<Set<string>>(() => new Set(allMetricIds));
+
+  // Reset draft each time dialog opens
+  useEffect(() => {
+    if (open) setDraft(selectedMetricIds ? new Set(selectedMetricIds) : new Set(allMetricIds));
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleMetric = (id: string) => {
+    setDraft(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleGroup = (group: GroupInfo) => {
+    const allOn = group.metricIds.every(id => draft.has(id));
+    setDraft(prev => {
+      const next = new Set(prev);
+      if (allOn) group.metricIds.forEach(id => next.delete(id));
+      else group.metricIds.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const handleApply = () => {
+    onSelectionChange(draft.size === allMetricIds.length ? null : new Set(draft));
+    onClose();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm flex flex-col" style={{ maxHeight: "80vh" }}>
+        <DialogHeader>
+          <DialogTitle>Select Columns</DialogTitle>
+        </DialogHeader>
+
+        {/* Select all / none */}
+        <div className="flex items-center justify-between pb-2 border-b shrink-0">
+          <span className="text-sm text-muted-foreground">
+            {draft.size} of {allMetricIds.length} selected
+          </span>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setDraft(new Set(allMetricIds))}
+              className="text-xs text-primary hover:underline"
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setDraft(new Set())}
+              className="text-xs text-primary hover:underline"
+            >
+              None
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable group list */}
+        <div className="overflow-y-auto flex-1 space-y-1.5 py-1">
+          {groups.map(group => {
+            const collapsed = collapsedGroups.has(group.name);
+            const allOn = group.metricIds.every(id => draft.has(id));
+            const someOn = group.metricIds.some(id => draft.has(id));
+            const selectedCount = group.metricIds.filter(id => draft.has(id)).length;
+
+            return (
+              <div key={group.name} className="border rounded-md overflow-hidden">
+                {/* Group header row */}
+                <div
+                  className="flex items-center gap-2 px-3 py-2 bg-muted/50 cursor-pointer select-none"
+                  onClick={() => onToggleCollapse(group.name)}
+                >
+                  <span className="text-[10px] text-muted-foreground w-3">
+                    {collapsed ? "▶" : "▼"}
+                  </span>
+                  <GroupCheckbox
+                    checked={allOn}
+                    indeterminate={someOn && !allOn}
+                    onChange={() => toggleGroup(group)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <span className="text-sm font-medium flex-1 truncate">{group.displayName}</span>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {selectedCount}/{group.metricIds.length}
+                  </span>
+                </div>
+
+                {/* Individual metrics */}
+                {!collapsed && (
+                  <div className="divide-y">
+                    {group.metricIds.map(id => (
+                      <label
+                        key={id}
+                        className="flex items-center gap-2 px-4 py-1.5 cursor-pointer hover:bg-muted/30"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={draft.has(id)}
+                          onChange={() => toggleMetric(id)}
+                          className="h-4 w-4 cursor-pointer"
+                        />
+                        <span className="text-sm truncate">{nameMap.get(id) ?? id}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex gap-2 pt-2 border-t shrink-0">
+          <Button onClick={handleApply} className="flex-1">Apply</Button>
+          <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function DailyLogPage() {
   const [allConfig, setAllConfig] = useState<ConfigRow[]>([]);
   const [logRows, setLogRows] = useState<LogRow[]>([]);
@@ -430,6 +620,12 @@ export default function DailyLogPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [exporting, setExporting] = useState(false);
+
+  // Column picker state
+  const [selectedMetricIds, setSelectedMetricIds] = useState<Set<string> | null>(null); // null = all
+  const [columnPickerOpen, setColumnPickerOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const groupsInitialized = useRef(false);
 
   const handleDatePreset = (preset: DatePreset) => {
     const { start, end } = getPresetDates(preset);
@@ -518,6 +714,43 @@ export default function DailyLogPage() {
     () => config.map(c => c.metric_id),
     [config]
   );
+
+  // Groups derived from config (preserves API sort order)
+  const groups = useMemo<GroupInfo[]>(() => {
+    const map = new Map<string, GroupInfo>();
+    config.forEach(c => {
+      const name = c.group ?? "";
+      const displayName = name || "Ungrouped";
+      const order = c.group_order ?? 9999;
+      if (!map.has(name)) map.set(name, { name, displayName, order, metricIds: [] });
+      map.get(name)!.metricIds.push(c.metric_id);
+    });
+    return Array.from(map.values()).sort((a, b) =>
+      a.order !== b.order ? a.order - b.order : a.displayName.localeCompare(b.displayName)
+    );
+  }, [config]);
+
+  // Collapse all groups on first load (compact by default)
+  useEffect(() => {
+    if (groups.length > 0 && !groupsInitialized.current) {
+      groupsInitialized.current = true;
+      setCollapsedGroups(new Set(groups.map(g => g.name)));
+    }
+  }, [groups]);
+
+  // Metrics actually shown in the table (filtered by column picker)
+  const visibleMetricIds = useMemo(() => {
+    if (selectedMetricIds === null) return metricIds;
+    return metricIds.filter(id => selectedMetricIds.has(id));
+  }, [metricIds, selectedMetricIds]);
+
+  const toggleGroupCollapse = (name: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  };
 
   const nameMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -736,7 +969,15 @@ export default function DailyLogPage() {
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">Daily Log</h1>
           <Badge variant="secondary">{filteredDates.length} days</Badge>
-          <Badge variant="outline">{metricIds.length} metrics</Badge>
+          <Badge
+            variant={selectedMetricIds !== null ? "default" : "outline"}
+            className="cursor-pointer"
+            onClick={() => setColumnPickerOpen(true)}
+          >
+            {selectedMetricIds !== null
+              ? `${visibleMetricIds.length} / ${metricIds.length} metrics`
+              : `${metricIds.length} metrics`}
+          </Badge>
           <Badge variant="outline" className="text-blue-600">Click cells to edit</Badge>
         </div>
 
@@ -746,37 +987,41 @@ export default function DailyLogPage() {
             {startDate || endDate ? " in range" : " total"}
           </span>
           <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setColumnPickerOpen(true)}
+          >
+            Columns{selectedMetricIds !== null ? ` (${visibleMetricIds.length}/${metricIds.length})` : ""}
+          </Button>
+          <Button
             data-tour="log-export-btn"
             variant="outline"
             size="sm"
             disabled={exporting}
-            onClick={async () => {
+            onClick={() => {
               setExporting(true);
               try {
-                const headers = await getAuthHeaders();
-                const params = new URLSearchParams();
-                if (showArchived) params.set("archived", "1");
-                if (showPrivate) params.set("private", "1");
-                if (startDate) params.set("start", startDate);
-                if (endDate) params.set("end", endDate);
-                const queryStr = params.toString();
-
-                const res = await fetch(`/api/export/daily-log.csv${queryStr ? `?${queryStr}` : ""}`, { headers });
-                if (!res.ok) {
-                  let msg = `Export failed (${res.status})`;
-                  try { const j = await res.json(); msg = j?.error || msg; } catch {}
-                  throw new Error(msg);
-                }
-
-                const blob = await res.blob();
-                const url = window.URL.createObjectURL(blob);
+                const cols = visibleMetricIds;
+                const header = ["date", ...cols.map(id => nameMap.get(id) ?? id)].map(csvEscape).join(",");
+                const lines = filteredDates.map(date => {
+                  const cells = [date];
+                  for (const mid of cols) {
+                    const cell = cellMap.get(`${date}|${mid}`);
+                    const cfg = configMap.get(mid);
+                    if (!cell) { cells.push(""); }
+                    else if (cfg?.type === "text") { cells.push(csvEscape(cell.value_text ?? "")); }
+                    else { cells.push(cell.value == null ? "" : String(cell.value)); }
+                  }
+                  return cells.map(csvEscape).join(",");
+                });
+                const csv = [header, ...lines].join("\n");
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
                 const a = document.createElement("a");
                 a.href = url;
                 a.download = `daily-tracker${startDate ? `_${startDate}` : ""}${endDate ? `_to_${endDate}` : ""}.csv`;
-                document.body.appendChild(a);
                 a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
+                URL.revokeObjectURL(url);
               } catch (e: unknown) {
                 alert(e instanceof Error ? e.message : String(e));
               } finally {
@@ -784,7 +1029,7 @@ export default function DailyLogPage() {
               }
             }}
           >
-            {exporting ? "Exporting..." : "Export CSV"}
+            Export CSV
           </Button>
         </div>
       </div>
@@ -972,7 +1217,7 @@ export default function DailyLogPage() {
                   <th className="sticky left-0 z-20 bg-muted p-2 text-left font-semibold border-r shadow-sm">
                     Date
                   </th>
-                  {metricIds.map(mid => (
+                  {visibleMetricIds.map(mid => (
                     <th key={mid} className="p-2 text-left font-semibold border-l whitespace-nowrap">
                       {nameMap.get(mid) ?? mid}
                     </th>
@@ -985,7 +1230,7 @@ export default function DailyLogPage() {
                     <td className="sticky left-0 z-10 bg-inherit p-2 border-r font-medium shadow-sm">
                       {d}
                     </td>
-                    {metricIds.map(mid => {
+                    {visibleMetricIds.map(mid => {
                       const key = `${d}|${mid}`;
                       const cellData = cellMap.get(key);
                       const metricConfig = configMap.get(mid);
@@ -1020,6 +1265,18 @@ export default function DailyLogPage() {
           </div>
         </CardContent>
       </Card>
+
+      <ColumnPickerDialog
+        open={columnPickerOpen}
+        onClose={() => setColumnPickerOpen(false)}
+        groups={groups}
+        allMetricIds={metricIds}
+        nameMap={nameMap}
+        selectedMetricIds={selectedMetricIds}
+        onSelectionChange={setSelectedMetricIds}
+        collapsedGroups={collapsedGroups}
+        onToggleCollapse={toggleGroupCollapse}
+      />
 
       {process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 right-4 z-50">
