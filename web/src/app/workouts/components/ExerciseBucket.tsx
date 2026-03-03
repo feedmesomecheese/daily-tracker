@@ -183,7 +183,10 @@ export default function ExerciseBucket({
       >
         <div className="space-y-0">
           {exercises.map((ex, index) => {
-            const ghost = ex.exercise_id ? ghostData[ex.exercise_id] : undefined;
+            const ghostKey = ex.exercise_id
+            ? `${ex.exercise_id}:${[...(ex.modifier_ids || [])].sort().join(",")}`
+            : null;
+          const ghost = ghostKey ? ghostData[ghostKey] : undefined;
             const ghostSets = ghost?.sets || [];
             const nextEx = exercises[index + 1];
             const isSupersetLinked =

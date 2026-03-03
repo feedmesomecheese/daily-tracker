@@ -54,7 +54,7 @@ export async function GET(req: Request, { params }: Params) {
   // Get the exercise definition
   const { data: exercise, error: exError } = await supabase
     .from("exercises")
-    .select("id, name, exercise_type, group_ids, parent_exercise_id")
+    .select("id, name, exercise_type, group_ids, parent_exercise_id, parent_modifier_filter")
     .eq("id", id)
     .eq("owner_id", user.id)
     .single();
@@ -63,8 +63,18 @@ export async function GET(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Exercise not found" }, { status: 404 });
   }
 
-  // Find linked exercise IDs (this exercise + children)
+  // Find linked exercise IDs (this exercise + children + parent if this is a child)
   const exerciseIds: string[] = [id];
+
+  // If this exercise is a child, also include its parent exercise
+  const parentModifierFilter: string[] | null =
+    exercise.parent_exercise_id && (exercise.parent_modifier_filter as string[] | null)?.length
+      ? (exercise.parent_modifier_filter as string[])
+      : null;
+
+  if (exercise.parent_exercise_id) {
+    exerciseIds.push(exercise.parent_exercise_id);
+  }
 
   // Check if this exercise has children (it's a parent)
   const { data: children } = await supabase
@@ -138,10 +148,16 @@ export async function GET(req: Request, { params }: Params) {
     sessionOffset += SESSION_PAGE;
   }
 
-  // Filter out child exercise sessions that don't match the modifier filter
+  // Filter sessions by exercise/modifier relevance
   const sessions = allSessions.filter((s) => {
-    // Sessions for the parent exercise itself — always include
+    // Sessions for this exercise itself — always include
     if (s.exercise_id === id) return true;
+    // Sessions for this exercise's parent — only include if modifiers match
+    if (exercise.parent_exercise_id && s.exercise_id === exercise.parent_exercise_id) {
+      if (!parentModifierFilter || parentModifierFilter.length === 0) return true;
+      // All required modifiers must be present in the session
+      return parentModifierFilter.every((modId) => (s.modifier_ids || []).includes(modId));
+    }
     // Sessions for child exercises — check modifier filter
     const filter = s.exercise_id ? childModifierFilter.get(s.exercise_id) : null;
     if (!filter) return true; // no filter = include all

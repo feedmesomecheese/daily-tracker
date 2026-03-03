@@ -193,21 +193,32 @@ export default function WorkoutsPage() {
     fetchData();
   }, [fetchData]);
 
+  // Composite key for ghost data: "exerciseId:sortedMod1,sortedMod2"
+  const ghostKey = (exerciseId: string, modifierIds: string[]) =>
+    `${exerciseId}:${[...modifierIds].sort().join(",")}`;
+
   // Fetch ghost data when bucket exercises change
   useEffect(() => {
-    const exerciseIds = bucketExercises
-      .map((be) => be.exercise_id)
-      .filter((id): id is string => id !== null);
+    const newEntries = bucketExercises
+      .filter((be) => be.exercise_id !== null)
+      .map((be) => ({
+        id: be.exercise_id!,
+        modifierIds: be.modifier_ids || [],
+        key: ghostKey(be.exercise_id!, be.modifier_ids || []),
+      }))
+      .filter(({ key }) => !(key in ghostData));
 
-    // Only fetch for IDs we don't already have
-    const newIds = exerciseIds.filter((id) => !(id in ghostData));
-    if (newIds.length === 0) return;
+    if (newEntries.length === 0) return;
 
     const fetchGhost = async () => {
       try {
         const headers = await getAuthHeaders();
+        // Format: "id1:mod1+mod2,id2:,id3:mod3"
+        const param = newEntries
+          .map(({ id, modifierIds }) => `${id}:${modifierIds.join("+")}`)
+          .join(",");
         const res = await fetch(
-          `/api/workouts/exercises/last-sets?exercise_ids=${newIds.join(",")}`,
+          `/api/workouts/exercises/last-sets?exercises=${param}`,
           { headers }
         );
         if (res.ok) {
