@@ -82,13 +82,23 @@ async function main() {
   /**
    * Greedy recursive matcher.
    * Tries to strip known modifier names from the front of the remaining name,
-   * then checks if the remainder matches an X-exercise base name.
+   * also handles ", XX%" suffix (percentage-based sets notation).
+   * Returns { parentId, modifierIds, strippedPercent } or null.
    */
   function tryMatch(remaining, collectedModIds) {
     // Check if remaining matches an X-exercise base
     const xId = xExerciseByBase.get(remaining.toLowerCase());
     if (xId) {
-      return { parentId: xId, modifierIds: collectedModIds };
+      return { parentId: xId, modifierIds: collectedModIds, strippedPercent: null };
+    }
+
+    // Try stripping ", XX%" suffix (e.g. "Raised Heel Squats, 75%")
+    const percentMatch = remaining.match(/^(.+),\s*(\d+)%$/);
+    if (percentMatch) {
+      const withoutPercent = percentMatch[1].trim();
+      const pct = percentMatch[2];
+      const result = tryMatch(withoutPercent, collectedModIds);
+      if (result) return { ...result, strippedPercent: `${pct}%` };
     }
 
     // Try stripping each modifier from the front
@@ -122,8 +132,9 @@ async function main() {
     const modNames = m.modifierIds.map(
       (id) => modifiers.find((mod) => mod.id === id)?.name ?? id
     );
+    const pctNote = m.strippedPercent ? ` [stripped: ${m.strippedPercent}]` : "";
     console.log(
-      `  "${m.exercise.name}" → parent="${parentName}", modifiers=[${modNames.join(", ")}]`
+      `  "${m.exercise.name}" → parent="${parentName}", modifiers=[${modNames.join(", ")}]${pctNote}`
     );
   }
 
