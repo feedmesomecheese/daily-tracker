@@ -96,7 +96,7 @@ export async function GET(req: Request, { params }: Params) {
     hiit_sessions: hiitSessions || [],
     cardio_sessions: cardioSessions || [],
     activity_sessions: activitySessions || [],
-    applied_tag_ids: (appliedTags || []).map((t) => t.tag_id),
+    applied_tag_ids: (appliedTags || []).map((t: { tag_id: string }) => t.tag_id),
   });
 }
 
@@ -309,7 +309,7 @@ export async function PATCH(req: Request, { params }: Params) {
   return NextResponse.json({
     ...workout,
     exercises: exercisesWithSets,
-    applied_tag_ids: (currentTags || []).map((t) => t.tag_id),
+    applied_tag_ids: (currentTags || []).map((t: { tag_id: string }) => t.tag_id),
   });
 }
 
