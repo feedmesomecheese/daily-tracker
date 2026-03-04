@@ -16,12 +16,14 @@ import type {
   ExerciseGroup,
   Exercise,
   WorkoutHistory,
+  WorkoutTag,
 } from "../types";
 
 export default function WorkoutLogPage() {
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
   const [groups, setGroups] = useState<ExerciseGroup[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [tags, setTags] = useState<WorkoutTag[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,19 +35,22 @@ export default function WorkoutLogPage() {
   const fetchRefData = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
-      const [typesRes, groupsRes, exRes] = await Promise.all([
+      const [typesRes, groupsRes, exRes, tagsRes] = await Promise.all([
         fetch("/api/workouts/types", { headers }),
         fetch("/api/workouts/groups", { headers }),
         fetch("/api/workouts/exercises?include_archived=true", { headers }),
+        fetch("/api/workouts/tags", { headers }),
       ]);
-      const [typesData, groupsData, exData] = await Promise.all([
+      const [typesData, groupsData, exData, tagsData] = await Promise.all([
         typesRes.ok ? typesRes.json() : [],
         groupsRes.ok ? groupsRes.json() : [],
         exRes.ok ? exRes.json() : [],
+        tagsRes.ok ? tagsRes.json() : [],
       ]);
       setWorkoutTypes(typesData);
       setGroups(groupsData);
       setExercises(exData);
+      setTags(tagsData);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load reference data");
     }
@@ -113,6 +118,13 @@ export default function WorkoutLogPage() {
       );
     }
 
+    // Filter by tags
+    if (filters.tagIds.size > 0) {
+      result = result.filter((w) =>
+        (w.applied_tag_ids || []).some((tid) => filters.tagIds.has(tid))
+      );
+    }
+
     // Filter by group
     if (filters.groupId) {
       result = result.filter((w) =>
@@ -149,7 +161,7 @@ export default function WorkoutLogPage() {
     }
 
     return result;
-  }, [workouts, filters.typeIds, filters.groupId, filters.exerciseSearch, filters.flags, exerciseGroupMap]);
+  }, [workouts, filters.typeIds, filters.tagIds, filters.groupId, filters.exerciseSearch, filters.flags, exerciseGroupMap]);
 
   // For exercise-centric view: filter exercises within workouts too
   const exerciseFilteredWorkouts = useMemo(() => {
@@ -255,6 +267,7 @@ export default function WorkoutLogPage() {
         workoutTypes={workoutTypes}
         groups={groups}
         exercises={exercises}
+        tags={tags}
       />
 
       {/* Tabs */}
@@ -273,6 +286,7 @@ export default function WorkoutLogPage() {
             <WorkoutCentricView
               workouts={filteredWorkouts}
               workoutTypes={workoutTypes}
+              tags={tags}
             />
           )}
         </TabsContent>

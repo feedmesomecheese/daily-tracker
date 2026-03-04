@@ -83,6 +83,12 @@ export async function GET(req: Request, { params }: Params) {
     .select("*")
     .eq("workout_id", id);
 
+  // Get applied tags
+  const { data: appliedTags } = await supabase
+    .from("workout_applied_tags")
+    .select("tag_id")
+    .eq("workout_id", id);
+
   return NextResponse.json({
     ...workout,
     exercises: exercisesWithSets,
@@ -90,6 +96,7 @@ export async function GET(req: Request, { params }: Params) {
     hiit_sessions: hiitSessions || [],
     cardio_sessions: cardioSessions || [],
     activity_sessions: activitySessions || [],
+    applied_tag_ids: (appliedTags || []).map((t) => t.tag_id),
   });
 }
 
@@ -147,6 +154,7 @@ export async function PATCH(req: Request, { params }: Params) {
     body_fat_pct,
     notes,
     exercises,
+    tag_ids,
   } = body;
 
   // 1. Update workout metadata
@@ -179,7 +187,16 @@ export async function PATCH(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Workout not found" }, { status: 404 });
   }
 
-  // 2. If exercises array is provided, delete-and-recreate
+  // 2. If tag_ids provided, replace applied tags
+  if (tag_ids !== undefined) {
+    await supabase.from("workout_applied_tags").delete().eq("workout_id", id);
+    if (Array.isArray(tag_ids) && tag_ids.length > 0) {
+      const tagRows = tag_ids.map((tid: string) => ({ workout_id: id, tag_id: tid }));
+      await supabase.from("workout_applied_tags").insert(tagRows);
+    }
+  }
+
+  // 3. If exercises array is provided, delete-and-recreate
   if (exercises !== undefined) {
     // Delete existing workout_exercises (CASCADE deletes workout_sets linked via workout_exercise_id)
     await supabase
@@ -283,7 +300,17 @@ export async function PATCH(req: Request, { params }: Params) {
     sets: setsByExercise.get(we.id) || [],
   }));
 
-  return NextResponse.json({ ...workout, exercises: exercisesWithSets });
+  // Fetch current applied tags for response
+  const { data: currentTags } = await supabase
+    .from("workout_applied_tags")
+    .select("tag_id")
+    .eq("workout_id", id);
+
+  return NextResponse.json({
+    ...workout,
+    exercises: exercisesWithSets,
+    applied_tag_ids: (currentTags || []).map((t) => t.tag_id),
+  });
 }
 
 // DELETE /api/workouts/[id] - Delete a workout (cascades to sets)

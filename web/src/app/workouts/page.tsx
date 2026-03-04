@@ -50,6 +50,13 @@ type Modifier = {
   adjective_order: number;
 };
 
+type WorkoutTag = {
+  id: string;
+  name: string;
+  default_type_ids: string[];
+  is_archived: boolean;
+};
+
 type WorkoutExercise = {
   id?: string;
   exercise_id?: string | null;
@@ -85,6 +92,7 @@ type WorkoutHistory = {
   duration_minutes: number | null;
   notes: string | null;
   exercises?: WorkoutExercise[];
+  applied_tag_ids?: string[];
   sets?: {
     exercise_name_display: string;
     set_number: number;
@@ -117,6 +125,7 @@ export default function WorkoutsPage() {
   const [groups, setGroups] = useState<ExerciseGroup[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
+  const [tags, setTags] = useState<WorkoutTag[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
   const [ghostData, setGhostData] = useState<GhostData>({});
   const [loading, setLoading] = useState(true);
@@ -131,6 +140,10 @@ export default function WorkoutsPage() {
   const [workoutNotes, setWorkoutNotes] = useState("");
   const [workoutRating, setWorkoutRating] = useState<number | null>(null);
   const [workoutDuration, setWorkoutDuration] = useState("");
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [showNewTagInput, setShowNewTagInput] = useState(false);
+  const [newTagInputValue, setNewTagInputValue] = useState("");
+  const isEditMode = useRef(false);
   const [saving, setSaving] = useState(false);
   const [showCustomSheet, setShowCustomSheet] = useState(false);
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
@@ -161,20 +174,22 @@ export default function WorkoutsPage() {
       setLoading(true);
       const headers = await getAuthHeaders();
 
-      const [typesRes, groupsRes, exRes, modRes, workoutRes] = await Promise.all([
+      const [typesRes, groupsRes, exRes, modRes, workoutRes, tagsRes] = await Promise.all([
         fetch("/api/workouts/types", { headers }),
         fetch("/api/workouts/groups", { headers }),
         fetch("/api/workouts/exercises", { headers }),
         fetch("/api/workouts/modifiers", { headers }),
         fetch("/api/workouts?include_sets=true&limit=20", { headers }),
+        fetch("/api/workouts/tags", { headers }),
       ]);
 
-      const [typesData, groupsData, exData, modData, workoutData] = await Promise.all([
+      const [typesData, groupsData, exData, modData, workoutData, tagsData] = await Promise.all([
         typesRes.ok ? typesRes.json() : [],
         groupsRes.ok ? groupsRes.json() : [],
         exRes.ok ? exRes.json() : [],
         modRes.ok ? modRes.json() : [],
         workoutRes.ok ? workoutRes.json() : [],
+        tagsRes.ok ? tagsRes.json() : [],
       ]);
 
       setWorkoutTypes(typesData);
@@ -182,6 +197,7 @@ export default function WorkoutsPage() {
       setExercises(exData);
       setModifiers(modData);
       setWorkouts(workoutData);
+      setTags(tagsData);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
@@ -192,6 +208,20 @@ export default function WorkoutsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-select tag defaults when workout type changes (new workouts only)
+  useEffect(() => {
+    if (isEditMode.current) return;
+    if (!selectedTypeId) {
+      setSelectedTagIds(new Set());
+      return;
+    }
+    const defaults = tags
+      .filter((t) => !t.is_archived && t.default_type_ids.includes(selectedTypeId))
+      .map((t) => t.id);
+    setSelectedTagIds(new Set(defaults));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTypeId, tags]);
 
   // Composite key for ghost data: "exerciseId:sortedMod1,sortedMod2"
   const ghostKey = (exerciseId: string, modifierIds: string[]) =>
@@ -302,9 +332,11 @@ export default function WorkoutsPage() {
       return;
     }
 
+    isEditMode.current = true;
     setEditingWorkoutId(workout.id);
     setWorkoutDate(workout.date);
     setSelectedTypeId(workout.workout_type_id || "");
+    setSelectedTagIds(new Set((workout as WorkoutHistory & { applied_tag_ids?: string[] }).applied_tag_ids || []));
     setWorkoutNotes(workout.notes || "");
     setWorkoutRating(workout.rating);
     setWorkoutDuration(minutesToDurationStr(workout.duration_minutes));
@@ -570,6 +602,27 @@ export default function WorkoutsPage() {
     return isNaN(secs) ? null : secs;
   };
 
+  const createTagInline = async () => {
+    const name = newTagInputValue.trim();
+    if (!name) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/workouts/tags", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, default_type_ids: [] }),
+      });
+      if (!res.ok) throw new Error("Failed to create tag");
+      const newTag = await res.json();
+      setTags((prev) => [...prev, newTag]);
+      setSelectedTagIds((prev) => new Set([...prev, newTag.id]));
+      setNewTagInputValue("");
+      setShowNewTagInput(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create tag");
+    }
+  };
+
   const handleSave = async () => {
     // Filter out exercises with no data at all
     const exercisesWithData = bucketExercises.filter((ex) => {
@@ -644,6 +697,7 @@ export default function WorkoutsPage() {
         duration_minutes: workoutDuration ? parseDurationToMinutes(workoutDuration) : null,
         notes: workoutNotes || null,
         exercises: exercisesPayload,
+        tag_ids: Array.from(selectedTagIds),
       };
 
       const url = editingWorkoutId
@@ -679,9 +733,13 @@ export default function WorkoutsPage() {
   };
 
   const resetForm = () => {
+    isEditMode.current = false;
     setEditingWorkoutId(null);
     setWorkoutDate(getLocalDateString());
     setSelectedTypeId("");
+    setSelectedTagIds(new Set());
+    setShowNewTagInput(false);
+    setNewTagInputValue("");
     setBucketExercises([]);
     setWorkoutNotes("");
     setWorkoutRating(null);
@@ -761,6 +819,12 @@ export default function WorkoutsPage() {
     if (!typeId) return null;
     return workoutTypes.find((t) => t.id === typeId)?.name || null;
   };
+
+  const tagMap = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tags) m.set(t.id, t.name);
+    return m;
+  }, [tags]);
 
   // --- Workouts Tour ---
   const launchWorkoutsTour = useCallback((isReplay = false) => {
@@ -963,6 +1027,69 @@ export default function WorkoutsPage() {
             </div>
           </div>
 
+          {/* Tag selector - always shown when type is selected */}
+          {selectedTypeId && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Tags:</span>
+              {tags.filter((t) => !t.is_archived).map((tag) => (
+                <button
+                  key={tag.id}
+                  onClick={() => {
+                    setSelectedTagIds((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(tag.id)) next.delete(tag.id);
+                      else next.add(tag.id);
+                      return next;
+                    });
+                  }}
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                    selectedTagIds.has(tag.id)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background border-input hover:bg-accent text-muted-foreground"
+                  }`}
+                >
+                  {tag.name}
+                </button>
+              ))}
+              {showNewTagInput ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={newTagInputValue}
+                    onChange={(e) => setNewTagInputValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") { e.preventDefault(); createTagInline(); }
+                      if (e.key === "Escape") { setShowNewTagInput(false); setNewTagInputValue(""); }
+                    }}
+                    placeholder="Tag name…"
+                    autoFocus
+                    className="h-6 px-2 border rounded-full text-xs w-28"
+                  />
+                  <button
+                    onClick={createTagInline}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => { setShowNewTagInput(false); setNewTagInputValue(""); }}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowNewTagInput(true)}
+                  className="px-2 py-1 rounded-full text-xs border border-dashed border-input text-muted-foreground hover:bg-accent transition-colors"
+                  title="Add new tag"
+                >
+                  + tag
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Group Panels - only show after type is selected */}
           {selectedTypeId && (
             <ExerciseGroupPanels
@@ -1107,6 +1234,18 @@ export default function WorkoutsPage() {
                               : `${Math.round(workout.duration_minutes)}m`}
                           </span>
                         )}
+                        {(workout.applied_tag_ids || []).map((tid) => {
+                          const tName = tagMap.get(tid);
+                          if (!tName) return null;
+                          return (
+                            <span
+                              key={tid}
+                              className="ml-1.5 inline-block px-1.5 py-0 rounded text-[10px] bg-secondary text-secondary-foreground border border-border/50 align-middle"
+                            >
+                              {tName}
+                            </span>
+                          );
+                        })}
                         {workout.rating && (
                           <span className="text-muted-foreground font-normal ml-2 text-xs">
                             {"*".repeat(workout.rating)}/5

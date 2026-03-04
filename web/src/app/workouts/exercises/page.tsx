@@ -41,6 +41,14 @@ type Modifier = {
   adjective_order: number;
 };
 
+type WorkoutTag = {
+  id: string;
+  name: string;
+  default_type_ids: string[];
+  sort_order: number;
+  is_archived: boolean;
+};
+
 type Exercise = {
   id: string;
   name: string;
@@ -59,8 +67,17 @@ export default function ExerciseLibraryPage() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [tags, setTags] = useState<WorkoutTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Tag form states
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagDefaultTypes, setNewTagDefaultTypes] = useState<string[]>([]);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editTagName, setEditTagName] = useState("");
+  const [editTagDefaultTypes, setEditTagDefaultTypes] = useState<string[]>([]);
+  const [showArchivedTags, setShowArchivedTags] = useState(false);
 
   // Type form states
   const [newTypeName, setNewTypeName] = useState("");
@@ -128,28 +145,31 @@ export default function ExerciseLibraryPage() {
       setLoading(true);
       const headers = await getAuthHeaders();
 
-      const [typesRes, groupRes, modRes, exRes] = await Promise.all([
+      const [typesRes, groupRes, modRes, exRes, tagsRes] = await Promise.all([
         fetch("/api/workouts/types?include_archived=true", { headers }),
         fetch("/api/workouts/groups?include_archived=true", { headers }),
         fetch("/api/workouts/modifiers", { headers }),
         fetch("/api/workouts/exercises?include_archived=true", { headers }),
+        fetch("/api/workouts/tags?include_archived=true", { headers }),
       ]);
 
       if (!groupRes.ok || !modRes.ok || !exRes.ok) {
         throw new Error("Failed to load data");
       }
 
-      const [typesData, groupData, modData, exData] = await Promise.all([
+      const [typesData, groupData, modData, exData, tagsData] = await Promise.all([
         typesRes.ok ? typesRes.json() : [],
         groupRes.json(),
         modRes.json(),
         exRes.json(),
+        tagsRes.ok ? tagsRes.json() : [],
       ]);
 
       setWorkoutTypes(typesData);
       setGroups(groupData);
       setModifiers(modData);
       setExercises(exData);
+      setTags(tagsData);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
@@ -419,6 +439,73 @@ export default function ExerciseLibraryPage() {
     }
   };
 
+  // ── Tags CRUD ──
+  const addTag = async () => {
+    if (!newTagName.trim()) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/workouts/tags", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newTagName.trim(), default_type_ids: newTagDefaultTypes }),
+      });
+      if (!res.ok) throw new Error("Failed to add tag");
+      setNewTagName("");
+      setNewTagDefaultTypes([]);
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to add tag");
+    }
+  };
+
+  const startEditTag = (tag: WorkoutTag) => {
+    setEditingTagId(tag.id);
+    setEditTagName(tag.name);
+    setEditTagDefaultTypes([...tag.default_type_ids]);
+  };
+
+  const saveEditTag = async () => {
+    if (!editingTagId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/workouts/tags/${editingTagId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editTagName.trim(), default_type_ids: editTagDefaultTypes }),
+      });
+      if (!res.ok) throw new Error("Failed to update tag");
+      setEditingTagId(null);
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update tag");
+    }
+  };
+
+  const toggleArchiveTag = async (tag: WorkoutTag) => {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/workouts/tags/${tag.id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ is_archived: !tag.is_archived }),
+      });
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to update tag");
+    }
+  };
+
+  const deleteTag = async (id: string) => {
+    if (!confirm("Delete this tag? It will be removed from all workouts.")) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/workouts/tags/${id}`, { method: "DELETE", headers });
+      fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete tag");
+    }
+  };
+
   // ── Import ──
   const readFile = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -646,6 +733,7 @@ export default function ExerciseLibraryPage() {
           <TabsTrigger data-tour="ex-types-tab" value="types">Types</TabsTrigger>
           <TabsTrigger data-tour="ex-groups-tab" value="groups">Groups</TabsTrigger>
           <TabsTrigger data-tour="ex-modifiers-tab" value="modifiers">Modifiers</TabsTrigger>
+          <TabsTrigger value="tags">Tags</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
         </TabsList>
 
@@ -1288,6 +1376,138 @@ export default function ExerciseLibraryPage() {
                 {modifiers.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No modifiers yet
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Tags Tab ── */}
+        <TabsContent value="tags" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Add Tag</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Tag name (e.g. Raised Heel)..."
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addTag();
+                    }
+                  }}
+                  className="flex-1 h-9 px-3 border rounded-md text-sm"
+                />
+                <Button onClick={addTag} size="sm">Add</Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span className="text-xs text-muted-foreground self-center">Default ON for types:</span>
+                {workoutTypes.filter((t) => !t.is_archived).map((t) => (
+                  <label key={t.id} className="flex items-center gap-1 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newTagDefaultTypes.includes(t.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setNewTagDefaultTypes([...newTagDefaultTypes, t.id]);
+                        } else {
+                          setNewTagDefaultTypes(newTagDefaultTypes.filter((id) => id !== t.id));
+                        }
+                      }}
+                    />
+                    {t.name}
+                  </label>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Tags ({tags.filter((t) => showArchivedTags || !t.is_archived).length})</CardTitle>
+                <label className="flex items-center gap-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={showArchivedTags}
+                    onChange={(e) => setShowArchivedTags(e.target.checked)}
+                  />
+                  Show archived
+                </label>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {tags.filter((t) => showArchivedTags || !t.is_archived).map((tag) => (
+                  <div
+                    key={tag.id}
+                    className={`p-2 border rounded ${tag.is_archived ? "opacity-50" : ""}`}
+                  >
+                    {editingTagId === tag.id ? (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          value={editTagName}
+                          onChange={(e) => setEditTagName(e.target.value)}
+                          className="w-full h-8 px-2 border rounded text-sm"
+                          autoFocus
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-xs text-muted-foreground self-center">Default ON for types:</span>
+                          {workoutTypes.filter((t) => !t.is_archived).map((t) => (
+                            <label key={t.id} className="flex items-center gap-1 text-xs">
+                              <input
+                                type="checkbox"
+                                checked={editTagDefaultTypes.includes(t.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setEditTagDefaultTypes([...editTagDefaultTypes, t.id]);
+                                  } else {
+                                    setEditTagDefaultTypes(editTagDefaultTypes.filter((id) => id !== t.id));
+                                  }
+                                }}
+                              />
+                              {t.name}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={saveEditTag}>Save</Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingTagId(null)}>Cancel</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">{tag.name}</span>
+                          {tag.default_type_ids.length > 0 && (
+                            <div className="text-xs text-muted-foreground">
+                              Default for: {tag.default_type_ids
+                                .map((id) => workoutTypes.find((t) => t.id === id)?.name || id)
+                                .join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" onClick={() => startEditTag(tag)}>Edit</Button>
+                          <Button variant="ghost" size="sm" onClick={() => toggleArchiveTag(tag)}>
+                            {tag.is_archived ? "Restore" : "Archive"}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => deleteTag(tag.id)}>Delete</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {tags.filter((t) => showArchivedTags || !t.is_archived).length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No tags yet. Tags let you label workout sessions (e.g. "Raised Heel") for filtering in history.
                   </p>
                 )}
               </div>

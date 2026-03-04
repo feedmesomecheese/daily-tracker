@@ -58,6 +58,14 @@ export type ActivitySession = {
   notes: string | null;
 };
 
+export type WorkoutTag = {
+  id: string;
+  name: string;
+  default_type_ids: string[];
+  sort_order: number;
+  is_archived: boolean;
+};
+
 export type WorkoutHistory = {
   id: string;
   date: string;
@@ -68,6 +76,7 @@ export type WorkoutHistory = {
   notes: string | null;
   exercises?: WorkoutExercise[];
   activity_sessions?: ActivitySession[];
+  applied_tag_ids?: string[];
   sets?: {
     exercise_name_display: string;
     set_number: number;

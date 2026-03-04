@@ -5,12 +5,13 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ExerciseDetailRow from "./ExerciseDetailRow";
 import ExerciseStatsSheet from "./ExerciseStatsSheet";
-import type { WorkoutHistory, WorkoutType } from "../types";
+import type { WorkoutHistory, WorkoutType, WorkoutTag } from "../types";
 import { SUPERSET_COLORS } from "../types";
 
 type Props = {
   workouts: WorkoutHistory[];
   workoutTypes: WorkoutType[];
+  tags?: WorkoutTag[];
 };
 
 const PAGE_SIZES = [10, 25, 50] as const;
@@ -49,7 +50,7 @@ function formatDuration(mins: number | null): string {
   return `${Math.round(mins)}m`;
 }
 
-export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
+export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(0);
@@ -70,6 +71,12 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
     for (const t of workoutTypes) m.set(t.id, t.name);
     return m;
   }, [workoutTypes]);
+
+  const tagMap = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of tags) m.set(t.id, t.name);
+    return m;
+  }, [tags]);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {
@@ -123,7 +130,19 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                       {workout.date}
                     </td>
                     <td className="py-2 px-2 text-muted-foreground whitespace-nowrap">
-                      {typeName?.replace("_", " ") || "\u2014"}
+                      <span>{typeName?.replace("_", " ") || "\u2014"}</span>
+                      {(workout.applied_tag_ids || []).map((tid) => {
+                        const tName = tagMap.get(tid);
+                        if (!tName) return null;
+                        return (
+                          <span
+                            key={tid}
+                            className="ml-1.5 inline-block px-1.5 py-0 rounded text-[10px] bg-secondary text-secondary-foreground border border-border/50 align-middle"
+                          >
+                            {tName}
+                          </span>
+                        );
+                      })}
                     </td>
                     <td className="py-2 px-2 text-right tabular-nums text-muted-foreground hidden sm:table-cell">
                       {formatDuration(workout.duration_minutes)}
@@ -194,6 +213,22 @@ export default function WorkoutCentricView({ workouts, workoutTypes }: Props) {
                             <div className="text-xs text-muted-foreground/60 text-right pt-2 border-t mt-2">
                               Total tonnage:{" "}
                               {tonnage.toLocaleString()} lbs
+                            </div>
+                          )}
+                          {(workout.applied_tag_ids || []).length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {(workout.applied_tag_ids || []).map((tid) => {
+                                const tName = tagMap.get(tid);
+                                if (!tName) return null;
+                                return (
+                                  <span
+                                    key={tid}
+                                    className="px-2 py-0.5 rounded-full text-xs border bg-secondary text-secondary-foreground"
+                                  >
+                                    {tName}
+                                  </span>
+                                );
+                              })}
                             </div>
                           )}
                           {workout.notes && (

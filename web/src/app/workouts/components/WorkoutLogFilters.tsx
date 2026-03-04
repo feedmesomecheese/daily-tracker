@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { WorkoutType, ExerciseGroup, Exercise } from "../types";
+import type { WorkoutType, ExerciseGroup, Exercise, WorkoutTag } from "../types";
 
 export type DatePreset = "30d" | "60d" | "90d" | "year" | "all";
 
@@ -21,6 +21,7 @@ export type FilterState = {
   startDate: string;
   endDate: string;
   typeIds: Set<string>;
+  tagIds: Set<string>;
   exerciseSearch: string;
   groupId: string; // "" = all
   flags: Set<FlagFilter>;
@@ -32,6 +33,7 @@ type Props = {
   workoutTypes: WorkoutType[];
   groups: ExerciseGroup[];
   exercises: Exercise[];
+  tags: WorkoutTag[];
 };
 
 const DATE_PRESETS: { value: DatePreset; label: string }[] = [
@@ -76,6 +78,7 @@ export function getInitialFilters(): FilterState {
     startDate: start,
     endDate: end,
     typeIds: new Set(),
+    tagIds: new Set(),
     exerciseSearch: "",
     groupId: "",
     flags: new Set(),
@@ -88,9 +91,13 @@ export default function WorkoutLogFilters({
   workoutTypes,
   groups,
   exercises,
+  tags,
 }: Props) {
   const [typePopoverOpen, setTypePopoverOpen] = useState(false);
   const typePopoverRef = useRef<HTMLDivElement>(null);
+
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const tagPopoverRef = useRef<HTMLDivElement>(null);
 
   const [exerciseInputValue, setExerciseInputValue] = useState(filters.exerciseSearch);
   const [exerciseDropdownOpen, setExerciseDropdownOpen] = useState(false);
@@ -108,6 +115,9 @@ export default function WorkoutLogFilters({
     function handleClick(e: MouseEvent) {
       if (typePopoverRef.current && !typePopoverRef.current.contains(e.target as Node)) {
         setTypePopoverOpen(false);
+      }
+      if (tagPopoverRef.current && !tagPopoverRef.current.contains(e.target as Node)) {
+        setTagPopoverOpen(false);
       }
       if (exerciseRef.current && !exerciseRef.current.contains(e.target as Node)) {
         setExerciseDropdownOpen(false);
@@ -142,6 +152,13 @@ export default function WorkoutLogFilters({
     onChange({ ...filters, typeIds: next });
   };
 
+  const toggleTag = (tagId: string) => {
+    const next = new Set(filters.tagIds);
+    if (next.has(tagId)) next.delete(tagId);
+    else next.add(tagId);
+    onChange({ ...filters, tagIds: next });
+  };
+
   const toggleFlag = (flag: FlagFilter) => {
     const next = new Set(filters.flags);
     if (next.has(flag)) next.delete(flag);
@@ -171,8 +188,16 @@ export default function WorkoutLogFilters({
     return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
   }, [filters.typeIds, workoutTypes]);
 
+  const tagTriggerLabel = useMemo(() => {
+    if (filters.tagIds.size === 0) return "All tags";
+    const names = tags.filter((t) => filters.tagIds.has(t.id)).map((t) => t.name);
+    if (names.length <= 2) return names.join(", ");
+    return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+  }, [filters.tagIds, tags]);
+
   const hasActiveFilters =
     filters.typeIds.size > 0 ||
+    filters.tagIds.size > 0 ||
     filters.exerciseSearch ||
     filters.groupId ||
     filters.flags.size > 0;
@@ -244,6 +269,7 @@ export default function WorkoutLogFilters({
               onChange({
                 ...filters,
                 typeIds: new Set(),
+                tagIds: new Set(),
                 exerciseSearch: "",
                 groupId: "",
                 flags: new Set(),
@@ -322,6 +348,50 @@ export default function WorkoutLogFilters({
             </div>
           )}
         </div>
+
+        {/* Tag multi-select (only shown if tags exist) */}
+        {tags.length > 0 && (
+          <div className="relative" ref={tagPopoverRef}>
+            <label className="text-xs text-muted-foreground block mb-1">Tags</label>
+            <button
+              onClick={() => setTagPopoverOpen((v) => !v)}
+              className={`h-8 px-2.5 border rounded-md text-xs bg-background hover:bg-accent transition-colors min-w-[90px] max-w-[200px] text-left truncate ${
+                filters.tagIds.size > 0 ? "border-primary/50" : ""
+              }`}
+            >
+              {tagTriggerLabel}
+            </button>
+            {tagPopoverOpen && (
+              <div className="absolute top-full left-0 mt-1 bg-popover border rounded-md shadow-lg py-1 min-w-[180px] z-50 max-h-60 overflow-y-auto">
+                {tags.map((t) => (
+                  <label
+                    key={t.id}
+                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-accent cursor-pointer text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={filters.tagIds.has(t.id)}
+                      onChange={() => toggleTag(t.id)}
+                      className="rounded"
+                    />
+                    {t.name}
+                  </label>
+                ))}
+                {filters.tagIds.size > 0 && (
+                  <>
+                    <div className="border-t my-1" />
+                    <button
+                      onClick={() => onChange({ ...filters, tagIds: new Set() })}
+                      className="px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent w-full text-left"
+                    >
+                      Clear all
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Exercise autocomplete */}
         <div className="relative flex-1 min-w-[140px] max-w-[220px]" ref={exerciseRef}>

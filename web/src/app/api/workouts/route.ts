@@ -171,6 +171,12 @@ export async function GET(req: Request) {
       .select("*")
       .in("workout_id", workoutIds);
 
+    // Fetch applied tags
+    const { data: appliedTags } = await supabase
+      .from("workout_applied_tags")
+      .select("workout_id, tag_id")
+      .in("workout_id", workoutIds);
+
     // Group workout_exercises by workout
     const exercisesByWorkout = new Map<string, WorkoutExercise[]>();
     for (const we of workoutExercises || []) {
@@ -185,6 +191,14 @@ export async function GET(req: Request) {
       const existing = activitiesByWorkout.get(a.workout_id) || [];
       existing.push(a);
       activitiesByWorkout.set(a.workout_id, existing);
+    }
+
+    // Group applied tags by workout
+    const tagsByWorkout = new Map<string, string[]>();
+    for (const t of appliedTags || []) {
+      const existing = tagsByWorkout.get(t.workout_id) || [];
+      existing.push(t.tag_id);
+      tagsByWorkout.set(t.workout_id, existing);
     }
 
     // Group sets by workout_exercise_id
@@ -216,6 +230,7 @@ export async function GET(req: Request) {
         activity_sessions: activitiesByWorkout.get(w.id) || [],
         // Legacy: include orphan sets for backward compat
         sets: orphanSetsByWorkout.get(w.id) || [],
+        applied_tag_ids: tagsByWorkout.get(w.id) || [],
       };
     });
 
@@ -252,6 +267,7 @@ export async function POST(req: Request) {
     notes,
     exercises = [] as ExerciseInput[],
     sets = [] as Partial<WorkoutSet>[],
+    tag_ids = [] as string[],
   } = body;
 
   if (!date) {
@@ -280,6 +296,12 @@ export async function POST(req: Request) {
 
   if (workoutError) {
     return NextResponse.json({ error: workoutError.message }, { status: 500 });
+  }
+
+  // Insert applied tags
+  if (tag_ids.length > 0) {
+    const tagRows = tag_ids.map((tid: string) => ({ workout_id: workout.id, tag_id: tid }));
+    await supabase.from("workout_applied_tags").insert(tagRows);
   }
 
   // New flow: exercises[] array with nested sets
@@ -418,7 +440,7 @@ export async function POST(req: Request) {
   }));
 
   return NextResponse.json(
-    { ...completeWorkout, exercises: exercisesWithSets, sets: orphanSets },
+    { ...completeWorkout, exercises: exercisesWithSets, sets: orphanSets, applied_tag_ids: tag_ids },
     { status: 201 }
   );
 }
