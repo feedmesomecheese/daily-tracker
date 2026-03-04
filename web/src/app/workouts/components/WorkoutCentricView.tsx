@@ -5,13 +5,18 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ExerciseDetailRow from "./ExerciseDetailRow";
 import ExerciseStatsSheet from "./ExerciseStatsSheet";
+import BodyMeasurementsSheet, { findNearestPrior } from "@/components/BodyMeasurementsSheet";
 import type { WorkoutHistory, WorkoutType, WorkoutTag } from "../types";
 import { SUPERSET_COLORS } from "../types";
+
+type BodyEntry = { date: string; value: number };
+type BodyData = { weight: BodyEntry[]; bodyfat: BodyEntry[] };
 
 type Props = {
   workouts: WorkoutHistory[];
   workoutTypes: WorkoutType[];
   tags?: WorkoutTag[];
+  bodyData?: BodyData;
 };
 
 const PAGE_SIZES = [10, 25, 50] as const;
@@ -50,7 +55,7 @@ function formatDuration(mins: number | null): string {
   return `${Math.round(mins)}m`;
 }
 
-export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }: Props) {
+export default function WorkoutCentricView({ workouts, workoutTypes, tags = [], bodyData }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(0);
@@ -58,6 +63,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }
     id: string;
     name: string;
   } | null>(null);
+  const [bodySheetOpen, setBodySheetOpen] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(workouts.length / pageSize));
   const safeePage = Math.min(page, totalPages - 1);
@@ -103,6 +109,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }
               <th className="py-2 px-2 font-medium text-right hidden sm:table-cell">Duration</th>
               <th className="py-2 px-2 font-medium text-center hidden sm:table-cell">Rating</th>
               <th className="py-2 px-2 font-medium text-right hidden sm:table-cell">Exercises</th>
+              {bodyData && <th className="py-2 px-2 font-medium text-right hidden sm:table-cell">Body</th>}
               <th className="py-2 px-2 font-medium text-right">Tonnage</th>
             </tr>
           </thead>
@@ -155,6 +162,21 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }
                     <td className="py-2 px-2 text-right tabular-nums hidden sm:table-cell">
                       {exCount || "\u2014"}
                     </td>
+                    {bodyData && (() => {
+                      const bw = findNearestPrior(bodyData.weight, workout.date);
+                      const bf = findNearestPrior(bodyData.bodyfat, workout.date);
+                      const parts: string[] = [];
+                      if (bw !== null) parts.push(`${bw}`);
+                      if (bf !== null) parts.push(`${bf}%`);
+                      return (
+                        <td
+                          className="py-2 px-2 text-right tabular-nums text-muted-foreground hidden sm:table-cell cursor-pointer hover:text-foreground"
+                          onClick={(e) => { e.stopPropagation(); setBodySheetOpen(true); }}
+                        >
+                          {parts.length ? parts.join(" / ") : "\u2014"}
+                        </td>
+                      );
+                    })()}
                     <td className="py-2 px-2 text-right tabular-nums">
                       {tonnage > 0
                         ? `${tonnage.toLocaleString()} lbs`
@@ -163,7 +185,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }
                   </tr>
                   {isExpanded && (exCount > 0 || workout.notes) && (
                     <tr>
-                      <td colSpan={7} className="p-0">
+                      <td colSpan={bodyData ? 8 : 7} className="p-0">
                         <div className="px-4 py-2 bg-muted/20">
                           {exCount > 0 && (
                             <div>
@@ -253,7 +275,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }
             {pageWorkouts.length === 0 && (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={bodyData ? 8 : 7}
                   className="py-8 text-center text-muted-foreground"
                 >
                   No workouts found
@@ -323,6 +345,9 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [] }
           if (!open) setStatsExercise(null);
         }}
       />
+
+      {/* Body Measurements Sheet */}
+      <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} />
     </div>
   );
 }

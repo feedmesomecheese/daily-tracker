@@ -19,12 +19,16 @@ import type {
   WorkoutTag,
 } from "../types";
 
+type BodyEntry = { date: string; value: number };
+type BodyData = { weight: BodyEntry[]; bodyfat: BodyEntry[] };
+
 export default function WorkoutLogPage() {
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
   const [groups, setGroups] = useState<ExerciseGroup[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [tags, setTags] = useState<WorkoutTag[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
+  const [bodyData, setBodyData] = useState<BodyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(getInitialFilters);
@@ -35,22 +39,25 @@ export default function WorkoutLogPage() {
   const fetchRefData = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
-      const [typesRes, groupsRes, exRes, tagsRes] = await Promise.all([
+      const [typesRes, groupsRes, exRes, tagsRes, bodyRes] = await Promise.all([
         fetch("/api/workouts/types", { headers }),
         fetch("/api/workouts/groups", { headers }),
         fetch("/api/workouts/exercises?include_archived=true", { headers }),
         fetch("/api/workouts/tags", { headers }),
+        fetch("/api/metrics/body", { headers }),
       ]);
-      const [typesData, groupsData, exData, tagsData] = await Promise.all([
+      const [typesData, groupsData, exData, tagsData, bodyResult] = await Promise.all([
         typesRes.ok ? typesRes.json() : [],
         groupsRes.ok ? groupsRes.json() : [],
         exRes.ok ? exRes.json() : [],
         tagsRes.ok ? tagsRes.json() : [],
+        bodyRes.ok ? bodyRes.json() : null,
       ]);
       setWorkoutTypes(typesData);
       setGroups(groupsData);
       setExercises(exData);
       setTags(tagsData);
+      if (bodyResult) setBodyData(bodyResult);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load reference data");
     }
@@ -287,6 +294,7 @@ export default function WorkoutLogPage() {
               workouts={filteredWorkouts}
               workoutTypes={workoutTypes}
               tags={tags}
+              bodyData={bodyData ?? undefined}
             />
           )}
         </TabsContent>

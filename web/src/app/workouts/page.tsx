@@ -21,7 +21,11 @@ import ExerciseHoverTooltip from "./components/ExerciseHoverTooltip";
 import ExerciseStatsSheet from "./components/ExerciseStatsSheet";
 import { useWorkoutTimer } from "@/hooks/useWorkoutTimer";
 import { WorkoutTimerFAB, WorkoutTimerSheet } from "@/components/workout-timer/WorkoutTimerSheet";
+import BodyMeasurementsSheet, { findNearestPrior } from "@/components/BodyMeasurementsSheet";
 import "driver.js/dist/driver.css";
+
+type BodyEntry = { date: string; value: number };
+type BodyData = { weight: BodyEntry[]; bodyfat: BodyEntry[] };
 
 type WorkoutType = {
   id: string;
@@ -128,6 +132,8 @@ export default function WorkoutsPage() {
   const [tags, setTags] = useState<WorkoutTag[]>([]);
   const [workouts, setWorkouts] = useState<WorkoutHistory[]>([]);
   const [ghostData, setGhostData] = useState<GhostData>({});
+  const [bodyData, setBodyData] = useState<BodyData | null>(null);
+  const [bodySheetOpen, setBodySheetOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -174,22 +180,24 @@ export default function WorkoutsPage() {
       setLoading(true);
       const headers = await getAuthHeaders();
 
-      const [typesRes, groupsRes, exRes, modRes, workoutRes, tagsRes] = await Promise.all([
+      const [typesRes, groupsRes, exRes, modRes, workoutRes, tagsRes, bodyRes] = await Promise.all([
         fetch("/api/workouts/types", { headers }),
         fetch("/api/workouts/groups", { headers }),
         fetch("/api/workouts/exercises", { headers }),
         fetch("/api/workouts/modifiers", { headers }),
         fetch("/api/workouts?include_sets=true&limit=20", { headers }),
         fetch("/api/workouts/tags", { headers }),
+        fetch("/api/metrics/body", { headers }),
       ]);
 
-      const [typesData, groupsData, exData, modData, workoutData, tagsData] = await Promise.all([
+      const [typesData, groupsData, exData, modData, workoutData, tagsData, bodyResult] = await Promise.all([
         typesRes.ok ? typesRes.json() : [],
         groupsRes.ok ? groupsRes.json() : [],
         exRes.ok ? exRes.json() : [],
         modRes.ok ? modRes.json() : [],
         workoutRes.ok ? workoutRes.json() : [],
         tagsRes.ok ? tagsRes.json() : [],
+        bodyRes.ok ? bodyRes.json() : null,
       ]);
 
       setWorkoutTypes(typesData);
@@ -198,6 +206,7 @@ export default function WorkoutsPage() {
       setModifiers(modData);
       setWorkouts(workoutData);
       setTags(tagsData);
+      if (bodyResult) setBodyData(bodyResult);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
@@ -1220,6 +1229,22 @@ export default function WorkoutsPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
                     <div>
+                      {bodyData && (() => {
+                        const bw = findNearestPrior(bodyData.weight, workout.date);
+                        const bf = findNearestPrior(bodyData.bodyfat, workout.date);
+                        if (bw === null && bf === null) return null;
+                        const parts: string[] = [];
+                        if (bw !== null) parts.push(`${bw} lbs`);
+                        if (bf !== null) parts.push(`${bf}% BF`);
+                        return (
+                          <button
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-0.5 block"
+                            onClick={() => setBodySheetOpen(true)}
+                          >
+                            {parts.join(" · ")}
+                          </button>
+                        );
+                      })()}
                       <CardTitle className="text-base">
                         {workout.date}
                         {typeName && (
@@ -1451,6 +1476,9 @@ export default function WorkoutsPage() {
         open={!!selectedExercise}
         onOpenChange={(open) => { if (!open) setSelectedExercise(null); }}
       />
+
+      {/* Body Measurements Sheet */}
+      <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} />
 
       {/* Workout Timer */}
       <WorkoutTimerFAB timer={timer} onClick={() => setTimerOpen(true)} />

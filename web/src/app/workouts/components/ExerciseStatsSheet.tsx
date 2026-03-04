@@ -24,6 +24,10 @@ import {
 } from "recharts";
 import { ChartTooltip } from "@/components/chart-tooltip";
 import { getLocalDateString } from "@/lib/dateUtils";
+import BodyMeasurementsSheet, { findNearestPrior } from "@/components/BodyMeasurementsSheet";
+
+type BodyEntry = { date: string; value: number };
+type BodyData = { weight: BodyEntry[]; bodyfat: BodyEntry[] };
 
 type SetRow = {
   set_number: number;
@@ -195,6 +199,9 @@ export default function ExerciseStatsSheet({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fetchedIdRef = useRef<string | null>(null);
+  const [bodyData, setBodyData] = useState<BodyData | null>(null);
+  const bodyFetchedRef = useRef(false);
+  const [bodySheetOpen, setBodySheetOpen] = useState(false);
 
   const fetchStats = useCallback(async () => {
     if (!exerciseId || fetchedIdRef.current === exerciseId) return;
@@ -202,14 +209,24 @@ export default function ExerciseStatsSheet({
     setError(null);
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(
-        `/api/workouts/exercises/${encodeURIComponent(exerciseId)}/stats`,
-        { headers }
-      );
-      if (!res.ok) throw new Error("Failed to load stats");
-      const data = await res.json();
+      const [statsRes, bodyRes] = await Promise.all([
+        fetch(
+          `/api/workouts/exercises/${encodeURIComponent(exerciseId)}/stats`,
+          { headers }
+        ),
+        bodyFetchedRef.current
+          ? Promise.resolve(null)
+          : fetch("/api/metrics/body", { headers }),
+      ]);
+      if (!statsRes.ok) throw new Error("Failed to load stats");
+      const data = await statsRes.json();
       setStats(data);
       fetchedIdRef.current = exerciseId;
+      if (bodyRes && bodyRes.ok) {
+        const bd = await bodyRes.json();
+        setBodyData(bd);
+        bodyFetchedRef.current = true;
+      }
     } catch {
       setError("Could not load exercise stats");
     } finally {
@@ -229,6 +246,7 @@ export default function ExerciseStatsSheet({
   }, [open, exerciseId, fetchStats]);
 
   const inputType = stats?.exercise?.inputType || "strength";
+  const today = getLocalDateString();
 
   // Date range filter for charts
   const [chartRange, setChartRange] = useState<"6mo" | "1yr" | "2yr" | "all">("all");
@@ -329,7 +347,24 @@ export default function ExerciseStatsSheet({
     return markers;
   }, [filteredSessions]);
 
+  // Best Strength:Weight Ratio — best (topWeight / nearestPriorBW) across all sessions
+  const bestStrengthToWeight = useMemo(() => {
+    if (!stats?.sessions?.length || !bodyData?.weight?.length) return null;
+    let best: { ratio: number; topWeight: number; bw: number; date: string } | null = null;
+    for (const s of stats.sessions) {
+      if (s.topWeight <= 0) continue;
+      const bw = findNearestPrior(bodyData.weight, s.date);
+      if (!bw) continue;
+      const ratio = s.topWeight / bw;
+      if (!best || ratio > best.ratio) {
+        best = { ratio, topWeight: s.topWeight, bw, date: s.date };
+      }
+    }
+    return best;
+  }, [stats?.sessions, bodyData?.weight]);
+
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="overflow-y-auto w-full sm:max-w-[50vw]">
         <SheetHeader>
@@ -352,6 +387,24 @@ export default function ExerciseStatsSheet({
             )}
           </SheetDescription>
         </SheetHeader>
+
+        {/* Current body reading — clickable */}
+        {bodyData && (bodyData.weight.length > 0 || bodyData.bodyfat.length > 0) && (() => {
+          const cw = findNearestPrior(bodyData.weight, today);
+          const cbf = findNearestPrior(bodyData.bodyfat, today);
+          if (cw === null && cbf === null) return null;
+          const parts: string[] = [];
+          if (cw !== null) parts.push(`${cw} lbs`);
+          if (cbf !== null) parts.push(`${cbf}% BF`);
+          return (
+            <button
+              className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors text-left"
+              onClick={() => setBodySheetOpen(true)}
+            >
+              Current: {parts.join("  ·  ")}
+            </button>
+          );
+        })()}
 
         {loading && (
           <div className="py-8 text-center text-muted-foreground">
@@ -399,6 +452,15 @@ export default function ExerciseStatsSheet({
                           <span className="text-xs text-muted-foreground ml-1">
                             {formatDate(stats.oneRepMax.date)}
                           </span>
+                          {bodyData?.weight?.length ? (() => {
+                            const bw = findNearestPrior(bodyData.weight, stats.oneRepMax!.date);
+                            if (!bw) return null;
+                            return (
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({(stats.oneRepMax!.weight / bw).toFixed(1)}x BW)
+                              </span>
+                            );
+                          })() : null}
                         </>
                       ) : (
                         <span className="text-sm text-muted-foreground">{"\u2014"}</span>
@@ -444,11 +506,34 @@ export default function ExerciseStatsSheet({
                           <span className="text-xs text-muted-foreground ml-1">
                             {formatDate(stats.cycleMax.date)}
                           </span>
+                          {bodyData?.weight?.length ? (() => {
+                            const currentBW = bodyData.weight[bodyData.weight.length - 1].value;
+                            return (
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({(stats.cycleMax!.weight / currentBW).toFixed(1)}x BW)
+                              </span>
+                            );
+                          })() : null}
                         </>
                       ) : (
                         <span className="text-sm text-muted-foreground">{"\u2014"}</span>
                       )}
                     </div>
+                    {/* Best Strength:Weight Ratio */}
+                    {bestStrengthToWeight && (
+                      <div className="col-span-2">
+                        <span className="text-xs text-muted-foreground block">Best S:W Ratio</span>
+                        <span className="font-semibold tabular-nums">
+                          {bestStrengthToWeight.ratio.toFixed(2)}x BW
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-1">
+                          — {bestStrengthToWeight.topWeight} lbs on {formatDate(bestStrengthToWeight.date)}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-1">
+                          (BW: {bestStrengthToWeight.bw} lbs)
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -941,5 +1026,8 @@ export default function ExerciseStatsSheet({
         )}
       </SheetContent>
     </Sheet>
+
+    <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} />
+    </>
   );
 }
