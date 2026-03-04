@@ -21,6 +21,7 @@ import {
 import { BarcodeScanner } from "@/components/barcode-scanner";
 import { CalendarInput } from "@/components/ui/calendar-input";
 import type { BookSearchResult } from "@/app/api/books/search/route";
+import { SpeechTextarea } from "@/components/ui/speech-textarea";
 
 type BookSearchSheetProps = {
   open: boolean;
@@ -585,7 +586,7 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
 
                 <div>
                   <label className="text-xs text-muted-foreground">Notes</label>
-                  <textarea
+                  <SpeechTextarea
                     value={formData.notes}
                     onChange={(e) => updateField("notes", e.target.value)}
                     rows={3}

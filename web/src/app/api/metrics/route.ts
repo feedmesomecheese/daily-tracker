@@ -140,6 +140,9 @@ const BaseSchema = z.object({
   // presets (comma-separated values)
   preset_values_csv: z.string().nullable().optional(),
 
+  // speech-to-text (only relevant for type = 'text')
+  stt_enabled: z.boolean().optional().default(false),
+
   // analytics configuration
   analytics_config: AnalyticsConfigSchema,
 
@@ -186,6 +189,9 @@ const UpdateSchema = z.object({
 
   // presets
   preset_values_csv: z.string().nullable().optional(),
+
+  // speech-to-text (only relevant for type = 'text')
+  stt_enabled: z.boolean().optional(),
 
   // analytics configuration
   analytics_config: AnalyticsConfigSchema,
@@ -300,6 +306,7 @@ export async function POST(req: Request) {
     calc_expr: body.calc_expr ?? null,
     parent_metric_id: body.parent_metric_id ?? null,
     preset_values_csv: body.preset_values_csv ?? null,
+    stt_enabled: body.stt_enabled ?? false,
   });
 
 
@@ -372,6 +379,7 @@ export async function PATCH(req: Request) {
   if (body.calc_expr !== undefined) updates.calc_expr = body.calc_expr;
   if (body.parent_metric_id !== undefined) updates.parent_metric_id = body.parent_metric_id ?? null;
   if (body.preset_values_csv !== undefined) updates.preset_values_csv = body.preset_values_csv ?? null;
+  if (body.stt_enabled !== undefined) updates.stt_enabled = body.stt_enabled;
   if (body.analytics_config !== undefined) updates.analytics_config = body.analytics_config ?? {};
   if (body.notification_config !== undefined) updates.notification_config = body.notification_config ?? {};
   if (body.goals_config !== undefined) updates.goals_config = body.goals_config ?? {};

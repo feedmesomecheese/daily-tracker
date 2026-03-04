@@ -8,6 +8,7 @@ import { getLocalDateString, addDays } from "@/lib/dateUtils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { SpeechTextarea } from "@/components/ui/speech-textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ type ConfigRow = {
   metric_order?: number | null;
   group_order?: number | null;
   preset_values_csv?: string | null;
+  stt_enabled?: boolean;
   is_calculated: boolean;
   calc_expr: string | null;
   parent_metric_id: string | null;
@@ -2293,22 +2295,41 @@ export default function Home() {
                             </>
                           ) : m.type === "text" ? (
                             <div>
-                              <Textarea
-                                value={raw}
-                                rows={4}
-                                onFocus={() => markAsTouched(m.metric_id)}
-                                onChange={(e) => {
-                                  markAsTouched(m.metric_id);
-                                  const v = e.target.value;
-                                  setVal(m.metric_id, v);
-                                  setDirty(true);
-                                  setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
-                                }}
-                                className={cn(
-                                  "w-full max-w-72",
-                                  err && "border-destructive bg-destructive/10"
-                                )}
-                              />
+                              {m.stt_enabled ? (
+                                <SpeechTextarea
+                                  value={raw ?? ""}
+                                  rows={4}
+                                  onFocus={() => markAsTouched(m.metric_id)}
+                                  onChange={(e) => {
+                                    markAsTouched(m.metric_id);
+                                    const v = e.target.value;
+                                    setVal(m.metric_id, v);
+                                    setDirty(true);
+                                    setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
+                                  }}
+                                  className={cn(
+                                    "w-full max-w-72",
+                                    err && "border-destructive bg-destructive/10"
+                                  )}
+                                />
+                              ) : (
+                                <Textarea
+                                  value={raw}
+                                  rows={4}
+                                  onFocus={() => markAsTouched(m.metric_id)}
+                                  onChange={(e) => {
+                                    markAsTouched(m.metric_id);
+                                    const v = e.target.value;
+                                    setVal(m.metric_id, v);
+                                    setDirty(true);
+                                    setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
+                                  }}
+                                  className={cn(
+                                    "w-full max-w-72",
+                                    err && "border-destructive bg-destructive/10"
+                                  )}
+                                />
+                              )}
 
                               {parsePresets(m).length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-1">

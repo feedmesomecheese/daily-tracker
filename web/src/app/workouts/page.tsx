@@ -22,6 +22,7 @@ import ExerciseStatsSheet from "./components/ExerciseStatsSheet";
 import { useWorkoutTimer } from "@/hooks/useWorkoutTimer";
 import { WorkoutTimerFAB, WorkoutTimerSheet } from "@/components/workout-timer/WorkoutTimerSheet";
 import BodyMeasurementsSheet, { findNearestPrior } from "@/components/BodyMeasurementsSheet";
+import { SpeechTextarea } from "@/components/ui/speech-textarea";
 import "driver.js/dist/driver.css";
 
 type BodyEntry = { date: string; value: number };
@@ -1127,7 +1128,7 @@ export default function WorkoutsPage() {
               <div className="flex flex-wrap items-end gap-4 border-t pt-4">
                 <div className="flex-1 min-w-[200px]">
                   <label className="text-xs text-muted-foreground">Notes</label>
-                  <textarea
+                  <SpeechTextarea
                     value={workoutNotes}
                     onChange={(e) => setWorkoutNotes(e.target.value)}
                     rows={2}

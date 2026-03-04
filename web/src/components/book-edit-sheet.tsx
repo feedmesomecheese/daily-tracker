@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Book } from "@/components/book-card";
+import { SpeechTextarea } from "@/components/ui/speech-textarea";
 
 type BookEditSheetProps = {
   open: boolean;
@@ -485,7 +486,7 @@ export function BookEditSheet({
 
               <div>
                 <label className="text-xs text-muted-foreground">Notes</label>
-                <textarea
+                <SpeechTextarea
                   value={formData.notes}
                   onChange={(e) => updateField("notes", e.target.value)}
                   rows={3}

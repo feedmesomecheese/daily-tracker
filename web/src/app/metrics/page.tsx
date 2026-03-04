@@ -138,6 +138,7 @@ type Metric = {
   calc_expr: string | null;
   parent_metric_id: string | null;
   preset_values_csv: string | null;
+  stt_enabled: boolean;
   analytics_config: AnalyticsConfig | null;
   notification_config: NotificationConfig | null;
   goals_config: GoalsConfig | null;
@@ -554,6 +555,20 @@ function SortableMetricRow({
               />
             )}
           </td>
+          {/* STT - only for text metrics */}
+          <td className="py-2 px-2 w-[50px] text-center">
+            {metric.type === "text" && (
+              <input
+                type="checkbox"
+                checked={metric.stt_enabled}
+                onChange={(e) =>
+                  onFieldChange(metric.metric_id, "stt_enabled", e.target.checked)
+                }
+                className="h-4 w-4"
+                title="Enable speech-to-text for this metric"
+              />
+            )}
+          </td>
         </>
       )}
 
@@ -908,6 +923,7 @@ export default function MetricsPage() {
     start_date: "",
     parent_metric_id: "",
     preset_values_csv: "",
+    stt_enabled: false,
   });
   const newNameRef = useRef<HTMLInputElement>(null);
 
@@ -1023,6 +1039,7 @@ export default function MetricsPage() {
         calc_expr: (r.calc_expr ?? null) as string | null,
         parent_metric_id: (r.parent_metric_id ?? null) as string | null,
         preset_values_csv: (r.preset_values_csv ?? null) as string | null,
+        stt_enabled: !!r.stt_enabled,
         analytics_config: (r.analytics_config ?? null) as AnalyticsConfig | null,
         notification_config: (r.notification_config ?? null) as NotificationConfig | null,
         goals_config: (r.goals_config ?? null) as GoalsConfig | null,
@@ -1308,6 +1325,7 @@ export default function MetricsPage() {
         start_date: newMetric.start_date || null,
         parent_metric_id: newMetric.parent_metric_id || null,
         preset_values_csv: newMetric.preset_values_csv.trim() || null,
+        stt_enabled: newMetric.stt_enabled,
       };
 
       // Only include validation fields if they have values
@@ -1357,6 +1375,7 @@ export default function MetricsPage() {
         start_date: "",
         parent_metric_id: "",
         preset_values_csv: "",
+        stt_enabled: false,
       });
       await loadMetrics();
     } catch (e) {
@@ -1762,6 +1781,7 @@ export default function MetricsPage() {
                           <th className="text-center py-2 px-2 w-[80px]"><Hint text="Increase: logging = streak. Decrease: not logging = streak. Neutral: no streak. Affects streak direction and color.">Direction</Hint></th>
                           <th className="text-center py-2 px-2 w-[50px]"><Hint text="Lifetime — tracks an all-time streak with no 365-day limit (default cap is 1 year)">Lifetime</Hint></th>
                           <th className="text-center py-2 px-2 w-[60px]"><Hint text="Seed days — pre-log days added to the streak when you first start tracking. Useful for metrics you've been doing a while.">Seed</Hint></th>
+                          <th className="text-center py-2 px-2 w-[50px]"><Hint text="Enable speech-to-text mic button on the Today page input for this metric (text type only).">STT</Hint></th>
                         </>
                       )}
                       <th className="text-center py-2 px-2 w-[110px]">Actions</th>
@@ -2024,6 +2044,7 @@ export default function MetricsPage() {
                                   start_date: "",
                                   parent_metric_id: "",
                                   preset_values_csv: "",
+                                  stt_enabled: false,
                                 });
                               }}
                             >
