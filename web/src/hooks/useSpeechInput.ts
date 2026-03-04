@@ -57,10 +57,15 @@ export function useSpeechInput({
     providerRef.current.startListening(
       (result) => {
         if (result.isFinal) {
+          // Auto-add a period if the segment doesn't end with sentence punctuation
+          const raw = result.transcript.trim();
+          const endsWithPunctuation = /[.!?,;:]$/.test(raw);
+          const segment = endsWithPunctuation ? raw : `${raw}.`;
+
           // Append final result (with a space separator if needed)
           const separator =
             baseValueRef.current || accumulatedRef.current ? " " : "";
-          accumulatedRef.current += separator + result.transcript.trim();
+          accumulatedRef.current += separator + segment;
           setInterim("");
           onChange(baseValueRef.current + (baseValueRef.current ? " " : "") + accumulatedRef.current.trimStart());
         } else {

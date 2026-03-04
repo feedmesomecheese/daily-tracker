@@ -501,6 +501,7 @@ export default function Home() {
           group_order:
             typeof r.group_order === "number" ? r.group_order : null,
           preset_values_csv: r.preset_values_csv ?? null,
+          stt_enabled: !!r.stt_enabled,
           is_calculated: !!r.is_calculated,
           calc_expr: r.calc_expr ?? null,
           parent_metric_id: r.parent_metric_id ?? null,
