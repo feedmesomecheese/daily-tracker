@@ -2297,22 +2297,21 @@ export default function Home() {
                           ) : m.type === "text" ? (
                             <div>
                               {m.stt_enabled ? (
-                                <SpeechTextarea
-                                  value={raw ?? ""}
-                                  rows={4}
-                                  onFocus={() => markAsTouched(m.metric_id)}
-                                  onChange={(e) => {
-                                    markAsTouched(m.metric_id);
-                                    const v = e.target.value;
-                                    setVal(m.metric_id, v);
-                                    setDirty(true);
-                                    setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
-                                  }}
-                                  className={cn(
-                                    "w-full max-w-72",
-                                    err && "border-destructive bg-destructive/10"
-                                  )}
-                                />
+                                <div className="w-full max-w-72">
+                                  <SpeechTextarea
+                                    value={raw ?? ""}
+                                    rows={4}
+                                    onFocus={() => markAsTouched(m.metric_id)}
+                                    onChange={(e) => {
+                                      markAsTouched(m.metric_id);
+                                      const v = e.target.value;
+                                      setVal(m.metric_id, v);
+                                      setDirty(true);
+                                      setFieldErrors((prev) => ({ ...prev, [m.metric_id]: null }));
+                                    }}
+                                    className={cn(err && "border-destructive bg-destructive/10")}
+                                  />
+                                </div>
                               ) : (
                                 <Textarea
                                   value={raw}
