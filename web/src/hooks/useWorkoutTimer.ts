@@ -120,6 +120,54 @@ function getCtx(): AudioContext {
   return _ctx;
 }
 
+// ─── Keepalive audio (iOS screen-off fix) ──────────────────────────────────────
+// iOS suspends the AudioContext when the screen turns off even if wake lock is
+// held. Playing a looping near-silent <audio> element keeps the audio session
+// active, allowing Web Audio API sounds to fire reliably with screen off.
+let _keepaliveEl: HTMLAudioElement | null = null;
+let _silentUri: string | null = null;
+
+function getSilentUri(): string {
+  if (_silentUri) return _silentUri;
+  // Build a minimal 1-sample silent WAV (45 bytes) as a data URI at runtime
+  const b = new Uint8Array(45);
+  const v = new DataView(b.buffer);
+  b.set([0x52,0x49,0x46,0x46], 0);  // "RIFF"
+  v.setUint32(4, 37, true);          // chunk size
+  b.set([0x57,0x41,0x56,0x45], 8);  // "WAVE"
+  b.set([0x66,0x6D,0x74,0x20], 12); // "fmt "
+  v.setUint32(16, 16, true);         // subchunk size
+  v.setUint16(20, 1, true);          // PCM
+  v.setUint16(22, 1, true);          // mono
+  v.setUint32(24, 8000, true);       // sample rate
+  v.setUint32(28, 8000, true);       // byte rate
+  v.setUint16(32, 1, true);          // block align
+  v.setUint16(34, 8, true);          // bits per sample
+  b.set([0x64,0x61,0x74,0x61], 36); // "data"
+  v.setUint32(40, 1, true);          // data size
+  b[44] = 0x80;                      // silence (midpoint for unsigned 8-bit)
+  let str = "";
+  for (let i = 0; i < b.length; i++) str += String.fromCharCode(b[i]);
+  _silentUri = "data:audio/wav;base64," + btoa(str);
+  return _silentUri;
+}
+
+function startKeepalive() {
+  if (typeof window === "undefined" || _keepaliveEl) return;
+  try {
+    _keepaliveEl = new Audio(getSilentUri());
+    _keepaliveEl.loop = true;
+    _keepaliveEl.volume = 0.001;
+    _keepaliveEl.play().catch(() => {});
+  } catch {}
+}
+
+function stopKeepalive() {
+  if (!_keepaliveEl) return;
+  _keepaliveEl.pause();
+  _keepaliveEl = null;
+}
+
 async function getBuffer(path: string): Promise<AudioBuffer | null> {
   if (_bufferCache.has(path)) return _bufferCache.get(path)!;
   try {
@@ -489,6 +537,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
       tabPhaseEndAt.current = null;
       setTabRunning(false);
       setTabPhaseRemaining(0);
+      stopKeepalive();
     } else {
       setTabPhaseRemaining(nextDuration);
       if (tabRunningRef.current) {
@@ -516,6 +565,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
       tabPhaseEndAt.current = null;
       setTabRunning(false);
       setTabPhaseRemaining(0);
+      stopKeepalive();
     } else {
       tabPhaseEndAt.current = Date.now() + result.nextDuration * 1000;
       setTabPhaseRemaining(result.nextDuration);
@@ -553,6 +603,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const tabStart = useCallback(() => {
     if (!tabSplitRef.current) return;
     preloadSounds(); // warm up AudioContext + pre-fetch sound files
+    startKeepalive(); // keep audio session alive on iOS when screen turns off
     setTabPhase("idle");
     tabPhaseRef.current = "idle";
     setTabCurrentCycle(0);
@@ -575,6 +626,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
   const tabResume = useCallback(() => {
     preloadSounds(); // ensure AudioContext is running after potential suspend
+    startKeepalive();
     if (tabPausedRemaining.current > 0) {
       tabPhaseEndAt.current = Date.now() + tabPausedRemaining.current * 1000;
     }
@@ -591,6 +643,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
     tabPhaseRef.current = "idle";
     setTabPhaseRemaining(0);
     setTabCurrentCycle(0);
+    stopKeepalive();
   }, []);
 
   // ── Unified tick interval ────────────────────────────────────────────────────
@@ -648,6 +701,18 @@ export function useWorkoutTimer(): WorkoutTimerState {
       wakeLockRef.current = null;
     }
   }, [anyRunning]);
+
+  // Resume AudioContext when tab becomes visible (e.g. user wakes screen)
+  // This recovers audio after iOS suspends the context on screen-off
+  useEffect(() => {
+    const handleVisible = () => {
+      if (document.visibilityState === "visible" && tabRunningRef.current && _ctx) {
+        _ctx.resume().catch(() => {});
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => document.removeEventListener("visibilitychange", handleVisible);
+  }, []);
 
   return {
     swRunning,

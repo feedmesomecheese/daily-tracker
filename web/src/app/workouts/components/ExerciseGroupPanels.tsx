@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect, forwardRef, useImperativeHandle } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,21 +24,27 @@ type Modifier = {
   name: string;
 };
 
+export type ExerciseGroupPanelsHandle = {
+  triggerAdd: () => void;
+};
+
 type ExerciseGroupPanelsProps = {
   groups: ExerciseGroup[];
   exercises: Exercise[];
   modifiers: Modifier[];
   onAddToBucket: (exercise: Exercise, selectedModifiers: string[]) => void;
   onCustomExercise: () => void;
+  onSelectionChange?: (count: number) => void;
 };
 
-export default function ExerciseGroupPanels({
+const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupPanelsProps>(function ExerciseGroupPanels({
   groups,
   exercises,
   modifiers,
   onAddToBucket,
   onCustomExercise,
-}: ExerciseGroupPanelsProps) {
+  onSelectionChange,
+}, ref) {
   // Multi-select: ordered array of selected exercise IDs (preserves selection order)
   const [selectedExerciseIds, setSelectedExerciseIds] = useState<string[]>([]);
   const [selectedModifiers, setSelectedModifiers] = useState<string[]>([]);
@@ -116,6 +122,14 @@ export default function ExerciseGroupPanels({
     setSelectedModifiers([]);
     setMultiSelectMode(false);
   };
+
+  // Expose triggerAdd to parent via ref
+  useImperativeHandle(ref, () => ({ triggerAdd: handleAdd }));
+
+  // Notify parent when selection count changes
+  useEffect(() => {
+    onSelectionChange?.(selectedExerciseIds.length);
+  }, [selectedExerciseIds.length, onSelectionChange]);
 
   // Long-press handlers for mobile multi-select
   const handleTouchStart = useCallback((exerciseId: string, e: React.TouchEvent) => {
@@ -294,4 +308,6 @@ export default function ExerciseGroupPanels({
       </div>
     </div>
   );
-}
+});
+
+export default ExerciseGroupPanels;

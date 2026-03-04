@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import WorkoutTypeSelector from "./components/WorkoutTypeSelector";
-import ExerciseGroupPanels from "./components/ExerciseGroupPanels";
+import ExerciseGroupPanels, { type ExerciseGroupPanelsHandle } from "./components/ExerciseGroupPanels";
 import ExerciseBucket from "./components/ExerciseBucket";
 import { type BucketExerciseData } from "./components/BucketExerciseRow";
 import WorkoutRating from "./components/WorkoutRating";
@@ -162,6 +162,10 @@ export default function WorkoutsPage() {
   // Timer
   const timer = useWorkoutTimer();
   const [timerOpen, setTimerOpen] = useState(false);
+
+  // Exercise selection count (for the add-to-workout FAB)
+  const panelRef = useRef<ExerciseGroupPanelsHandle>(null);
+  const [selectedExerciseCount, setSelectedExerciseCount] = useState(0);
 
   // Tour
   const {
@@ -1103,11 +1107,13 @@ export default function WorkoutsPage() {
           {/* Group Panels - only show after type is selected */}
           {selectedTypeId && (
             <ExerciseGroupPanels
+              ref={panelRef}
               groups={displayGroups}
               exercises={exercises}
               modifiers={modifiers}
               onAddToBucket={handleAddToBucket}
               onCustomExercise={() => setShowCustomSheet(true)}
+              onSelectionChange={setSelectedExerciseCount}
             />
           )}
 
@@ -1480,6 +1486,21 @@ export default function WorkoutsPage() {
 
       {/* Body Measurements Sheet */}
       <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} />
+
+      {/* Add-to-Workout FAB — visible when exercises are selected */}
+      {selectedExerciseCount > 0 && (
+        <button
+          type="button"
+          onClick={() => panelRef.current?.triggerAdd()}
+          className="fixed bottom-24 right-6 z-40 w-14 h-14 rounded-full bg-green-600 text-white shadow-lg flex items-center justify-center hover:bg-green-700 transition-colors"
+          title={`Add ${selectedExerciseCount} exercise${selectedExerciseCount > 1 ? "s" : ""} to workout`}
+        >
+          <span className="text-xl font-bold leading-none">+</span>
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 rounded-full bg-white text-green-700 text-xs font-bold flex items-center justify-center px-1 border border-green-200">
+            {selectedExerciseCount}
+          </span>
+        </button>
+      )}
 
       {/* Workout Timer */}
       <WorkoutTimerFAB timer={timer} onClick={() => setTimerOpen(true)} />
