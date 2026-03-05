@@ -759,6 +759,7 @@ export default function WorkoutsPage() {
     setWorkoutRating(null);
     setWorkoutDuration("");
     setGhostData({});
+    setSelectedExerciseCount(0);
   };
 
   const handleCancel = () => {
