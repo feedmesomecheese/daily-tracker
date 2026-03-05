@@ -23,6 +23,8 @@ import { useWorkoutTimer } from "@/hooks/useWorkoutTimer";
 import { WorkoutTimerFAB, WorkoutTimerSheet } from "@/components/workout-timer/WorkoutTimerSheet";
 import BodyMeasurementsSheet, { findNearestPrior } from "@/components/BodyMeasurementsSheet";
 import { SpeechTextarea } from "@/components/ui/speech-textarea";
+import TemplateSheet, { type WorkoutTemplate } from "./components/TemplateSheet";
+import SaveTemplateDialog from "./components/SaveTemplateDialog";
 import "driver.js/dist/driver.css";
 
 type BodyEntry = { date: string; value: number };
@@ -154,6 +156,14 @@ export default function WorkoutsPage() {
   const [saving, setSaving] = useState(false);
   const [showCustomSheet, setShowCustomSheet] = useState(false);
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
+  const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  // Exercises + type to save as template — set from footer (bucket) or history card
+  const [saveTemplateSource, setSaveTemplateSource] = useState<{
+    exercises: { exercise_id: string | null; exercise_name_display: string; modifier_ids: string[]; target_sets: number | null }[];
+    typeId: string | null;
+    initialName: string;
+  } | null>(null);
   const [selectedExercise, setSelectedExercise] = useState<{ id: string; name: string } | null>(null);
 
   const bucketRef = useRef<HTMLDivElement>(null);
@@ -486,6 +496,107 @@ export default function WorkoutsPage() {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
+
+  const loadFromTemplate = (template: WorkoutTemplate) => {
+    if (
+      bucketExercises.length > 0 &&
+      !confirm("Loading a template will replace your current exercises. Continue?")
+    ) {
+      return;
+    }
+
+    if (template.workout_type_id && !selectedTypeId) {
+      setSelectedTypeId(template.workout_type_id);
+    }
+
+    const bucketData: BucketExerciseData[] = template.exercises.map((ex) => {
+      let inputType = "strength";
+      if (ex.exercise_id) {
+        const exerciseDef = exercises.find((e) => e.id === ex.exercise_id);
+        if (exerciseDef) inputType = getExerciseInputType(exerciseDef);
+      }
+
+      const setCount = ex.target_sets ?? 5;
+      return {
+        id: crypto.randomUUID(),
+        exercise_id: ex.exercise_id ?? null,
+        exercise_name_display: ex.exercise_name_display,
+        modifier_ids: ex.modifier_ids,
+        input_type: inputType,
+        sets: inputType === "strength"
+          ? Array.from({ length: setCount }, () => ({
+              reps: ex.target_reps != null ? String(ex.target_reps) : "",
+              weight: ex.target_weight != null ? String(ex.target_weight) : "",
+              is_pr: false,
+              is_cycle_max: false,
+              is_missed: false,
+            }))
+          : [],
+        superset_group: null,
+        duration_minutes: "",
+        distance_miles: "",
+        incline_pct: "",
+        cardio_weight: "",
+        cycles: "",
+        time_on: "",
+        time_off: "",
+        exercise_notes: "",
+      };
+    });
+
+    setBucketExercises(bucketData);
+    requestAnimationFrame(() => {
+      bucketRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
+
+  // Open the "Save as Template" dialog — called from footer (bucket) or history card
+  const openSaveTemplate = (source: "bucket" | WorkoutHistory) => {
+    if (source === "bucket") {
+      const typeName = workoutTypes.find((t) => t.id === selectedTypeId)?.name ?? "";
+      setSaveTemplateSource({
+        exercises: bucketExercises.map((ex, i) => ({
+          exercise_id: ex.exercise_id,
+          exercise_name_display: ex.exercise_name_display,
+          modifier_ids: ex.modifier_ids,
+          target_sets: ex.sets.length || null,
+          exercise_order: i,
+        })),
+        typeId: selectedTypeId || null,
+        initialName: typeName,
+      });
+    } else {
+      const typeName = workoutTypes.find((t) => t.id === source.workout_type_id)?.name ?? "";
+      setSaveTemplateSource({
+        exercises: (source.exercises ?? []).map((ex, i) => ({
+          exercise_id: ex.exercise_id ?? null,
+          exercise_name_display: ex.exercise_name_display,
+          modifier_ids: ex.modifier_ids ?? [],
+          target_sets: ex.sets?.length || null,
+          exercise_order: i,
+        })),
+        typeId: source.workout_type_id ?? null,
+        initialName: typeName,
+      });
+    }
+    setSaveTemplateOpen(true);
+  };
+
+  async function doSaveTemplate(name: string) {
+    if (!saveTemplateSource) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch("/api/workouts/templates", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        workout_type_id: saveTemplateSource.typeId,
+        exercises: saveTemplateSource.exercises,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to save template");
+  }
 
   // Load workout for editing from ?edit=<id> query param
   const editParamHandled = useRef(false);
@@ -1034,11 +1145,21 @@ export default function WorkoutsPage() {
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Type</label>
-              <WorkoutTypeSelector
-                types={workoutTypes}
-                value={selectedTypeId}
-                onChange={setSelectedTypeId}
-              />
+              <div className="flex items-center gap-2">
+                <WorkoutTypeSelector
+                  types={workoutTypes}
+                  value={selectedTypeId}
+                  onChange={setSelectedTypeId}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setTemplateSheetOpen(true)}
+                  className="shrink-0 h-9"
+                >
+                  Load from Template
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -1163,7 +1284,7 @@ export default function WorkoutsPage() {
                 <WorkoutRating value={workoutRating} onChange={setWorkoutRating} />
               </div>
 
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-2 pt-2 flex-wrap">
                 <Button onClick={handleSave} disabled={saving}>
                   {saving
                     ? "Saving..."
@@ -1173,6 +1294,16 @@ export default function WorkoutsPage() {
                 </Button>
                 <Button variant="outline" onClick={handleCancel}>
                   {editingWorkoutId ? "Cancel Edit" : "Cancel"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto text-muted-foreground"
+                  onClick={() => openSaveTemplate("bucket")}
+                  disabled={bucketExercises.length === 0}
+                  title="Save current exercises as a template"
+                >
+                  Save as Template
                 </Button>
               </div>
             </>
@@ -1300,6 +1431,13 @@ export default function WorkoutsPage() {
                         onClick={() => loadWorkoutForEdit(workout)}
                       >
                         Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openSaveTemplate(workout)}
+                      >
+                        Make Template
                       </Button>
                       <Button
                         variant="ghost"
@@ -1513,6 +1651,22 @@ export default function WorkoutsPage() {
           setWorkoutDuration(minutesToDurationStr(seconds / 60));
           setTimerOpen(false);
         }}
+      />
+
+      {/* Template Sheet — load only */}
+      <TemplateSheet
+        open={templateSheetOpen}
+        onOpenChange={setTemplateSheetOpen}
+        onLoad={loadFromTemplate}
+      />
+
+      {/* Save as Template dialog */}
+      <SaveTemplateDialog
+        open={saveTemplateOpen}
+        onOpenChange={setSaveTemplateOpen}
+        initialName={saveTemplateSource?.initialName ?? ""}
+        exerciseCount={saveTemplateSource?.exercises.length ?? 0}
+        onSave={doSaveTemplate}
       />
 
       {/* Custom Exercise Sheet */}

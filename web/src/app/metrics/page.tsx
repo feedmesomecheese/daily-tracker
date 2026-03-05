@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import {
   DndContext,
@@ -136,7 +136,6 @@ type Metric = {
   group_order: number | null;
   is_calculated: boolean;
   calc_expr: string | null;
-  parent_metric_id: string | null;
   preset_values_csv: string | null;
   stt_enabled: boolean;
   analytics_config: AnalyticsConfig | null;
@@ -192,9 +191,9 @@ function SortableGroupRow({
 }
 
 // Sortable metric row component
-function SortableMetricRow({
+const SortableMetricRow = React.memo(function SortableMetricRow({
   metric,
-  metrics,
+  metricIds,
   groupNames,
   showAdvanced,
   onFieldChange,
@@ -205,7 +204,7 @@ function SortableMetricRow({
   onStatsClick,
 }: {
   metric: Metric;
-  metrics: Metric[];
+  metricIds: string[];
   groupNames: string[];
   showAdvanced: boolean;
   onFieldChange: (metricId: string, field: string, value: unknown) => Promise<void>;
@@ -225,7 +224,6 @@ function SortableMetricRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
-  const metricIds = metrics.map((m) => m.metric_id);
   const isSaving = (field: string) => savingFields.has(`${metric.metric_id}:${field}`);
 
   return (
@@ -408,22 +406,6 @@ function SortableMetricRow({
               onChange={(e) => onFieldChange(metric.metric_id, "start_date", e.target.value || null)}
               className="h-8 text-xs"
             />
-          </td>
-          <td className="py-2 px-2 min-w-[180px]">
-            <select
-              value={metric.parent_metric_id || ""}
-              onChange={(e) => onFieldChange(metric.metric_id, "parent_metric_id", e.target.value || null)}
-              className="w-full h-8 text-xs border rounded-md px-2 bg-background text-foreground"
-            >
-              <option value="">(none)</option>
-              {metrics
-                .filter((m) => m.metric_id !== metric.metric_id)
-                .map((m) => (
-                  <option key={m.metric_id} value={m.metric_id}>
-                    {m.metric_name}
-                  </option>
-                ))}
-            </select>
           </td>
           <td className="py-2 px-2 min-w-[150px]">
             <EditableText
@@ -631,7 +613,20 @@ function SortableMetricRow({
       </td>
     </tr>
   );
-}
+}, (prev, next) => {
+  // Only re-render if this row's data actually changed
+  if (!Object.is(prev.metric, next.metric)) return false;
+  if (prev.showAdvanced !== next.showAdvanced) return false;
+  if (prev.groupNames !== next.groupNames) return false;
+  if (prev.metricIds !== next.metricIds) return false;
+  // savingFields: only care about entries for this specific metric
+  const id = prev.metric.metric_id;
+  const prevSaving = [...prev.savingFields].filter(k => k.startsWith(id + ':'));
+  const nextSaving = [...next.savingFields].filter(k => k.startsWith(id + ':'));
+  if (prevSaving.length !== nextSaving.length) return false;
+  if (prevSaving.some(k => !next.savingFields.has(k))) return false;
+  return true;
+});
 
 // Editable text cell
 function EditableText({
@@ -921,7 +916,6 @@ export default function MetricsPage() {
     show_ma: false,
     ma_periods_csv: "",
     start_date: "",
-    parent_metric_id: "",
     preset_values_csv: "",
     stt_enabled: false,
   });
@@ -963,6 +957,10 @@ export default function MetricsPage() {
     () => groups.map((g) => g.name).filter((n) => n !== ""),
     [groups]
   );
+
+  // Stable metricIds: only changes reference when IDs actually change (not on field updates)
+  const metricIdsKey = useMemo(() => metrics.map((m) => m.metric_id).join("\0"), [metrics]);
+  const metricIds = useMemo(() => metrics.map((m) => m.metric_id), [metricIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter visible metrics
   const visibleMetrics = useMemo(() => {
@@ -1037,7 +1035,6 @@ export default function MetricsPage() {
         group_order: typeof r.group_order === "number" ? r.group_order : null,
         is_calculated: !!r.is_calculated,
         calc_expr: (r.calc_expr ?? null) as string | null,
-        parent_metric_id: (r.parent_metric_id ?? null) as string | null,
         preset_values_csv: (r.preset_values_csv ?? null) as string | null,
         stt_enabled: !!r.stt_enabled,
         analytics_config: (r.analytics_config ?? null) as AnalyticsConfig | null,
@@ -1323,7 +1320,6 @@ export default function MetricsPage() {
         show_ma: newMetric.show_ma,
         ma_periods_csv: newMetric.ma_periods_csv.trim() || null,
         start_date: newMetric.start_date || null,
-        parent_metric_id: newMetric.parent_metric_id || null,
         preset_values_csv: newMetric.preset_values_csv.trim() || null,
         stt_enabled: newMetric.stt_enabled,
       };
@@ -1373,7 +1369,6 @@ export default function MetricsPage() {
         show_ma: false,
         ma_periods_csv: "",
         start_date: "",
-        parent_metric_id: "",
         preset_values_csv: "",
         stt_enabled: false,
       });
@@ -1773,7 +1768,6 @@ export default function MetricsPage() {
                           <th className="text-center py-2 px-2 w-[50px]"><Hint text="Moving Average — shows a rolling average line on this metric's chart">MA</Hint></th>
                           <th className="text-center py-2 px-2 min-w-[120px]"><Hint text="Number of days in the moving average window (e.g. 7 for a weekly average)">MA Periods</Hint></th>
                           <th className="text-center py-2 px-2 min-w-[140px]"><Hint text="Only show this metric on the Today page from this date onwards. Useful for metrics you started tracking mid-way.">Start Date</Hint></th>
-                          <th className="text-center py-2 px-2 min-w-[180px]"><Hint text="Link to a parent metric. Used to group related metrics together in the stats view.">Parent</Hint></th>
                           <th className="text-center py-2 px-2 min-w-[150px]"><Hint text="Comma-separated quick-pick values shown as buttons on the Today page (e.g. 15,30,60 for reading minutes).">Presets</Hint></th>
                           <th className="text-center py-2 px-2 w-[50px]"><Hint text="No Trend — hides the trend arrow (↑↓) next to this metric on the Today page">No Trend</Hint></th>
                           <th className="text-center py-2 px-2 w-[50px]"><Hint text="Low Good — lower values are better. Reverses trend arrow colors so down = green (e.g. for weight, screen time, drinks).">Low Good</Hint></th>
@@ -1984,22 +1978,6 @@ export default function MetricsPage() {
                                 className="h-8 text-xs"
                               />
                             </td>
-                            <td className="py-2 px-2 min-w-[180px]">
-                              <select
-                                value={newMetric.parent_metric_id}
-                                onChange={(e) =>
-                                  setNewMetric((p) => ({ ...p, parent_metric_id: e.target.value }))
-                                }
-                                className="w-full h-8 text-xs border rounded-md px-2 bg-background text-foreground"
-                              >
-                                <option value="">(none)</option>
-                                {metrics.map((m) => (
-                                  <option key={m.metric_id} value={m.metric_id}>
-                                    {m.metric_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
                             <td className="py-2 px-2 min-w-[150px]">
                               <Input
                                 value={newMetric.preset_values_csv}
@@ -2042,7 +2020,6 @@ export default function MetricsPage() {
                                   show_ma: false,
                                   ma_periods_csv: "",
                                   start_date: "",
-                                  parent_metric_id: "",
                                   preset_values_csv: "",
                                   stt_enabled: false,
                                 });
@@ -2060,7 +2037,7 @@ export default function MetricsPage() {
                       <SortableMetricRow
                         key={m.metric_id}
                         metric={m}
-                        metrics={metrics}
+                        metricIds={metricIds}
                         groupNames={groupNames}
                         showAdvanced={showAdvanced}
                         onFieldChange={updateMetricField}

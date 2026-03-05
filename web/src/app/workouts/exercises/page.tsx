@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -117,7 +118,8 @@ export default function ExerciseLibraryPage() {
 
   const [selectedGroup, setSelectedGroup] = useState<string>("all");
   const [showArchived, setShowArchived] = useState(false);
-  const [activeTab, setActiveTab] = useState("exercises");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState(() => searchParams.get("tab") ?? "exercises");
   const [exerciseSearch, setExerciseSearch] = useState("");
 
   // Tour
@@ -134,6 +136,69 @@ export default function ExerciseLibraryPage() {
   const [exercisesCsvImport, setExercisesCsvImport] = useState("");
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+
+  // Template state
+  type WorkoutTemplate = {
+    id: string;
+    name: string;
+    workout_type_id: string | null;
+    exercises: {
+      id: string;
+      exercise_name_display: string;
+      modifier_ids: string[];
+      exercise_order: number;
+      target_sets: number | null;
+      target_reps: number | null;
+      target_weight: number | null;
+    }[];
+  };
+  const [templates, setTemplates] = useState<WorkoutTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [renamingTemplateId, setRenamingTemplateId] = useState<string | null>(null);
+  const [renameTemplateValue, setRenameTemplateValue] = useState("");
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+  const [expandedTemplateId, setExpandedTemplateId] = useState<string | null>(null);
+
+  const fetchTemplates = useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/workouts/templates", { headers });
+      if (res.ok) setTemplates(await res.json());
+    } catch { /* ignore */ } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "templates") fetchTemplates();
+  }, [activeTab, fetchTemplates]);
+
+  async function renameTemplate(id: string) {
+    if (!renameTemplateValue.trim()) { setRenamingTemplateId(null); return; }
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/workouts/templates/${id}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameTemplateValue.trim() }),
+      });
+      setTemplates((prev) => prev.map((t) => t.id === id ? { ...t, name: renameTemplateValue.trim() } : t));
+    } catch { /* ignore */ } finally {
+      setRenamingTemplateId(null);
+      setRenameTemplateValue("");
+    }
+  }
+
+  async function deleteTemplate(id: string) {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/workouts/templates/${id}`, { method: "DELETE", headers });
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+    } catch { /* ignore */ } finally {
+      setDeletingTemplateId(null);
+    }
+  }
 
   // Cycle max import state
   const [cycleMaxCsv, setCycleMaxCsv] = useState("");
@@ -734,6 +799,7 @@ export default function ExerciseLibraryPage() {
           <TabsTrigger data-tour="ex-groups-tab" value="groups">Groups</TabsTrigger>
           <TabsTrigger data-tour="ex-modifiers-tab" value="modifiers">Modifiers</TabsTrigger>
           <TabsTrigger value="tags">Tags</TabsTrigger>
+          <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="import">Import</TabsTrigger>
         </TabsList>
 
@@ -1510,6 +1576,117 @@ export default function ExerciseLibraryPage() {
                     No tags yet. Tags let you label workout sessions (e.g. "Raised Heel") for filtering in history.
                   </p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ── Templates Tab ── */}
+        <TabsContent value="templates" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Templates ({templates.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {templatesLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+              {!templatesLoading && templates.length === 0 && (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No templates yet. Use &quot;Make Template&quot; on a history card or &quot;Save as Template&quot; in the workout form.
+                </p>
+              )}
+              <div className="space-y-2">
+                {templates.map((t) => (
+                  <div key={t.id} className="border rounded-md overflow-hidden">
+                    {/* Header row */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
+                      {renamingTemplateId === t.id ? (
+                        <input
+                          type="text"
+                          value={renameTemplateValue}
+                          onChange={(e) => setRenameTemplateValue(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") renameTemplate(t.id);
+                            if (e.key === "Escape") { setRenamingTemplateId(null); setRenameTemplateValue(""); }
+                          }}
+                          onBlur={() => renameTemplate(t.id)}
+                          autoFocus
+                          className="flex-1 h-7 px-2 border rounded text-sm"
+                        />
+                      ) : (
+                        <span className="text-sm font-medium flex-1 truncate">{t.name}</span>
+                      )}
+                      {t.workout_type_id && (
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          {workoutTypes.find((wt) => wt.id === t.workout_type_id)?.name}
+                        </span>
+                      )}
+                      <button
+                        className="text-xs text-muted-foreground hover:text-foreground shrink-0"
+                        onClick={() => setExpandedTemplateId(expandedTemplateId === t.id ? null : t.id)}
+                      >
+                        {expandedTemplateId === t.id ? "▲" : "▼"}
+                      </button>
+                    </div>
+
+                    {/* Exercise list (collapsible) */}
+                    {expandedTemplateId === t.id && t.exercises.length > 0 && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground space-y-1 border-t bg-background">
+                        {t.exercises.map((ex, i) => (
+                          <div key={ex.id} className="flex items-center justify-between gap-2">
+                            <span className="truncate">{i + 1}. {ex.exercise_name_display}</span>
+                            {ex.target_sets != null && (
+                              <span className="shrink-0 tabular-nums">
+                                {ex.target_sets}×{ex.target_reps ?? "?"}
+                                {ex.target_weight ? ` @ ${ex.target_weight}` : ""}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Action row */}
+                    <div className="flex gap-1 px-2 py-1.5 border-t bg-background">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => { setRenamingTemplateId(t.id); setRenameTemplateValue(t.name); }}
+                      >
+                        Rename
+                      </Button>
+                      {deletingTemplateId === t.id ? (
+                        <>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => deleteTemplate(t.id)}
+                          >
+                            Confirm Delete
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => setDeletingTemplateId(null)}
+                          >
+                            Cancel
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeletingTemplateId(t.id)}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>

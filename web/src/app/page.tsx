@@ -16,6 +16,7 @@ import { TrendBadge } from "@/components/ui/trend-badge";
 import { StreakBadge } from "@/components/ui/streak-badge";
 import { DatePicker } from "@/components/ui/date-picker";
 import { MetricStatsSheet } from "@/components/metric-stats-sheet";
+import { QuickAddMetricSheet } from "@/components/QuickAddMetricSheet";
 import { MetricHoverTooltip } from "@/components/metric-hover-tooltip";
 import { MultiGoalBadge } from "@/components/ui/goal-progress-badge";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -55,7 +56,6 @@ type ConfigRow = {
   stt_enabled?: boolean;
   is_calculated: boolean;
   calc_expr: string | null;
-  parent_metric_id: string | null;
   analytics_config?: {
     hide_trend?: boolean;
     hide_streak?: boolean; // deprecated
@@ -196,8 +196,17 @@ export default function Home() {
   // Stats sheet state
   const [statsMetric, setStatsMetric] = useState<ConfigRow | null>(null);
 
+  // Quick-add metric FAB state
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
+
   // Mobile detection for picker UI
   const isMobile = useMediaQuery("(max-width: 639px)");
+
+  // Derived groups for quick-add sheet datalist
+  const existingGroups = useMemo(
+    () => [...new Set(metrics.filter((c) => c.group).map((c) => c.group!))].sort(),
+    [metrics]
+  );
 
   const { status: tourStatus, loading: tourLoading, seed: tourSeed, cleanup: tourCleanup, devReset: tourDevReset } = useTour();
 
@@ -231,7 +240,6 @@ export default function Home() {
         preset_values_csv: r.preset_values_csv ?? null,
         is_calculated: !!r.is_calculated,
         calc_expr: r.calc_expr ?? null,
-        parent_metric_id: r.parent_metric_id ?? null,
         analytics_config: r.analytics_config ?? null,
       }));
       const active = normalized.filter((r) => r.active);
@@ -360,25 +368,6 @@ export default function Home() {
   }, [dirty]);
 
 
-  // Check if a metric is visible based on parent's value
-  const isMetricVisible = React.useCallback((metric: ConfigRow): boolean => {
-    if (!metric.parent_metric_id) return true;
-    const parentValue = vals[metric.parent_metric_id];
-    // Parent must have a non-empty value for child to be visible
-    return parentValue != null && parentValue.trim() !== "";
-  }, [vals]);
-
-  // Track which metrics have dependent children
-  const metricsWithChildren = React.useMemo(() => {
-    const parentIds = new Set<string>();
-    for (const m of metrics) {
-      if (m.parent_metric_id) {
-        parentIds.add(m.parent_metric_id);
-      }
-    }
-    return parentIds;
-  }, [metrics]);
-
   const groupedMetrics = React.useMemo<
     { groupName: string; items: ConfigRow[] }[]
   >(() => {
@@ -387,9 +376,6 @@ export default function Home() {
     const map = new Map<string, ConfigRow[]>();
 
     for (const m of metrics) {
-      // Skip metrics whose parent is empty
-      if (!isMetricVisible(m)) continue;
-
       // Skip private metrics if showPrivate is disabled
       if (!showPrivate && m.private) continue;
 
@@ -402,7 +388,7 @@ export default function Home() {
       groupName,
       items,
     }));
-  }, [metrics, isMetricVisible, vals, showPrivate]);
+  }, [metrics, showPrivate]);
 
   const daysBetween = (d1: string, d2: string) => {
     const t1 = Date.parse(d1);
@@ -469,93 +455,69 @@ export default function Home() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [saving, metrics.length]);
 
-  // Load metrics from /api/config
-  useEffect(() => {
-    (async () => {
-      try {
-        const headers = await getAuthHeaders();
-
-        const res = await fetch("/api/config", { headers });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Failed to load config");
-
-        const rows = data as any[];
-
-        const normalized: ConfigRow[] = rows.map((r) => ({
-          metric_id: r.metric_id,
-          metric_name: (r.metric_name ?? r.metric_id).replace(/\s*\[[0-9a-f]{8}\]$/, ""),
-          type: r.type,
-          group: r.group ?? null,
-          private: !!r.private,
-          active: r.active ?? true,
-          show_ma: !!r.show_ma,
-          ma_periods_csv: r.ma_periods_csv ?? "",
-          start_date: r.start_date ?? null,
-          required: !!r.required,              // 👈 now wired up
-          default_value: r.default_value ?? null,
-          min_value: r.min_value ?? null,
-          max_value: r.max_value ?? null,
-          disallowed_values: r.disallowed_values ?? null,
-          metric_order:
-            typeof r.metric_order === "number" ? r.metric_order : null,
-          group_order:
-            typeof r.group_order === "number" ? r.group_order : null,
-          preset_values_csv: r.preset_values_csv ?? null,
-          stt_enabled: !!r.stt_enabled,
-          is_calculated: !!r.is_calculated,
-          calc_expr: r.calc_expr ?? null,
-          parent_metric_id: r.parent_metric_id ?? null,
-          analytics_config: r.analytics_config ?? null,
-        }));
-
-        // Load all active metrics (including private) - filtering happens at display time
-        const active = normalized.filter((r) => r.active);
-
-        setMetrics(sortMetricsForForm(active));
-        setMetricsLoaded(true);
-      } catch (e: any) {
-        setError(String(e?.message || e));
-      }
-    })();
-  }, []);
-
-  // type GroupedMetrics = {
-  //   groupName: string;
-  //   metrics: ConfigRow[];
-  // };
-
-  useEffect(() => {
-    if (!authChecked) return;
-    reloadDateHints();
-  }, [authChecked]);
-
-  // Fetch user settings on auth
+  // Combined initial load: fires once after auth, fetches config/dateHints/settings/availableYears in parallel
   useEffect(() => {
     if (!authChecked) return;
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch("/api/settings", { headers });
-        if (res.ok) {
-          const data = await res.json();
-          setUserSettings(data);
+
+        const [configRes, hintsRes, settingsRes, logsRes] = await Promise.all([
+          fetch("/api/config", { headers }),
+          fetch("/api/date_hints", { headers }),
+          fetch("/api/settings", { headers }),
+          fetch("/api/log", { headers }),
+        ]);
+
+        // Config
+        if (configRes.ok) {
+          const data = await configRes.json();
+          const rows = data as any[];
+          const normalized: ConfigRow[] = rows.map((r) => ({
+            metric_id: r.metric_id,
+            metric_name: (r.metric_name ?? r.metric_id).replace(/\s*\[[0-9a-f]{8}\]$/, ""),
+            type: r.type,
+            group: r.group ?? null,
+            private: !!r.private,
+            active: r.active ?? true,
+            show_ma: !!r.show_ma,
+            ma_periods_csv: r.ma_periods_csv ?? "",
+            start_date: r.start_date ?? null,
+            required: !!r.required,
+            default_value: r.default_value ?? null,
+            min_value: r.min_value ?? null,
+            max_value: r.max_value ?? null,
+            disallowed_values: r.disallowed_values ?? null,
+            metric_order: typeof r.metric_order === "number" ? r.metric_order : null,
+            group_order: typeof r.group_order === "number" ? r.group_order : null,
+            preset_values_csv: r.preset_values_csv ?? null,
+            stt_enabled: !!r.stt_enabled,
+            is_calculated: !!r.is_calculated,
+            calc_expr: r.calc_expr ?? null,
+            analytics_config: r.analytics_config ?? null,
+          }));
+          setMetrics(sortMetricsForForm(normalized.filter((r) => r.active)));
+          setMetricsLoaded(true);
+        } else {
+          const err = await configRes.json().catch(() => null);
+          setError(err?.error || "Failed to load config");
         }
-      } catch (e) {
-        console.warn("Failed to load settings:", e);
-      }
-    })();
-  }, [authChecked]);
 
-  // Fetch available years for date picker
-  useEffect(() => {
-    if (!authChecked) return;
-    (async () => {
-      try {
-        const headers = await getAuthHeaders();
-        // Get distinct years from log data
-        const res = await fetch("/api/log", { headers });
-        if (res.ok) {
-          const logs = await res.json();
+        // Date hints
+        const hintsCt = hintsRes.headers.get("content-type") || "";
+        if (hintsRes.ok && hintsCt.includes("application/json")) {
+          const j = await hintsRes.json();
+          if (!j?.error) setDateHints(j as DateHints);
+        }
+
+        // Settings
+        if (settingsRes.ok) {
+          setUserSettings(await settingsRes.json());
+        }
+
+        // Available years
+        if (logsRes.ok) {
+          const logs = await logsRes.json();
           const years = new Set<number>();
           for (const log of logs) {
             if (log.date) {
@@ -563,14 +525,15 @@ export default function Home() {
               if (!isNaN(year)) years.add(year);
             }
           }
-          // Add current year if not present
           const currentYear = new Date().getFullYear();
           years.add(currentYear);
           setAvailableYears(Array.from(years).sort((a, b) => b - a));
+        } else {
+          const currentYear = new Date().getFullYear();
+          setAvailableYears(Array.from({ length: 5 }, (_, i) => currentYear - i));
         }
-      } catch (e) {
-        console.warn("Failed to load available years:", e);
-        // Fallback to last 5 years
+      } catch (e: any) {
+        setError(String(e?.message || e));
         const currentYear = new Date().getFullYear();
         setAvailableYears(Array.from({ length: 5 }, (_, i) => currentYear - i));
       }
@@ -653,33 +616,6 @@ export default function Home() {
       return next;
     });
   };
-
-  // Clear child values when parent becomes empty
-  React.useEffect(() => {
-    const childrenToClear: string[] = [];
-
-    for (const m of metrics) {
-      if (!m.parent_metric_id) continue;
-
-      const parentValue = vals[m.parent_metric_id];
-      const parentIsEmpty = parentValue == null || parentValue.trim() === "";
-      const childHasValue = vals[m.metric_id] && vals[m.metric_id].trim() !== "";
-
-      if (parentIsEmpty && childHasValue) {
-        childrenToClear.push(m.metric_id);
-      }
-    }
-
-    if (childrenToClear.length > 0) {
-      setVals(prev => {
-        const next = { ...prev };
-        for (const id of childrenToClear) {
-          next[id] = "";
-        }
-        return next;
-      });
-    }
-  }, [vals, metrics]);
 
   const [prevByN, setPrevByN] = useState<Record<number, Record<string, number | null>>>({});
 
@@ -2101,15 +2037,6 @@ export default function Home() {
                             className="flex items-center gap-2 font-medium mb-1 relative"
                             {...(isFirstItem ? { "data-tour": "metric-label" } : {})}
                           >
-                            {/* Indicator for metrics with dependent children - positioned left of name */}
-                            {metricsWithChildren.has(m.metric_id) && (
-                              <span
-                                className="absolute -left-4 text-[10px] text-muted-foreground opacity-70"
-                                title="Has dependent metrics that will appear when populated"
-                              >
-                                ▾
-                              </span>
-                            )}
                             <MetricHoverTooltip
                               metricId={m.metric_id}
                               metricName={m.metric_name}
@@ -2584,6 +2511,22 @@ export default function Home() {
         metricType={statsMetric?.type ?? null}
         open={statsMetric !== null}
         onOpenChange={(open) => !open && setStatsMetric(null)}
+      />
+
+      {/* Quick-add metric FAB */}
+      <button
+        onClick={() => setQuickAddOpen(true)}
+        className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 transition-colors flex items-center justify-center text-2xl"
+        aria-label="Add metric"
+      >
+        +
+      </button>
+
+      <QuickAddMetricSheet
+        open={quickAddOpen}
+        onOpenChange={setQuickAddOpen}
+        existingGroups={existingGroups}
+        onCreated={reloadMetrics}
       />
 
       {/* Dev-only tour reset button */}

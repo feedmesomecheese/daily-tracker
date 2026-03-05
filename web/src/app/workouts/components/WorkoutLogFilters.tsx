@@ -23,6 +23,7 @@ export type FilterState = {
   typeIds: Set<string>;
   tagIds: Set<string>;
   exerciseSearch: string;
+  notesSearch: string;
   groupId: string; // "" = all
   flags: Set<FlagFilter>;
 };
@@ -80,6 +81,7 @@ export function getInitialFilters(): FilterState {
     typeIds: new Set(),
     tagIds: new Set(),
     exerciseSearch: "",
+    notesSearch: "",
     groupId: "",
     flags: new Set(),
   };
@@ -103,12 +105,18 @@ export default function WorkoutLogFilters({
   const [exerciseDropdownOpen, setExerciseDropdownOpen] = useState(false);
   const exerciseRef = useRef<HTMLDivElement>(null);
 
+  const [notesInputValue, setNotesInputValue] = useState(filters.notesSearch);
+
   const [showCustomDates, setShowCustomDates] = useState(false);
 
-  // Sync local input with external filter (e.g. on reset)
+  // Sync local inputs with external filter (e.g. on reset)
   useEffect(() => {
     setExerciseInputValue(filters.exerciseSearch);
   }, [filters.exerciseSearch]);
+
+  useEffect(() => {
+    setNotesInputValue(filters.notesSearch);
+  }, [filters.notesSearch]);
 
   // Close popovers on outside click
   useEffect(() => {
@@ -172,6 +180,11 @@ export default function WorkoutLogFilters({
     onChange({ ...filters, exerciseSearch: value });
   };
 
+  const handleNotesInput = (value: string) => {
+    setNotesInputValue(value);
+    onChange({ ...filters, notesSearch: value });
+  };
+
   const selectExercise = (name: string) => {
     setExerciseInputValue(name);
     setExerciseDropdownOpen(false);
@@ -199,6 +212,7 @@ export default function WorkoutLogFilters({
     filters.typeIds.size > 0 ||
     filters.tagIds.size > 0 ||
     filters.exerciseSearch ||
+    filters.notesSearch ||
     filters.groupId ||
     filters.flags.size > 0;
 
@@ -266,11 +280,13 @@ export default function WorkoutLogFilters({
             className="h-8 text-xs"
             onClick={() => {
               setExerciseInputValue("");
+              setNotesInputValue("");
               onChange({
                 ...filters,
                 typeIds: new Set(),
                 tagIds: new Set(),
                 exerciseSearch: "",
+                notesSearch: "",
                 groupId: "",
                 flags: new Set(),
               });
@@ -427,6 +443,31 @@ export default function WorkoutLogFilters({
                 setExerciseInputValue("");
                 setExerciseDropdownOpen(false);
                 onChange({ ...filters, exerciseSearch: "" });
+              }}
+              className="absolute right-1.5 top-[22px] text-muted-foreground hover:text-foreground text-xs px-1"
+            >
+              x
+            </button>
+          )}
+        </div>
+
+        {/* Notes search */}
+        <div className="relative flex-1 min-w-[140px] max-w-[220px]">
+          <label className="text-xs text-muted-foreground block mb-1">Notes</label>
+          <input
+            type="text"
+            value={notesInputValue}
+            onChange={(e) => handleNotesInput(e.target.value)}
+            placeholder="Search notes..."
+            className={`h-8 px-2.5 border rounded-md text-xs w-full bg-background outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${
+              filters.notesSearch ? "border-primary/50" : ""
+            }`}
+          />
+          {filters.notesSearch && (
+            <button
+              onClick={() => {
+                setNotesInputValue("");
+                onChange({ ...filters, notesSearch: "" });
               }}
               className="absolute right-1.5 top-[22px] text-muted-foreground hover:text-foreground text-xs px-1"
             >

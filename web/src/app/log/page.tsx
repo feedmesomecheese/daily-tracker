@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import ReactDOM from "react-dom";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +38,15 @@ type GroupInfo = {
   order: number;
   metricIds: string[];
 };
+
+// --- Column filter types ---
+type CheckboxColFilter = { kind: "checkbox"; value: "checked" | "unchecked" };
+type NumericColFilter  = { kind: "numeric";  op: "eq" | "gte" | "lte" | "between"; a: string; b: string };
+type HhmmColFilter     = { kind: "hhmm";     op: "eq" | "before" | "after"; value: string };
+type TimeColFilter     = { kind: "time";     op: "eq" | "gte" | "lte"; value: string };
+type TextColFilter     = { kind: "text";     value: string };
+type ColumnFilter = CheckboxColFilter | NumericColFilter | HhmmColFilter | TimeColFilter | TextColFilter;
+type FilterPopoverAnchor = { metricId: string; rect: DOMRect } | null;
 
 const PAGE_SIZE_OPTIONS = [7, 14, 30, 90] as const;
 
@@ -598,6 +608,165 @@ function ColumnPickerDialog({
   );
 }
 
+// ─── Column filter popover ────────────────────────────────────────────────────
+
+function initColFilter(cfg: ConfigRow, current: ColumnFilter | undefined): ColumnFilter {
+  if (current) return { ...current } as ColumnFilter;
+  switch (cfg.type) {
+    case "checkbox": return { kind: "checkbox", value: "checked" };
+    case "hhmm":     return { kind: "hhmm",    op: "before", value: "" };
+    case "time":     return { kind: "time",    op: "gte",    value: "" };
+    case "text":     return { kind: "text",    value: "" };
+    default:         return { kind: "numeric", op: "gte",   a: "",    b: "" };
+  }
+}
+
+function isColFilterActive(f: ColumnFilter): boolean {
+  switch (f.kind) {
+    case "checkbox": return true;
+    case "numeric":  return f.a !== "" || f.b !== "";
+    case "hhmm":     return f.value !== "";
+    case "time":     return f.value !== "";
+    case "text":     return f.value.trim() !== "";
+  }
+}
+
+function ColumnFilterPopover({
+  metricId,
+  cfg,
+  anchor,
+  current,
+  onApply,
+  onClose,
+}: {
+  metricId: string;
+  cfg: ConfigRow;
+  anchor: DOMRect;
+  current: ColumnFilter | undefined;
+  onApply: (id: string, filter: ColumnFilter | null) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState<ColumnFilter>(() => initColFilter(cfg, current));
+
+  useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [onClose]);
+
+  const style: React.CSSProperties = {
+    position: "fixed",
+    top: anchor.bottom + 4,
+    left: anchor.left,
+    zIndex: 9999,
+  };
+
+  const btnClass = (active: boolean) =>
+    `px-2 py-1 text-xs rounded border transition-colors ${
+      active ? "bg-primary text-primary-foreground border-primary" : "bg-background border-input hover:bg-accent"
+    }`;
+
+  let controls: React.ReactNode;
+
+  if (draft.kind === "checkbox") {
+    controls = (
+      <div className="flex gap-2">
+        <button type="button" className={btnClass(draft.value === "checked")}
+          onClick={() => setDraft({ kind: "checkbox", value: "checked" })}>Checked</button>
+        <button type="button" className={btnClass(draft.value === "unchecked")}
+          onClick={() => setDraft({ kind: "checkbox", value: "unchecked" })}>Unchecked</button>
+      </div>
+    );
+  } else if (draft.kind === "numeric") {
+    controls = (
+      <div className="space-y-2">
+        <div className="flex gap-1 flex-wrap">
+          {(["eq", "gte", "lte", "between"] as const).map(op => (
+            <button key={op} type="button" className={btnClass(draft.op === op)}
+              onClick={() => setDraft(d => ({ ...d as NumericColFilter, op }))}>
+              {op === "eq" ? "=" : op === "gte" ? "≥" : op === "lte" ? "≤" : "between"}
+            </button>
+          ))}
+        </div>
+        <Input type="number" placeholder={draft.op === "between" ? "Min" : "Value"}
+          value={(draft as NumericColFilter).a}
+          onChange={e => setDraft(d => ({ ...d as NumericColFilter, a: e.target.value }))}
+          className="h-7 text-xs" />
+        {draft.op === "between" && (
+          <Input type="number" placeholder="Max"
+            value={(draft as NumericColFilter).b}
+            onChange={e => setDraft(d => ({ ...d as NumericColFilter, b: e.target.value }))}
+            className="h-7 text-xs" />
+        )}
+      </div>
+    );
+  } else if (draft.kind === "hhmm") {
+    controls = (
+      <div className="space-y-2">
+        <div className="flex gap-1">
+          {(["eq", "before", "after"] as const).map(op => (
+            <button key={op} type="button" className={btnClass(draft.op === op)}
+              onClick={() => setDraft(d => ({ ...d as HhmmColFilter, op }))}>
+              {op === "eq" ? "=" : op}
+            </button>
+          ))}
+        </div>
+        <Input type="text" placeholder="HH:MM"
+          value={(draft as HhmmColFilter).value}
+          onChange={e => setDraft(d => ({ ...d as HhmmColFilter, value: e.target.value }))}
+          className="h-7 text-xs w-24" />
+      </div>
+    );
+  } else if (draft.kind === "time") {
+    controls = (
+      <div className="space-y-2">
+        <div className="flex gap-1">
+          {(["eq", "gte", "lte"] as const).map(op => (
+            <button key={op} type="button" className={btnClass(draft.op === op)}
+              onClick={() => setDraft(d => ({ ...d as TimeColFilter, op }))}>
+              {op === "eq" ? "=" : op === "gte" ? "≥" : "≤"}
+            </button>
+          ))}
+        </div>
+        <Input type="text" placeholder="h:mm or minutes"
+          value={(draft as TimeColFilter).value}
+          onChange={e => setDraft(d => ({ ...d as TimeColFilter, value: e.target.value }))}
+          className="h-7 text-xs w-32" />
+      </div>
+    );
+  } else {
+    controls = (
+      <Input type="text" placeholder="Contains..."
+        value={(draft as TextColFilter).value}
+        onChange={e => setDraft({ kind: "text", value: e.target.value })}
+        className="h-7 text-xs" autoFocus />
+    );
+  }
+
+  return ReactDOM.createPortal(
+    <div ref={ref} style={style} className="bg-popover border rounded-lg shadow-lg p-3 w-52 space-y-3">
+      <p className="text-xs font-medium text-muted-foreground truncate">{cfg.metric_name ?? metricId}</p>
+      {controls}
+      <div className="flex gap-2 pt-1 border-t">
+        <Button size="sm" className="h-7 text-xs flex-1"
+          onClick={() => onApply(metricId, isColFilterActive(draft) ? draft : null)}>
+          Apply
+        </Button>
+        {current && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs"
+            onClick={() => onApply(metricId, null)}>
+            Clear
+          </Button>
+        )}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DailyLogPage() {
@@ -620,6 +789,13 @@ export default function DailyLogPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [exporting, setExporting] = useState(false);
+
+  // Text search
+  const [textSearch, setTextSearch] = useState("");
+
+  // Column filters
+  const [columnFilters, setColumnFilters] = useState<Map<string, ColumnFilter>>(new Map());
+  const [filterPopover, setFilterPopover] = useState<FilterPopoverAnchor>(null);
 
   // Column picker state
   const [selectedMetricIds, setSelectedMetricIds] = useState<Set<string> | null>(null); // null = all
@@ -697,17 +873,10 @@ export default function DailyLogPage() {
     });
   }, [allDates, startDate, endDate]);
 
-  // Pagination calculations
-  const totalPages = Math.ceil(filteredDates.length / pageSize);
-  const paginatedDates = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredDates.slice(start, start + pageSize);
-  }, [filteredDates, currentPage, pageSize]);
-
-  // Reset to page 1 when filters or page size change
+  // Pagination reset — kept here; pagination calculations moved below cellMap
   useEffect(() => {
     setCurrentPage(1);
-  }, [pageSize, startDate, endDate]);
+  }, [pageSize, startDate, endDate, textSearch, columnFilters]);
 
   // Metric ids in config order (no sorting - preserves group/order from API)
   const metricIds = useMemo(
@@ -777,6 +946,80 @@ export default function DailyLogPage() {
     }
     return m;
   }, [logRows]);
+
+  // Text search: filter dates to those with matching text-type entries
+  const searchFilteredDates = useMemo(() => {
+    const q = textSearch.trim().toLowerCase();
+    if (!q) return filteredDates;
+    const textMetricIds = config.filter(c => c.type === "text").map(c => c.metric_id);
+    return filteredDates.filter(date =>
+      textMetricIds.some(mid => {
+        const cell = cellMap.get(`${date}|${mid}`);
+        return cell?.value_text?.toLowerCase().includes(q);
+      })
+    );
+  }, [filteredDates, textSearch, config, cellMap]);
+
+  // Column-filter dates: apply per-column filters on top of text search
+  const columnFilteredDates = useMemo(() => {
+    if (columnFilters.size === 0) return searchFilteredDates;
+    return searchFilteredDates.filter(date => {
+      for (const [metricId, filter] of columnFilters) {
+        const cell = cellMap.get(`${date}|${metricId}`);
+        switch (filter.kind) {
+          case "checkbox": {
+            const checked = cell?.value != null && cell.value >= 0.5;
+            if (filter.value === "checked"   && !checked) return false;
+            if (filter.value === "unchecked" &&  checked) return false;
+            break;
+          }
+          case "numeric": {
+            if (cell?.value == null) return false;
+            const v = cell.value;
+            const a = Number(filter.a);
+            const b = Number(filter.b);
+            if (filter.op === "eq"      && !(v === a))           return false;
+            if (filter.op === "gte"     && !(v >= a))            return false;
+            if (filter.op === "lte"     && !(v <= a))            return false;
+            if (filter.op === "between" && !(v >= a && v <= b))  return false;
+            break;
+          }
+          case "hhmm": {
+            if (cell?.value == null) return false;
+            const t = parseHHMM(filter.value);
+            if (t == null) break;
+            if (filter.op === "eq"     && !(cell.value === t)) return false;
+            if (filter.op === "before" && !(cell.value <   t)) return false;
+            if (filter.op === "after"  && !(cell.value >   t)) return false;
+            break;
+          }
+          case "time": {
+            if (cell?.value == null) return false;
+            const t = parseTimeInput(filter.value);
+            if (t == null) break;
+            if (filter.op === "eq"  && !(cell.value === t)) return false;
+            if (filter.op === "gte" && !(cell.value >= t))  return false;
+            if (filter.op === "lte" && !(cell.value <= t))  return false;
+            break;
+          }
+          case "text": {
+            const q = filter.value.trim().toLowerCase();
+            if (!q) break;
+            if (!cell?.value_text?.toLowerCase().includes(q)) return false;
+            break;
+          }
+        }
+      }
+      return true;
+    });
+  }, [searchFilteredDates, columnFilters, cellMap]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(columnFilteredDates.length / pageSize);
+  const paginatedDates = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return columnFilteredDates.slice(start, start + pageSize);
+  }, [columnFilteredDates, currentPage, pageSize]);
 
   // Handle saving a cell
   const handleSaveCell = useCallback(
@@ -968,7 +1211,7 @@ export default function DailyLogPage() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-semibold">Daily Log</h1>
-          <Badge variant="secondary">{filteredDates.length} days</Badge>
+          <Badge variant="secondary">{columnFilteredDates.length} days</Badge>
           <Badge
             variant={selectedMetricIds !== null ? "default" : "outline"}
             className="cursor-pointer"
@@ -983,7 +1226,7 @@ export default function DailyLogPage() {
 
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">
-            {filteredDates.length} {filteredDates.length === 1 ? "day" : "days"}
+            {columnFilteredDates.length} {columnFilteredDates.length === 1 ? "day" : "days"}
             {startDate || endDate ? " in range" : " total"}
           </span>
           <Button
@@ -1057,6 +1300,39 @@ export default function DailyLogPage() {
             Private
           </label>
         </div>
+
+        <div className="h-5 w-px bg-border" />
+
+        {/* Text search */}
+        <div className="relative">
+          <Input
+            type="text"
+            value={textSearch}
+            onChange={(e) => setTextSearch(e.target.value)}
+            placeholder="Search notes..."
+            className="h-9 w-44 pl-3 pr-7 text-sm"
+          />
+          {textSearch && (
+            <button
+              onClick={() => setTextSearch("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+              aria-label="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {columnFilters.size > 0 && (
+          <button
+            type="button"
+            onClick={() => setColumnFilters(new Map())}
+            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded-md px-2 h-9 bg-blue-50 hover:bg-blue-100 transition-colors"
+          >
+            <span>{columnFilters.size} col filter{columnFilters.size > 1 ? "s" : ""}</span>
+            <span className="text-blue-400">✕</span>
+          </button>
+        )}
 
         <div className="h-5 w-px bg-border" />
 
@@ -1206,7 +1482,9 @@ export default function DailyLogPage() {
       <Card data-tour="log-table">
         <CardHeader className="py-3 px-4 border-b">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Showing {paginatedDates.length} of {filteredDates.length} days. Click any cell to edit.
+            Showing {paginatedDates.length} of {columnFilteredDates.length} days
+            {columnFilters.size > 0 ? ` (${columnFilters.size} column filter${columnFilters.size > 1 ? "s" : ""} active)` : ""}
+            . Click any cell to edit.
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -1217,11 +1495,24 @@ export default function DailyLogPage() {
                   <th className="sticky left-0 z-20 bg-muted p-2 text-left font-semibold border-r shadow-sm">
                     Date
                   </th>
-                  {visibleMetricIds.map(mid => (
-                    <th key={mid} className="p-2 text-left font-semibold border-l whitespace-nowrap">
-                      {nameMap.get(mid) ?? mid}
-                    </th>
-                  ))}
+                  {visibleMetricIds.map(mid => {
+                    const hasFilter = columnFilters.has(mid);
+                    return (
+                      <th key={mid} className={`p-0 border-l whitespace-nowrap ${hasFilter ? "bg-blue-50" : ""}`}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                            setFilterPopover(prev => prev?.metricId === mid ? null : { metricId: mid, rect });
+                          }}
+                          className={`w-full h-full px-2 py-1.5 text-left font-semibold flex items-center gap-1 hover:bg-muted/70 transition-colors ${hasFilter ? "text-blue-700" : ""}`}
+                        >
+                          <span className="truncate">{nameMap.get(mid) ?? mid}</span>
+                          <span className={`text-[10px] ml-auto shrink-0 ${hasFilter ? "text-blue-500" : "text-muted-foreground/40"}`}>▼</span>
+                        </button>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -1277,6 +1568,24 @@ export default function DailyLogPage() {
         collapsedGroups={collapsedGroups}
         onToggleCollapse={toggleGroupCollapse}
       />
+
+      {filterPopover && configMap.get(filterPopover.metricId) && (
+        <ColumnFilterPopover
+          metricId={filterPopover.metricId}
+          cfg={configMap.get(filterPopover.metricId)!}
+          anchor={filterPopover.rect}
+          current={columnFilters.get(filterPopover.metricId)}
+          onApply={(id, filter) => {
+            setColumnFilters(prev => {
+              const next = new Map(prev);
+              if (filter == null) next.delete(id); else next.set(id, filter);
+              return next;
+            });
+            setFilterPopover(null);
+          }}
+          onClose={() => setFilterPopover(null)}
+        />
+      )}
 
       {process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 right-4 z-50">

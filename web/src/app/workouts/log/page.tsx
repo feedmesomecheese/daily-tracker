@@ -153,6 +153,16 @@ export default function WorkoutLogPage() {
       );
     }
 
+    // Filter by notes search
+    if (filters.notesSearch) {
+      const search = filters.notesSearch.toLowerCase();
+      result = result.filter(
+        (w) =>
+          w.notes?.toLowerCase().includes(search) ||
+          (w.exercises || []).some((ex) => ex.notes?.toLowerCase().includes(search))
+      );
+    }
+
     // Filter by flags (PR/Max/Miss) — keep workouts that have at least one matching set
     if (filters.flags.size > 0) {
       result = result.filter((w) =>
@@ -168,7 +178,7 @@ export default function WorkoutLogPage() {
     }
 
     return result;
-  }, [workouts, filters.typeIds, filters.tagIds, filters.groupId, filters.exerciseSearch, filters.flags, exerciseGroupMap]);
+  }, [workouts, filters.typeIds, filters.tagIds, filters.groupId, filters.exerciseSearch, filters.notesSearch, filters.flags, exerciseGroupMap]);
 
   // For exercise-centric view: filter exercises within workouts too
   const exerciseFilteredWorkouts = useMemo(() => {
