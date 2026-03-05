@@ -58,14 +58,14 @@ const SpeechTextarea = React.forwardRef<
               type="button"
               onMouseDown={(e) => e.preventDefault()}
               onClick={cancel}
-              className="flex items-center justify-center w-6 h-6 rounded text-muted-foreground hover:text-destructive transition-colors"
+              className="flex items-center justify-center w-8 h-8 rounded text-muted-foreground hover:text-destructive transition-colors"
               title="Cancel recording"
               aria-label="Cancel recording"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
