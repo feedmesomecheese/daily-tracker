@@ -30,6 +30,8 @@ type BodyData = { weight: BodyEntry[]; bodyfat: BodyEntry[] };
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** If provided, draws a marker on the charts and auto-selects a range that includes this date */
+  highlightDate?: string;
 };
 
 function formatDate(d: string) {
@@ -55,12 +57,27 @@ export function findNearestPrior(
   return result;
 }
 
-export default function BodyMeasurementsSheet({ open, onOpenChange }: Props) {
+export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDate }: Props) {
   const [bodyData, setBodyData] = useState<BodyData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chartRange, setChartRange] = useState<"6mo" | "1yr" | "2yr" | "all">("all");
   const fetchedRef = useRef(false);
+
+  // Auto-set range when a highlight date is provided
+  useEffect(() => {
+    if (!highlightDate) return;
+    const now = getLocalDateString();
+    const monthsAgo = (date: string, months: number) => {
+      const d = new Date(now + "T12:00:00");
+      d.setMonth(d.getMonth() - months);
+      return d.toISOString().slice(0, 10);
+    };
+    if (highlightDate >= monthsAgo(now, 6)) setChartRange("6mo");
+    else if (highlightDate >= monthsAgo(now, 12)) setChartRange("1yr");
+    else if (highlightDate >= monthsAgo(now, 24)) setChartRange("2yr");
+    else setChartRange("all");
+  }, [highlightDate]);
 
   useEffect(() => {
     if (!open || fetchedRef.current) return;
@@ -268,6 +285,15 @@ export default function BodyMeasurementsSheet({ open, onOpenChange }: Props) {
                           label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
                         />
                       ))}
+                      {highlightDate && (
+                        <ReferenceLine
+                          x={dateToTs(highlightDate)}
+                          stroke="#f59e0b"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                          label={{ value: "workout", position: "insideTopLeft", fontSize: 10, fill: "#f59e0b" }}
+                        />
+                      )}
                       <XAxis
                         dataKey="ts"
                         type="number"
@@ -313,6 +339,15 @@ export default function BodyMeasurementsSheet({ open, onOpenChange }: Props) {
                           label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
                         />
                       ))}
+                      {highlightDate && (
+                        <ReferenceLine
+                          x={dateToTs(highlightDate)}
+                          stroke="#f59e0b"
+                          strokeWidth={2}
+                          strokeDasharray="4 2"
+                          label={{ value: "workout", position: "insideTopLeft", fontSize: 10, fill: "#f59e0b" }}
+                        />
+                      )}
                       <XAxis
                         dataKey="ts"
                         type="number"

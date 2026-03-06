@@ -7,6 +7,13 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import WorkoutTypeSelector from "./components/WorkoutTypeSelector";
 import ExerciseGroupPanels, { type ExerciseGroupPanelsHandle } from "./components/ExerciseGroupPanels";
 import ExerciseBucket from "./components/ExerciseBucket";
@@ -136,6 +143,7 @@ export default function WorkoutsPage() {
   const [ghostData, setGhostData] = useState<GhostData>({});
   const [bodyData, setBodyData] = useState<BodyData | null>(null);
   const [bodySheetOpen, setBodySheetOpen] = useState(false);
+  const [bodySheetDate, setBodySheetDate] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -1331,8 +1339,12 @@ export default function WorkoutsPage() {
               No workouts logged yet.
             </CardContent>
           </Card>
-        ) : (
-          workouts.map((workout) => {
+        ) : (workouts.map((workout, workoutIdx) => {
+            const monthKey = workout.date.slice(0, 7); // "YYYY-MM"
+            const showMonthSep = workoutIdx === 0 || workouts[workoutIdx - 1].date.slice(0, 7) !== monthKey;
+            const [y, m] = monthKey.split("-");
+            const monthLabel = new Date(`${y}-${m}-01T12:00:00`).toLocaleString("default", { month: "long", year: "numeric" });
+
             const typeName =
               getTypeName(workout.workout_type_id) ||
               workout.workout_type?.replace("_", " ") ||
@@ -1375,87 +1387,89 @@ export default function WorkoutsPage() {
             }
 
             return (
-              <Card key={workout.id}>
+              <React.Fragment key={workout.id}>
+              {showMonthSep && (
+                <div className="flex items-center gap-3 pt-2 pb-1">
+                  <div className="flex-1 h-px bg-border" />
+                  <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{monthLabel}</span>
+                  <div className="flex-1 h-px bg-border" />
+                </div>
+              )}
+              <Card>
                 <CardHeader className="pb-2">
-                  <div>
-                    {bodyData && (() => {
-                      const bw = findNearestPrior(bodyData.weight, workout.date);
-                      const bf = findNearestPrior(bodyData.bodyfat, workout.date);
-                      if (bw === null && bf === null) return null;
-                      const parts: string[] = [];
-                      if (bw !== null) parts.push(`${bw} lbs`);
-                      if (bf !== null) parts.push(`${bf}% BF`);
-                      return (
-                        <button
-                          className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-0.5 whitespace-nowrap"
-                          onClick={() => setBodySheetOpen(true)}
-                        >
-                          {parts.join(" · ")}
-                        </button>
-                      );
-                    })()}
-                    <CardTitle className="text-base">
-                      {workout.date}
-                      {typeName && (
-                        <span className="text-muted-foreground font-normal ml-2">
-                          {typeName}
-                        </span>
-                      )}
-                      {workout.duration_minutes && (
-                        <span className="text-muted-foreground font-normal ml-2 text-xs">
-                          {workout.duration_minutes >= 60
-                            ? `${Math.floor(workout.duration_minutes / 60)}h ${Math.round(workout.duration_minutes % 60)}m`
-                            : `${Math.round(workout.duration_minutes)}m`}
-                        </span>
-                      )}
-                      {(workout.applied_tag_ids || []).map((tid) => {
-                        const tName = tagMap.get(tid);
-                        if (!tName) return null;
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      {bodyData && (() => {
+                        const bw = findNearestPrior(bodyData.weight, workout.date);
+                        const bf = findNearestPrior(bodyData.bodyfat, workout.date);
+                        if (bw === null && bf === null) return null;
+                        const parts: string[] = [];
+                        if (bw !== null) parts.push(`${bw} lbs`);
+                        if (bf !== null) parts.push(`${bf}% BF`);
                         return (
-                          <span
-                            key={tid}
-                            className="ml-1.5 inline-block px-1.5 py-0 rounded text-[10px] bg-secondary text-secondary-foreground border border-border/50 align-middle"
+                          <button
+                            className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-0.5 whitespace-nowrap"
+                            onClick={() => { setBodySheetDate(workout.date); setBodySheetOpen(true); }}
                           >
-                            {tName}
-                          </span>
+                            {parts.join(" · ")}
+                          </button>
                         );
-                      })}
-                      {workout.rating && (
-                        <span className="text-muted-foreground font-normal ml-2 text-xs">
-                          {"*".repeat(workout.rating)}/5
-                        </span>
-                      )}
-                    </CardTitle>
-                    <div className="flex gap-1 mt-1 flex-wrap">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copyWorkoutForNew(workout)}
-                      >
-                        Copy
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => loadWorkoutForEdit(workout)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openSaveTemplate(workout)}
-                      >
-                        Make Template
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteWorkout(workout.id)}
-                      >
-                        Delete
-                      </Button>
+                      })()}
+                      <CardTitle className="text-base">
+                        {workout.date}
+                        {typeName && (
+                          <span className="text-muted-foreground font-normal ml-2">
+                            {typeName}
+                          </span>
+                        )}
+                        {workout.duration_minutes && (
+                          <span className="text-muted-foreground font-normal ml-2 text-xs">
+                            {workout.duration_minutes >= 60
+                              ? `${Math.floor(workout.duration_minutes / 60)}h ${Math.round(workout.duration_minutes % 60)}m`
+                              : `${Math.round(workout.duration_minutes)}m`}
+                          </span>
+                        )}
+                        {(workout.applied_tag_ids || []).map((tid) => {
+                          const tName = tagMap.get(tid);
+                          if (!tName) return null;
+                          return (
+                            <span
+                              key={tid}
+                              className="ml-1.5 inline-block px-1.5 py-0 rounded text-[10px] bg-secondary text-secondary-foreground border border-border/50 align-middle"
+                            >
+                              {tName}
+                            </span>
+                          );
+                        })}
+                        {workout.rating && (
+                          <span className="text-muted-foreground font-normal ml-2 text-xs">
+                            {"*".repeat(workout.rating)}/5
+                          </span>
+                        )}
+                      </CardTitle>
                     </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="sm" className="shrink-0 px-2 text-muted-foreground">
+                          ⋯
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => copyWorkoutForNew(workout)}>
+                          Copy
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => loadWorkoutForEdit(workout)}>
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openSaveTemplate(workout)}>
+                          Make Template
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem destructive onClick={() => deleteWorkout(workout.id)}>
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1605,6 +1619,7 @@ export default function WorkoutsPage() {
                   )}
                 </CardContent>
               </Card>
+              </React.Fragment>
             );
           })
         )}
@@ -1634,7 +1649,7 @@ export default function WorkoutsPage() {
       />
 
       {/* Body Measurements Sheet */}
-      <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} />
+      <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} highlightDate={bodySheetDate} />
 
       {/* Add-to-Workout FAB — visible when exercises are selected */}
       {selectedExerciseCount > 0 && (

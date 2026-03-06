@@ -93,6 +93,7 @@ const DEFAULT_SPLIT: TabataSplit = {
 
 const STORAGE_KEY = "workout_timer_splits";
 const SW_STORAGE_KEY = "workout_sw_state";
+const HIIT_STORAGE_KEY = "workout_hiit_state";
 
 // ─── Sound file map ─────────────────────────────────────────────────────────────
 // Files go in /public/sounds/. If a file is missing, synthesis is used as fallback.
@@ -438,19 +439,36 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const swStartedAt = useRef<number | null>(null);
   const [swDisplay, setSwDisplay] = useState(0);
 
-  // Restore persisted stopwatch time on mount (survives sheet close / page refresh)
+  // Restore persisted stopwatch time on mount (survives tab close / page refresh)
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
       const raw = localStorage.getItem(SW_STORAGE_KEY);
       if (raw) {
-        const { accumulated } = JSON.parse(raw) as { accumulated: number };
-        if (typeof accumulated === "number" && accumulated > 0) {
-          swAccumulated.current = accumulated;
-          setSwDisplay(Math.floor(accumulated));
+        const { accumulated, startedAt } = JSON.parse(raw) as { accumulated: number; startedAt?: number };
+        // If tab closed while running, add elapsed time since then (restored as paused)
+        const total = (typeof accumulated === "number" ? accumulated : 0)
+          + (typeof startedAt === "number" ? (Date.now() - startedAt) / 1000 : 0);
+        if (total > 0) {
+          swAccumulated.current = total;
+          setSwDisplay(Math.floor(total));
+          // Re-save in paused form so startedAt doesn't keep accumulating on future mounts
+          localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: total }));
         }
       }
     } catch {}
+
+    // Save running state on tab close so we can account for elapsed time on next open
+    const handleUnload = () => {
+      try {
+        if (swStartedAt.current != null) {
+          const acc = swAccumulated.current + (Date.now() - swStartedAt.current) / 1000;
+          localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: acc, startedAt: Date.now() }));
+        }
+      } catch {}
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
   }, []);
 
   const swStart = useCallback(() => {
@@ -491,6 +509,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const tabCycleRef = useRef(0);
   const tabSplitRef = useRef<TabataSplit | null>(null);
   const tabRunningRef = useRef(false);
+  // Tracks which countdown seconds (3,2,1) have already played for the current phase
+  const countdownFiredRef = useRef<Set<number>>(new Set());
 
   // Keep refs in sync
   useEffect(() => { tabPhaseRef.current = tabPhase; }, [tabPhase]);
@@ -505,6 +525,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
   // Internal helper to apply a phase transition (pause-aware)
   const applyPhase = useCallback((result: PhaseResult) => {
     const { nextPhase, nextCycle, nextDuration, audio } = result;
+    countdownFiredRef.current = new Set();
     if (audio) playTone(audio);
 
     tabPhaseRef.current = nextPhase;
@@ -532,6 +553,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
     const split = tabSplitRef.current;
     if (!split) return;
     const result = computeNextPhase(tabPhaseRef.current, tabCycleRef.current, split);
+    countdownFiredRef.current = new Set();
     if (result.audio) playTone(result.audio);
 
     tabPhaseRef.current = result.nextPhase;
@@ -598,6 +620,15 @@ export function useWorkoutTimer(): WorkoutTimerState {
     }
     tabRunningRef.current = false;
     setTabRunning(false);
+    try {
+      const split = tabSplitRef.current;
+      if (split && tabPhaseRef.current !== "idle") {
+        localStorage.setItem(HIIT_STORAGE_KEY, JSON.stringify({
+          splitId: split.id, phase: tabPhaseRef.current,
+          cycle: tabCycleRef.current, remaining: tabPausedRemaining.current,
+        }));
+      }
+    } catch {}
   }, []);
 
   const tabResume = useCallback(() => {
@@ -618,7 +649,51 @@ export function useWorkoutTimer(): WorkoutTimerState {
     tabPhaseRef.current = "idle";
     setTabPhaseRemaining(0);
     setTabCurrentCycle(0);
+    try { localStorage.removeItem(HIIT_STORAGE_KEY); } catch {}
   }, []);
+
+  // ── HIIT state persistence ────────────────────────────────────────────────────
+  // Restore paused HIIT state on mount (e.g. after tab close mid-session)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(HIIT_STORAGE_KEY);
+      if (raw) {
+        const { splitId, phase, cycle, remaining } = JSON.parse(raw) as {
+          splitId: string; phase: TabataPhase; cycle: number; remaining: number;
+        };
+        const split = splits.find((s) => s.id === splitId);
+        if (split && phase !== "idle" && phase !== "done" && remaining > 0) {
+          setTabSelectedSplit(split);
+          tabSplitRef.current = split;
+          setTabPhase(phase);
+          tabPhaseRef.current = phase;
+          setTabCurrentCycle(cycle);
+          tabCycleRef.current = cycle;
+          tabPausedRemaining.current = remaining;
+          setTabPhaseRemaining(remaining);
+          // Restored as paused — user must tap Resume to continue
+        }
+      }
+    } catch {}
+
+    // Save running HIIT state on tab close
+    const handleUnload = () => {
+      try {
+        const split = tabSplitRef.current;
+        const phase = tabPhaseRef.current;
+        if (split && phase !== "idle" && phase !== "done" && tabRunningRef.current && tabPhaseEndAt.current != null) {
+          const remaining = Math.max(0, Math.ceil((tabPhaseEndAt.current - Date.now()) / 1000));
+          localStorage.setItem(HIIT_STORAGE_KEY, JSON.stringify({
+            splitId: split.id, phase, cycle: tabCycleRef.current, remaining,
+          }));
+        }
+      } catch {}
+    };
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [splits]);
 
   // ── Unified tick interval ────────────────────────────────────────────────────
   const tickRef = useRef<() => void>(() => {});
@@ -640,6 +715,11 @@ export function useWorkoutTimer(): WorkoutTimerState {
           advancePhase();
         } else {
           setTabPhaseRemaining(remaining);
+          // 3-2-1 countdown beeps: short high-pitched tone, once per second
+          if (remaining <= 3 && !countdownFiredRef.current.has(remaining)) {
+            countdownFiredRef.current.add(remaining);
+            playTone({ enabled: true, soundType: "tone", frequency: 1200, oscType: "sine" });
+          }
         }
       }
     };
