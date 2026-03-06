@@ -757,7 +757,7 @@ export function WorkoutTimerFAB({
   onClick: () => void;
 }) {
   return (
-    <div className="fixed bottom-6 left-6 z-40 flex flex-col items-center gap-1">
+    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-center gap-1">
       {timer.swRunning && (
         <div className="text-xs font-mono bg-background border rounded px-2 py-0.5 shadow tabular-nums">
           {formatHMS(timer.swDisplay)}
