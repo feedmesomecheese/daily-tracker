@@ -1535,6 +1535,7 @@ export default function WorkoutsPage() {
                                       exerciseId={ex.exercise_id}
                                       exerciseName={ex.exercise_name_display}
                                       onClick={() => setSelectedExercise({ id: ex.exercise_id!, name: ex.exercise_name_display })}
+                                      className="text-right"
                                     />
                                   ) : (
                                     ex.exercise_name_display
