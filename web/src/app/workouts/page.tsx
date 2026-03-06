@@ -356,7 +356,7 @@ export default function WorkoutsPage() {
 
   // Shift timer FAB above the exercise bucket FAB when it appears
   useEffect(() => {
-    setFabOffset(selectedExerciseCount > 0 ? "bottom-40" : "bottom-6");
+    setFabOffset(selectedExerciseCount > 0 ? "bottom-24" : "bottom-6");
     return () => setFabOffset("bottom-6");
   }, [selectedExerciseCount, setFabOffset]);
 
@@ -1377,58 +1377,56 @@ export default function WorkoutsPage() {
             return (
               <Card key={workout.id}>
                 <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      {bodyData && (() => {
-                        const bw = findNearestPrior(bodyData.weight, workout.date);
-                        const bf = findNearestPrior(bodyData.bodyfat, workout.date);
-                        if (bw === null && bf === null) return null;
-                        const parts: string[] = [];
-                        if (bw !== null) parts.push(`${bw} lbs`);
-                        if (bf !== null) parts.push(`${bf}% BF`);
+                  <div>
+                    {bodyData && (() => {
+                      const bw = findNearestPrior(bodyData.weight, workout.date);
+                      const bf = findNearestPrior(bodyData.bodyfat, workout.date);
+                      if (bw === null && bf === null) return null;
+                      const parts: string[] = [];
+                      if (bw !== null) parts.push(`${bw} lbs`);
+                      if (bf !== null) parts.push(`${bf}% BF`);
+                      return (
+                        <button
+                          className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-0.5 whitespace-nowrap"
+                          onClick={() => setBodySheetOpen(true)}
+                        >
+                          {parts.join(" · ")}
+                        </button>
+                      );
+                    })()}
+                    <CardTitle className="text-base">
+                      {workout.date}
+                      {typeName && (
+                        <span className="text-muted-foreground font-normal ml-2">
+                          {typeName}
+                        </span>
+                      )}
+                      {workout.duration_minutes && (
+                        <span className="text-muted-foreground font-normal ml-2 text-xs">
+                          {workout.duration_minutes >= 60
+                            ? `${Math.floor(workout.duration_minutes / 60)}h ${Math.round(workout.duration_minutes % 60)}m`
+                            : `${Math.round(workout.duration_minutes)}m`}
+                        </span>
+                      )}
+                      {(workout.applied_tag_ids || []).map((tid) => {
+                        const tName = tagMap.get(tid);
+                        if (!tName) return null;
                         return (
-                          <button
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors mb-0.5 block"
-                            onClick={() => setBodySheetOpen(true)}
+                          <span
+                            key={tid}
+                            className="ml-1.5 inline-block px-1.5 py-0 rounded text-[10px] bg-secondary text-secondary-foreground border border-border/50 align-middle"
                           >
-                            {parts.join(" · ")}
-                          </button>
+                            {tName}
+                          </span>
                         );
-                      })()}
-                      <CardTitle className="text-base">
-                        {workout.date}
-                        {typeName && (
-                          <span className="text-muted-foreground font-normal ml-2">
-                            {typeName}
-                          </span>
-                        )}
-                        {workout.duration_minutes && (
-                          <span className="text-muted-foreground font-normal ml-2 text-xs">
-                            {workout.duration_minutes >= 60
-                              ? `${Math.floor(workout.duration_minutes / 60)}h ${Math.round(workout.duration_minutes % 60)}m`
-                              : `${Math.round(workout.duration_minutes)}m`}
-                          </span>
-                        )}
-                        {(workout.applied_tag_ids || []).map((tid) => {
-                          const tName = tagMap.get(tid);
-                          if (!tName) return null;
-                          return (
-                            <span
-                              key={tid}
-                              className="ml-1.5 inline-block px-1.5 py-0 rounded text-[10px] bg-secondary text-secondary-foreground border border-border/50 align-middle"
-                            >
-                              {tName}
-                            </span>
-                          );
-                        })}
-                        {workout.rating && (
-                          <span className="text-muted-foreground font-normal ml-2 text-xs">
-                            {"*".repeat(workout.rating)}/5
-                          </span>
-                        )}
-                      </CardTitle>
-                    </div>
-                    <div className="flex gap-1">
+                      })}
+                      {workout.rating && (
+                        <span className="text-muted-foreground font-normal ml-2 text-xs">
+                          {"*".repeat(workout.rating)}/5
+                        </span>
+                      )}
+                    </CardTitle>
+                    <div className="flex gap-1 mt-1 flex-wrap">
                       <Button
                         variant="ghost"
                         size="sm"
@@ -1642,7 +1640,7 @@ export default function WorkoutsPage() {
         <button
           type="button"
           onClick={() => panelRef.current?.triggerAdd()}
-          className="fixed bottom-24 right-6 z-40 w-14 h-14 rounded-full bg-green-600 text-white shadow-lg flex items-center justify-center hover:bg-green-700 transition-colors"
+          className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-green-600 text-white shadow-lg flex items-center justify-center hover:bg-green-700 transition-colors"
           title={`Add ${selectedExerciseCount} exercise${selectedExerciseCount > 1 ? "s" : ""} to workout`}
         >
           <span className="text-xl font-bold leading-none">+</span>
