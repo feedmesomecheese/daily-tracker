@@ -19,8 +19,7 @@ import { getLocalDateString } from "@/lib/dateUtils";
 import { useWorkoutTour } from "@/hooks/useWorkoutTour";
 import ExerciseHoverTooltip from "./components/ExerciseHoverTooltip";
 import ExerciseStatsSheet from "./components/ExerciseStatsSheet";
-import { useWorkoutTimer } from "@/hooks/useWorkoutTimer";
-import { WorkoutTimerFAB, WorkoutTimerSheet } from "@/components/workout-timer/WorkoutTimerSheet";
+import { useWorkoutTimerContext } from "@/components/WorkoutTimerContext";
 import BodyMeasurementsSheet, { findNearestPrior } from "@/components/BodyMeasurementsSheet";
 import { SpeechTextarea } from "@/components/ui/speech-textarea";
 import TemplateSheet, { type WorkoutTemplate } from "./components/TemplateSheet";
@@ -170,8 +169,7 @@ export default function WorkoutsPage() {
   const formRef = useRef<HTMLDivElement>(null);
 
   // Timer
-  const timer = useWorkoutTimer();
-  const [timerOpen, setTimerOpen] = useState(false);
+  const { timer, setTimerOpen, setSendToWorkout } = useWorkoutTimerContext();
 
   // Exercise selection count (for the add-to-workout FAB)
   const panelRef = useRef<ExerciseGroupPanelsHandle>(null);
@@ -346,6 +344,15 @@ export default function WorkoutsPage() {
     if (s > 0) return `${m}:${String(s).padStart(2, "0")}`;
     return String(m);
   };
+
+  // Register send-to-workout callback while this page is mounted
+  useEffect(() => {
+    setSendToWorkout((seconds) => {
+      setWorkoutDuration(minutesToDurationStr(seconds / 60));
+    });
+    return () => setSendToWorkout(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setSendToWorkout]);
 
   const loadWorkoutForEdit = (workout: WorkoutHistory) => {
     // Confirm if there's unsaved data in the bucket
@@ -1145,22 +1152,20 @@ export default function WorkoutsPage() {
             </div>
             <div>
               <label className="text-xs text-muted-foreground">Type</label>
-              <div className="flex items-center gap-2">
-                <WorkoutTypeSelector
-                  types={workoutTypes}
-                  value={selectedTypeId}
-                  onChange={setSelectedTypeId}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setTemplateSheetOpen(true)}
-                  className="shrink-0 h-9"
-                >
-                  Load from Template
-                </Button>
-              </div>
+              <WorkoutTypeSelector
+                types={workoutTypes}
+                value={selectedTypeId}
+                onChange={setSelectedTypeId}
+              />
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTemplateSheetOpen(true)}
+              className="shrink-0 h-9 self-end"
+            >
+              Load from Template
+            </Button>
           </div>
 
           {/* Tag selector - always shown when type is selected */}
@@ -1640,18 +1645,6 @@ export default function WorkoutsPage() {
           </span>
         </button>
       )}
-
-      {/* Workout Timer */}
-      <WorkoutTimerFAB timer={timer} onClick={() => setTimerOpen(true)} />
-      <WorkoutTimerSheet
-        timer={timer}
-        open={timerOpen}
-        onOpenChange={setTimerOpen}
-        onSendToWorkout={(seconds) => {
-          setWorkoutDuration(minutesToDurationStr(seconds / 60));
-          setTimerOpen(false);
-        }}
-      />
 
       {/* Template Sheet — load only */}
       <TemplateSheet

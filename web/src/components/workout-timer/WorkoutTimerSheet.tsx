@@ -610,19 +610,40 @@ function TabataTab({
   // ── Done ─────────────────────────────────────────────────────────────────────
   if (isDone) {
     return (
-      <div className="flex flex-col items-center gap-6 py-6">
+      <div className="flex flex-col items-center gap-4 py-6 w-full">
         <div className="text-4xl font-bold">Done ✓</div>
         <p className="text-sm text-muted-foreground">{tabSelectedSplit?.name}</p>
+        {/* Tappable stopwatch — same as active screen */}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={swHint}
+          onClick={swToggle}
+          onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") swToggle(); }}
+          className="rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none w-full"
+          style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
+        >
+          <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
+            {formatHMS(timer.swDisplay)}
+          </div>
+          <div className="text-xs text-muted-foreground uppercase tracking-widest">
+            {swHint}
+          </div>
+        </div>
         {timer.swDisplay > 0 && (
-          <div className="flex flex-col items-center gap-1">
-            <div className="font-mono text-4xl font-bold tabular-nums tracking-tight text-muted-foreground">
-              {formatHMS(timer.swDisplay)}
-            </div>
-            <div className="text-xs text-muted-foreground uppercase tracking-widest">Workout total</div>
+          <div className="flex justify-center gap-2">
+            <Button variant="ghost" size="sm" onClick={timer.swReset} className="text-xs text-muted-foreground">
+              Reset Stopwatch
+            </Button>
+            {onSendToWorkout && (
+              <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
+                Send to Workout Duration
+              </Button>
+            )}
           </div>
         )}
         <div className="flex gap-3">
-          <Button onClick={timer.tabStart}>Repeat</Button>
+          <Button onClick={timer.tabReset}>Repeat</Button>
           <Button variant="outline" onClick={handleChooseDifferent}>Choose Different</Button>
         </div>
       </div>
@@ -736,7 +757,7 @@ export function WorkoutTimerFAB({
   onClick: () => void;
 }) {
   return (
-    <div className="fixed bottom-6 right-6 z-40 flex flex-col items-center gap-1">
+    <div className="fixed bottom-6 left-6 z-40 flex flex-col items-center gap-1">
       {timer.swRunning && (
         <div className="text-xs font-mono bg-background border rounded px-2 py-0.5 shadow tabular-nums">
           {formatHMS(timer.swDisplay)}
