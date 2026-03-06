@@ -31,11 +31,20 @@ export function WorkoutTimerProvider({ children }: { children: React.ReactNode }
   // Always show FAB on workouts page; elsewhere only when a timer is active
   const showFAB = pathname === "/workouts" || timer.anyRunning || timer.swDisplay > 0;
 
+  // Stack above any per-page right FAB:
+  //   /         → above metric FAB (bottom-6 h-14) → bottom-24
+  //   /workouts → above exercise bucket FAB (bottom-24 h-14) → bottom-44
+  //   elsewhere → bottom-6
+  const fabBottom =
+    pathname === "/" ? "bottom-24" :
+    pathname === "/workouts" ? "bottom-44" :
+    "bottom-6";
+
   return (
     <WorkoutTimerContext.Provider value={{ timer, timerOpen, setTimerOpen, setSendToWorkout }}>
       {children}
       {showFAB && (
-        <WorkoutTimerFAB timer={timer} onClick={() => setTimerOpen(true)} />
+        <WorkoutTimerFAB timer={timer} onClick={() => setTimerOpen(true)} bottomClass={fabBottom} />
       )}
       <WorkoutTimerSheet
         timer={timer}
