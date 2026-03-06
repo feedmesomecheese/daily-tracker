@@ -510,7 +510,6 @@ export function useWorkoutTimer(): WorkoutTimerState {
       tabPhaseEndAt.current = null;
       setTabRunning(false);
       setTabPhaseRemaining(0);
-      stopKeepalive();
     } else {
       setTabPhaseRemaining(nextDuration);
       if (tabRunningRef.current) {
@@ -538,7 +537,6 @@ export function useWorkoutTimer(): WorkoutTimerState {
       tabPhaseEndAt.current = null;
       setTabRunning(false);
       setTabPhaseRemaining(0);
-      stopKeepalive();
     } else {
       tabPhaseEndAt.current = Date.now() + result.nextDuration * 1000;
       setTabPhaseRemaining(result.nextDuration);
@@ -614,7 +612,6 @@ export function useWorkoutTimer(): WorkoutTimerState {
     tabPhaseRef.current = "idle";
     setTabPhaseRemaining(0);
     setTabCurrentCycle(0);
-    stopKeepalive();
   }, []);
 
   // ── Unified tick interval ────────────────────────────────────────────────────
