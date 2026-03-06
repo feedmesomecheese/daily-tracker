@@ -613,7 +613,12 @@ function TabataTab({
       <div className="flex flex-col items-center gap-4 py-6 w-full">
         <div className="text-4xl font-bold">Done ✓</div>
         <p className="text-sm text-muted-foreground">{tabSelectedSplit?.name}</p>
-        {/* Tappable stopwatch — same as active screen */}
+        {/* HIIT action buttons — above the stopwatch so they're clearly HIIT-related */}
+        <div className="flex gap-3">
+          <Button onClick={handleReset}>Repeat</Button>
+          <Button variant="outline" onClick={handleChooseDifferent}>Choose Different</Button>
+        </div>
+        {/* Tappable stopwatch */}
         <div
           role="button"
           tabIndex={0}
@@ -642,10 +647,6 @@ function TabataTab({
             )}
           </div>
         )}
-        <div className="flex gap-3">
-          <Button onClick={timer.tabReset}>Repeat</Button>
-          <Button variant="outline" onClick={handleChooseDifferent}>Choose Different</Button>
-        </div>
       </div>
     );
   }

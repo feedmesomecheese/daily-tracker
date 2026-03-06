@@ -169,7 +169,7 @@ export default function WorkoutsPage() {
   const formRef = useRef<HTMLDivElement>(null);
 
   // Timer
-  const { timer, setTimerOpen, setSendToWorkout } = useWorkoutTimerContext();
+  const { timer, setTimerOpen, setSendToWorkout, setFabOffset } = useWorkoutTimerContext();
 
   // Exercise selection count (for the add-to-workout FAB)
   const panelRef = useRef<ExerciseGroupPanelsHandle>(null);
@@ -353,6 +353,12 @@ export default function WorkoutsPage() {
     return () => setSendToWorkout(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSendToWorkout]);
+
+  // Shift timer FAB above the exercise bucket FAB when it appears
+  useEffect(() => {
+    setFabOffset(selectedExerciseCount > 0 ? "bottom-40" : "bottom-6");
+    return () => setFabOffset("bottom-6");
+  }, [selectedExerciseCount, setFabOffset]);
 
   const loadWorkoutForEdit = (workout: WorkoutHistory) => {
     // Confirm if there's unsaved data in the bucket

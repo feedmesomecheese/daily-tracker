@@ -267,10 +267,15 @@ function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioC
   }
 }
 
-// Suspend the AudioContext after a sound finishes so other apps' audio ducks
-// only while a notification is actively playing, then restores immediately.
-function suspendAfterSound() {
-  _ctx?.suspend().catch(() => {});
+// Debounced suspend: schedule a context suspend after a delay. Calling again
+// cancels and reschedules, so back-to-back sounds never suspend mid-sequence.
+let _suspendTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleSuspend() {
+  if (_suspendTimer !== null) clearTimeout(_suspendTimer);
+  _suspendTimer = setTimeout(() => {
+    _ctx?.suspend().catch(() => {});
+    _suspendTimer = null;
+  }, 1500);
 }
 
 export function playTone(audio: AudioSettings) {
@@ -279,6 +284,8 @@ export function playTone(audio: AudioSettings) {
   const filePath = SOUND_FILES[soundType];
 
   const run = async () => {
+    // Cancel any pending suspend so the context stays alive for this sound
+    if (_suspendTimer !== null) { clearTimeout(_suspendTimer); _suspendTimer = null; }
     let ctx: AudioContext;
     try { ctx = getCtx(); await ctx.resume(); } catch { return; }
     if (filePath) {
@@ -291,14 +298,13 @@ export function playTone(audio: AudioSettings) {
         src.connect(gain);
         gain.connect(ctx.destination);
         src.start();
-        src.onended = suspendAfterSound;
+        src.onended = scheduleSuspend;
         return;
       }
     }
     playSynthesized(soundType, audio, ctx);
-    // Suspend after the synthesized sound's known max duration (+100 ms margin)
     const dur = SYNTH_DURATIONS[soundType] ?? 0.5;
-    setTimeout(suspendAfterSound, (dur + 0.1) * 1000);
+    setTimeout(scheduleSuspend, (dur + 0.1) * 1000);
   };
 
   run();
