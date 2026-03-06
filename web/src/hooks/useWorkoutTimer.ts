@@ -105,6 +105,16 @@ const SOUND_FILES: Partial<Record<SoundType, string>> = {
   "buzzer":      "/sounds/buzzer.mp3",
 };
 
+// Maximum duration of each synthesized sound in seconds (used to schedule suspend)
+const SYNTH_DURATIONS: Record<SoundType, number> = {
+  "boxing-bell": 2.0,
+  "air-horn":    1.3,
+  "whistle":     0.65,
+  "chime":       2.36, // 2.0 + 0.12 * 3 staggered notes
+  "buzzer":      0.45,
+  "tone":        0.5,
+};
+
 // ─── Shared AudioContext (persists across sounds for screen-off support) ─────────
 // A single AudioContext is kept alive so we can call ctx.resume() before each
 // sound — this works even when the screen is off on Android Chrome.
@@ -187,7 +197,10 @@ export function preloadSounds() {
   if (typeof window === "undefined") return;
   try {
     const ctx = getCtx();
-    ctx.resume().catch(() => {});
+    // Resume briefly so the context is initialized, then suspend immediately.
+    // decodeAudioData works regardless of context state, so preloading buffers
+    // doesn't require the context to stay running (avoids ducking other audio).
+    ctx.resume().then(() => ctx.suspend().catch(() => {})).catch(() => {});
     for (const path of Object.values(SOUND_FILES)) {
       getBuffer(path as string);
     }
@@ -304,6 +317,12 @@ function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioC
   }
 }
 
+// Suspend the AudioContext after a sound finishes so other apps' audio ducks
+// only while a notification is actively playing, then restores immediately.
+function suspendAfterSound() {
+  _ctx?.suspend().catch(() => {});
+}
+
 export function playTone(audio: AudioSettings) {
   if (!audio.enabled) return;
   const soundType = audio.soundType ?? "tone";
@@ -322,10 +341,14 @@ export function playTone(audio: AudioSettings) {
         src.connect(gain);
         gain.connect(ctx.destination);
         src.start();
+        src.onended = suspendAfterSound;
         return;
       }
     }
     playSynthesized(soundType, audio, ctx);
+    // Suspend after the synthesized sound's known max duration (+100 ms margin)
+    const dur = SYNTH_DURATIONS[soundType] ?? 0.5;
+    setTimeout(suspendAfterSound, (dur + 0.1) * 1000);
   };
 
   run();
