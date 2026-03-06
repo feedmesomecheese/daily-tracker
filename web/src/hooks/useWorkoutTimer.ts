@@ -626,7 +626,6 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const tabStart = useCallback(() => {
     if (!tabSplitRef.current) return;
     preloadSounds(); // warm up AudioContext + pre-fetch sound files
-    startKeepalive(); // keep audio session alive on iOS when screen turns off
     setTabPhase("idle");
     tabPhaseRef.current = "idle";
     setTabCurrentCycle(0);
@@ -648,8 +647,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
   }, []);
 
   const tabResume = useCallback(() => {
-    preloadSounds(); // ensure AudioContext is running after potential suspend
-    startKeepalive();
+    preloadSounds(); // ensure AudioContext is initialized after potential suspend
     if (tabPausedRemaining.current > 0) {
       tabPhaseEndAt.current = Date.now() + tabPausedRemaining.current * 1000;
     }
@@ -725,16 +723,21 @@ export function useWorkoutTimer(): WorkoutTimerState {
     }
   }, [anyRunning]);
 
-  // Resume AudioContext when tab becomes visible (e.g. user wakes screen)
-  // This recovers audio after iOS suspends the context on screen-off
+  // Manage keepalive based on screen visibility:
+  // - Screen off + timer running → start keepalive (maintains iOS audio session for screen-off sounds)
+  // - Screen on → stop keepalive (avoids ducking other apps' audio while screen is on)
+  // Also resume AudioContext when screen comes back on (iOS suspends it on screen-off).
   useEffect(() => {
-    const handleVisible = () => {
-      if (document.visibilityState === "visible" && tabRunningRef.current && _ctx) {
-        _ctx.resume().catch(() => {});
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        if (tabRunningRef.current) startKeepalive();
+      } else {
+        stopKeepalive();
+        if (tabRunningRef.current && _ctx) _ctx.resume().catch(() => {});
       }
     };
-    document.addEventListener("visibilitychange", handleVisible);
-    return () => document.removeEventListener("visibilitychange", handleVisible);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
   return {
