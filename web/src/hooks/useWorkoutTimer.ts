@@ -130,53 +130,6 @@ function getCtx(): AudioContext {
   return _ctx;
 }
 
-// ─── Keepalive audio (iOS screen-off fix) ──────────────────────────────────────
-// iOS suspends the AudioContext when the screen turns off even if wake lock is
-// held. Playing a looping near-silent <audio> element keeps the audio session
-// active, allowing Web Audio API sounds to fire reliably with screen off.
-let _keepaliveEl: HTMLAudioElement | null = null;
-let _silentUri: string | null = null;
-
-function getSilentUri(): string {
-  if (_silentUri) return _silentUri;
-  // Build a minimal 1-sample silent WAV (45 bytes) as a data URI at runtime
-  const b = new Uint8Array(45);
-  const v = new DataView(b.buffer);
-  b.set([0x52,0x49,0x46,0x46], 0);  // "RIFF"
-  v.setUint32(4, 37, true);          // chunk size
-  b.set([0x57,0x41,0x56,0x45], 8);  // "WAVE"
-  b.set([0x66,0x6D,0x74,0x20], 12); // "fmt "
-  v.setUint32(16, 16, true);         // subchunk size
-  v.setUint16(20, 1, true);          // PCM
-  v.setUint16(22, 1, true);          // mono
-  v.setUint32(24, 8000, true);       // sample rate
-  v.setUint32(28, 8000, true);       // byte rate
-  v.setUint16(32, 1, true);          // block align
-  v.setUint16(34, 8, true);          // bits per sample
-  b.set([0x64,0x61,0x74,0x61], 36); // "data"
-  v.setUint32(40, 1, true);          // data size
-  b[44] = 0x80;                      // silence (midpoint for unsigned 8-bit)
-  let str = "";
-  for (let i = 0; i < b.length; i++) str += String.fromCharCode(b[i]);
-  _silentUri = "data:audio/wav;base64," + btoa(str);
-  return _silentUri;
-}
-
-function startKeepalive() {
-  if (typeof window === "undefined" || _keepaliveEl) return;
-  try {
-    _keepaliveEl = new Audio(getSilentUri());
-    _keepaliveEl.loop = true;
-    _keepaliveEl.volume = 0.001;
-    _keepaliveEl.play().catch(() => {});
-  } catch {}
-}
-
-function stopKeepalive() {
-  if (!_keepaliveEl) return;
-  _keepaliveEl.pause();
-  _keepaliveEl = null;
-}
 
 async function getBuffer(path: string): Promise<AudioBuffer | null> {
   if (_bufferCache.has(path)) return _bufferCache.get(path)!;
@@ -197,10 +150,7 @@ export function preloadSounds() {
   if (typeof window === "undefined") return;
   try {
     const ctx = getCtx();
-    // Resume briefly so the context is initialized, then suspend immediately.
-    // decodeAudioData works regardless of context state, so preloading buffers
-    // doesn't require the context to stay running (avoids ducking other audio).
-    ctx.resume().then(() => ctx.suspend().catch(() => {})).catch(() => {});
+    ctx.resume().catch(() => {});
     for (const path of Object.values(SOUND_FILES)) {
       getBuffer(path as string);
     }
@@ -723,17 +673,12 @@ export function useWorkoutTimer(): WorkoutTimerState {
     }
   }, [anyRunning]);
 
-  // Manage keepalive based on screen visibility:
-  // - Screen off + timer running → start keepalive (maintains iOS audio session for screen-off sounds)
-  // - Screen on → stop keepalive (avoids ducking other apps' audio while screen is on)
-  // Also resume AudioContext when screen comes back on (iOS suspends it on screen-off).
+  // Resume AudioContext when tab becomes visible (e.g. user wakes screen).
+  // iOS may suspend the context on screen-off; this recovers it when the screen comes back on.
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        if (tabRunningRef.current) startKeepalive();
-      } else {
-        stopKeepalive();
-        if (tabRunningRef.current && _ctx) _ctx.resume().catch(() => {});
+      if (document.visibilityState === "visible" && tabRunningRef.current && _ctx) {
+        _ctx.resume().catch(() => {});
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
