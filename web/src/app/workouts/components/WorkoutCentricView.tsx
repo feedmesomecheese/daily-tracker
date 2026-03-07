@@ -64,6 +64,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [], 
     name: string;
   } | null>(null);
   const [bodySheetOpen, setBodySheetOpen] = useState(false);
+  const [bodySheetDate, setBodySheetDate] = useState<string | undefined>(undefined);
 
   const totalPages = Math.max(1, Math.ceil(workouts.length / pageSize));
   const safeePage = Math.min(page, totalPages - 1);
@@ -122,8 +123,26 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [], 
                 ? typeMap.get(workout.workout_type_id) || workout.workout_type
                 : workout.workout_type;
 
+              const monthKey = workout.date.slice(0, 7);
+              const prevMonthKey = i > 0 ? pageWorkouts[i - 1].date.slice(0, 7) : null;
+              const showMonthSep = i === 0 || monthKey !== prevMonthKey;
+              const monthLabel = new Date(`${monthKey}-15`).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+
+              const colSpan = bodyData ? 8 : 7;
+
               return (
                 <React.Fragment key={workout.id}>
+                  {showMonthSep && (
+                    <tr>
+                      <td colSpan={colSpan} className="pt-3 pb-1 px-2">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-px bg-border" />
+                          <span className="text-xs font-semibold text-foreground whitespace-nowrap px-1">{monthLabel}</span>
+                          <div className="flex-1 h-px bg-border" />
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                   <tr
                     onClick={() => toggleExpand(workout.id)}
                     className={`border-b cursor-pointer hover:bg-accent/50 transition-colors ${
@@ -171,7 +190,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [], 
                       return (
                         <td
                           className="py-2 px-2 text-right tabular-nums text-muted-foreground hidden sm:table-cell cursor-pointer hover:text-foreground"
-                          onClick={(e) => { e.stopPropagation(); setBodySheetOpen(true); }}
+                          onClick={(e) => { e.stopPropagation(); setBodySheetDate(workout.date); setBodySheetOpen(true); }}
                         >
                           {parts.length ? parts.join(" / ") : "\u2014"}
                         </td>
@@ -347,7 +366,7 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [], 
       />
 
       {/* Body Measurements Sheet */}
-      <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} />
+      <BodyMeasurementsSheet open={bodySheetOpen} onOpenChange={setBodySheetOpen} highlightDate={bodySheetDate} />
     </div>
   );
 }
