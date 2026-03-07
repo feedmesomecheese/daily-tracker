@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <circle cx="48" cy="48" r="48" fill="#f59e0b"/>
+  <!-- Open book: left page, spine, right page -->
+  <!-- Left page -->
+  <path d="M14 26 L46 32 L46 72 L14 66 Z" fill="white" opacity="0.85"/>
+  <!-- Right page -->
+  <path d="M82 26 L50 32 L50 72 L82 66 Z" fill="white"/>
+  <!-- Spine line -->
+  <rect x="46" y="30" width="4" height="42" rx="1" fill="#f59e0b"/>
+  <!-- Left page lines -->
+  <rect x="20" y="40" width="20" height="2.5" rx="1" fill="#f59e0b" opacity="0.4"/>
+  <rect x="20" y="48" width="20" height="2.5" rx="1" fill="#f59e0b" opacity="0.4"/>
+  <rect x="20" y="56" width="14" height="2.5" rx="1" fill="#f59e0b" opacity="0.4"/>
+  <!-- Right page lines -->
+  <rect x="56" y="40" width="20" height="2.5" rx="1" fill="#f59e0b" opacity="0.4"/>
+  <rect x="56" y="48" width="20" height="2.5" rx="1" fill="#f59e0b" opacity="0.4"/>
+  <rect x="56" y="56" width="14" height="2.5" rx="1" fill="#f59e0b" opacity="0.4"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <circle cx="48" cy="48" r="48" fill="#10b981"/>
+  <!-- Dumbbell: bar in center, two weight plates on each side -->
+  <!-- Center bar -->
+  <rect x="32" y="44" width="32" height="8" rx="2" fill="white"/>
+  <!-- Left outer plate -->
+  <rect x="10" y="36" width="10" height="24" rx="4" fill="white"/>
+  <!-- Left inner plate -->
+  <rect x="22" y="40" width="8" height="16" rx="2" fill="white"/>
+  <!-- Right inner plate -->
+  <rect x="66" y="40" width="8" height="16" rx="2" fill="white"/>
+  <!-- Right outer plate -->
+  <rect x="76" y="36" width="10" height="24" rx="4" fill="white"/>
+</svg>
