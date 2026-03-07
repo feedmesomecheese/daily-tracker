@@ -151,6 +151,12 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
     [bfFiltered]
   );
 
+  // If there's a highlight date, extend the chart domain to always include it
+  const highlightTs = highlightDate ? dateToTs(highlightDate) : null;
+  const xDomain: [unknown, unknown] = highlightTs
+    ? ["dataMin", (max: number) => Math.max(max, highlightTs)]
+    : ["dataMin", "dataMax"];
+
   // Year markers based on whichever dataset has more range
   const yearMarkers = useMemo(() => {
     const allFiltered = [...weightFiltered, ...bfFiltered].sort((a, b) =>
@@ -297,7 +303,7 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                       <XAxis
                         dataKey="ts"
                         type="number"
-                        domain={["dataMin", "dataMax"]}
+                        domain={xDomain as [number, number]}
                         tick={{ fontSize: 10 }}
                         tickCount={5}
                         tickFormatter={tsToShortDate}
@@ -351,7 +357,7 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                       <XAxis
                         dataKey="ts"
                         type="number"
-                        domain={["dataMin", "dataMax"]}
+                        domain={xDomain as [number, number]}
                         tick={{ fontSize: 10 }}
                         tickCount={5}
                         tickFormatter={tsToShortDate}

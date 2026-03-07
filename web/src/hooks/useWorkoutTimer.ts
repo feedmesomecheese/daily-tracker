@@ -458,8 +458,9 @@ export function useWorkoutTimer(): WorkoutTimerState {
       }
     } catch {}
 
-    // Save running state on tab close so we can account for elapsed time on next open
-    const handleUnload = () => {
+    // Save running state when app is backgrounded/closed.
+    // Use visibilitychange (fires on iOS PWA) + beforeunload (fires on desktop).
+    const saveSwState = () => {
       try {
         if (swStartedAt.current != null) {
           const acc = swAccumulated.current + (Date.now() - swStartedAt.current) / 1000;
@@ -467,8 +468,13 @@ export function useWorkoutTimer(): WorkoutTimerState {
         }
       } catch {}
     };
-    window.addEventListener("beforeunload", handleUnload);
-    return () => window.removeEventListener("beforeunload", handleUnload);
+    const handleVisibility = () => { if (document.visibilityState === "hidden") saveSwState(); };
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("beforeunload", saveSwState);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("beforeunload", saveSwState);
+    };
   }, []);
 
   const swStart = useCallback(() => {
@@ -677,8 +683,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
       }
     } catch {}
 
-    // Save running HIIT state on tab close
-    const handleUnload = () => {
+    // Save running HIIT state when app is backgrounded/closed.
+    const saveHiitState = () => {
       try {
         const split = tabSplitRef.current;
         const phase = tabPhaseRef.current;
@@ -690,8 +696,13 @@ export function useWorkoutTimer(): WorkoutTimerState {
         }
       } catch {}
     };
-    window.addEventListener("beforeunload", handleUnload);
-    return () => window.removeEventListener("beforeunload", handleUnload);
+    const handleHiitVisibility = () => { if (document.visibilityState === "hidden") saveHiitState(); };
+    document.addEventListener("visibilitychange", handleHiitVisibility);
+    window.addEventListener("beforeunload", saveHiitState);
+    return () => {
+      document.removeEventListener("visibilitychange", handleHiitVisibility);
+      window.removeEventListener("beforeunload", saveHiitState);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [splits]);
 

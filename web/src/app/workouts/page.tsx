@@ -1389,9 +1389,9 @@ export default function WorkoutsPage() {
             return (
               <React.Fragment key={workout.id}>
               {showMonthSep && (
-                <div className="flex items-center gap-3 pt-2 pb-1">
+                <div className="flex items-center gap-3 pt-4 pb-1">
                   <div className="flex-1 h-px bg-border" />
-                  <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">{monthLabel}</span>
+                  <span className="text-sm font-semibold text-foreground whitespace-nowrap px-1">{monthLabel}</span>
                   <div className="flex-1 h-px bg-border" />
                 </div>
               )}
