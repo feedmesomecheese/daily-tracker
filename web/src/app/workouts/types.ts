@@ -30,6 +30,7 @@ export type WorkoutExercise = {
   exercise_id?: string | null;
   exercise_name_display: string;
   modifier_ids?: string[];
+  include_in_tonnage?: boolean;
   exercise_order?: number;
   superset_group?: number | null;
   sets: {

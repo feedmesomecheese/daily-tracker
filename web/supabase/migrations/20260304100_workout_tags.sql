@@ -21,9 +21,14 @@ CREATE TABLE IF NOT EXISTS workout_tags (
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX idx_workout_tags_owner ON workout_tags(owner_id);
+CREATE INDEX IF NOT EXISTS idx_workout_tags_owner ON workout_tags(owner_id);
 
 ALTER TABLE workout_tags ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own workout_tags" ON workout_tags;
+DROP POLICY IF EXISTS "Users can insert own workout_tags" ON workout_tags;
+DROP POLICY IF EXISTS "Users can update own workout_tags" ON workout_tags;
+DROP POLICY IF EXISTS "Users can delete own workout_tags" ON workout_tags;
 
 CREATE POLICY "Users can view own workout_tags" ON workout_tags
   FOR SELECT USING (auth.uid() = owner_id);
@@ -43,10 +48,14 @@ CREATE TABLE IF NOT EXISTS workout_applied_tags (
   PRIMARY KEY (workout_id, tag_id)
 );
 
-CREATE INDEX idx_workout_applied_tags_workout ON workout_applied_tags(workout_id);
-CREATE INDEX idx_workout_applied_tags_tag     ON workout_applied_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_workout_applied_tags_workout ON workout_applied_tags(workout_id);
+CREATE INDEX IF NOT EXISTS idx_workout_applied_tags_tag     ON workout_applied_tags(tag_id);
 
 ALTER TABLE workout_applied_tags ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can view own workout_applied_tags" ON workout_applied_tags;
+DROP POLICY IF EXISTS "Users can insert own workout_applied_tags" ON workout_applied_tags;
+DROP POLICY IF EXISTS "Users can delete own workout_applied_tags" ON workout_applied_tags;
 
 CREATE POLICY "Users can view own workout_applied_tags" ON workout_applied_tags
   FOR SELECT USING (

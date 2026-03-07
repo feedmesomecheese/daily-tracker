@@ -75,6 +75,7 @@ type WorkoutExercise = {
   exercise_id?: string | null;
   exercise_name_display: string;
   modifier_ids?: string[];
+  include_in_tonnage?: boolean;
   exercise_order?: number;
   superset_group?: number | null;
   sets: {
@@ -1378,6 +1379,7 @@ export default function WorkoutsPage() {
             let workoutTonnage = 0;
             if (hasExercises) {
               for (const ex of workout.exercises!) {
+                if (ex.include_in_tonnage === false) continue;
                 if (ex.sets) {
                   for (const s of ex.sets) {
                     workoutTonnage += (s.reps || 0) * (s.weight || 0);

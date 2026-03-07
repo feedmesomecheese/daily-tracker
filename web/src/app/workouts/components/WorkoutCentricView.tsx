@@ -40,6 +40,7 @@ function computeSupersetColorMap(
 function computeWorkoutTonnage(workout: WorkoutHistory): number {
   let total = 0;
   for (const ex of workout.exercises || []) {
+    if (ex.include_in_tonnage === false) continue;
     for (const s of ex.sets || []) {
       total += (s.reps || 0) * (s.weight || 0);
     }

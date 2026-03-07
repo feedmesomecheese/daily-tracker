@@ -20,5 +20,25 @@ export default function manifest(): MetadataRoute.Manifest {
         type: "image/png",
       },
     ],
+    shortcuts: [
+      {
+        name: "Daily Tracker",
+        short_name: "DT",
+        description: "Daily metrics and tracking",
+        url: "/",
+      },
+      {
+        name: "Workouts",
+        short_name: "Workouts",
+        description: "Log and review workouts",
+        url: "/workouts",
+      },
+      {
+        name: "Books",
+        short_name: "Books",
+        description: "Reading tracker",
+        url: "/books",
+      },
+    ],
   };
 }

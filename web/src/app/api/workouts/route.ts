@@ -151,19 +151,52 @@ export async function GET(req: Request) {
   if (includeSets && workouts && workouts.length > 0) {
     const workoutIds = workouts.map((w: Workout) => w.id);
 
-    // Fetch workout_exercises
-    const { data: workoutExercises } = await supabase
-      .from("workout_exercises")
-      .select("*")
-      .in("workout_id", workoutIds)
-      .order("exercise_order", { ascending: true });
+    // Helper: paginate a query across chunked workout_id lists (avoids 1000-row Supabase limit)
+    const fetchAllByWorkoutIds = async (table: string, orderCol: string) => {
+      const CHUNK = 200;
+      const PAGE = 1000;
+      const all: unknown[] = [];
+      for (let i = 0; i < workoutIds.length; i += CHUNK) {
+        const chunk = workoutIds.slice(i, i + CHUNK);
+        let offset = 0;
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { data } = await supabase
+            .from(table)
+            .select("*")
+            .in("workout_id", chunk)
+            .order(orderCol, { ascending: true })
+            .range(offset, offset + PAGE - 1);
+          if (data) all.push(...data);
+          if (!data || data.length < PAGE) break;
+          offset += PAGE;
+        }
+      }
+      return all;
+    };
 
-    // Fetch all sets
-    const { data: sets } = await supabase
-      .from("workout_sets")
-      .select("*")
-      .in("workout_id", workoutIds)
-      .order("set_order", { ascending: true });
+    // Fetch workout_exercises (paginated)
+    const workoutExercises = await fetchAllByWorkoutIds("workout_exercises", "exercise_order") as WorkoutExercise[];
+
+    // Fetch all sets (paginated)
+    const sets = await fetchAllByWorkoutIds("workout_sets", "set_order") as WorkoutSet[];
+
+    // Fetch include_in_tonnage for each unique exercise_id
+    const uniqueExerciseIds = [...new Set(workoutExercises.map((we) => we.exercise_id).filter(Boolean))] as string[];
+    const includeInTonnageMap = new Map<string, boolean>();
+    if (uniqueExerciseIds.length > 0) {
+      const CHUNK = 200;
+      for (let i = 0; i < uniqueExerciseIds.length; i += CHUNK) {
+        const chunk = uniqueExerciseIds.slice(i, i + CHUNK);
+        const { data: exDefs } = await supabase
+          .from("exercises")
+          .select("id, include_in_tonnage")
+          .in("id", chunk);
+        for (const ex of exDefs || []) {
+          includeInTonnageMap.set(ex.id, ex.include_in_tonnage ?? true);
+        }
+      }
+    }
 
     // Fetch activity sessions (tennis, racquetball, etc.)
     const { data: activitySessions } = await supabase
@@ -179,7 +212,7 @@ export async function GET(req: Request) {
 
     // Group workout_exercises by workout
     const exercisesByWorkout = new Map<string, WorkoutExercise[]>();
-    for (const we of workoutExercises || []) {
+    for (const we of workoutExercises) {
       const existing = exercisesByWorkout.get(we.workout_id) || [];
       existing.push(we);
       exercisesByWorkout.set(we.workout_id, existing);
@@ -205,7 +238,7 @@ export async function GET(req: Request) {
     const setsByExerciseEntry = new Map<string, WorkoutSet[]>();
     const orphanSetsByWorkout = new Map<string, WorkoutSet[]>();
 
-    for (const set of sets || []) {
+    for (const set of sets) {
       if (set.workout_exercise_id) {
         const existing = setsByExerciseEntry.get(set.workout_exercise_id) || [];
         existing.push(set);
@@ -221,6 +254,7 @@ export async function GET(req: Request) {
     const workoutsWithData = workouts.map((w: Workout) => {
       const exercises = (exercisesByWorkout.get(w.id) || []).map((we) => ({
         ...we,
+        include_in_tonnage: we.exercise_id ? (includeInTonnageMap.get(we.exercise_id) ?? true) : true,
         sets: setsByExerciseEntry.get(we.id) || [],
       }));
 

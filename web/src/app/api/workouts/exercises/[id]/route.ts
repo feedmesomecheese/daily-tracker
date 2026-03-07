@@ -59,6 +59,7 @@ export async function PATCH(req: Request, { params }: Params) {
     aliases,
     is_archived,
     sort_order,
+    include_in_tonnage,
     parent_exercise_id,
     parent_modifier_filter,
   } = body;
@@ -74,6 +75,7 @@ export async function PATCH(req: Request, { params }: Params) {
   if (aliases !== undefined) updates.aliases = aliases;
   if (is_archived !== undefined) updates.is_archived = is_archived;
   if (sort_order !== undefined) updates.sort_order = sort_order;
+  if (include_in_tonnage !== undefined) updates.include_in_tonnage = include_in_tonnage;
   if (parent_exercise_id !== undefined) updates.parent_exercise_id = parent_exercise_id;
   if (parent_modifier_filter !== undefined) updates.parent_modifier_filter = parent_modifier_filter;
 

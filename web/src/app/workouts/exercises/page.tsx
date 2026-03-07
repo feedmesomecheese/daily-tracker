@@ -55,12 +55,11 @@ type Exercise = {
   name: string;
   exercise_type: string;
   counts_toward_volume: boolean;
+  include_in_tonnage: boolean;
   group_ids: string[];
   available_modifier_ids: string[];
   is_archived: boolean;
   sort_order: number;
-  parent_exercise_id: string | null;
-  parent_modifier_filter: string[] | null;
 };
 
 export default function ExerciseLibraryPage() {
@@ -107,8 +106,7 @@ export default function ExerciseLibraryPage() {
   const [editExerciseType, setEditExerciseType] = useState("weighted");
   const [editExerciseGroups, setEditExerciseGroups] = useState<string[]>([]);
   const [editExerciseModifiers, setEditExerciseModifiers] = useState<string[]>([]);
-  const [editExerciseParent, setEditExerciseParent] = useState<string | null>(null);
-  const [editExerciseParentModFilter, setEditExerciseParentModFilter] = useState<string[]>([]);
+  const [editExerciseTonnage, setEditExerciseTonnage] = useState(true);
 
   // Exercise form
   const [newExerciseName, setNewExerciseName] = useState("");
@@ -465,8 +463,7 @@ export default function ExerciseLibraryPage() {
     setEditExerciseType(ex.exercise_type);
     setEditExerciseGroups([...ex.group_ids]);
     setEditExerciseModifiers([...ex.available_modifier_ids]);
-    setEditExerciseParent(ex.parent_exercise_id);
-    setEditExerciseParentModFilter(ex.parent_modifier_filter || []);
+    setEditExerciseTonnage(ex.include_in_tonnage ?? true);
   };
 
   const saveEditExercise = async () => {
@@ -481,8 +478,7 @@ export default function ExerciseLibraryPage() {
           exercise_type: editExerciseType,
           group_ids: editExerciseGroups,
           available_modifier_ids: editExerciseModifiers,
-          parent_exercise_id: editExerciseParent,
-          parent_modifier_filter: editExerciseParentModFilter.length > 0 ? editExerciseParentModFilter : null,
+          include_in_tonnage: editExerciseTonnage,
         }),
       });
       if (!res.ok) throw new Error("Failed to update exercise");
@@ -990,58 +986,14 @@ export default function ExerciseLibraryPage() {
                             </label>
                           ))}
                         </div>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">Parent:</span>
-                            <Select
-                              value={editExerciseParent || "none"}
-                              onValueChange={(v) => {
-                                setEditExerciseParent(v === "none" ? null : v);
-                                if (v === "none") setEditExerciseParentModFilter([]);
-                              }}
-                            >
-                              <SelectTrigger className="w-[200px] h-8">
-                                <SelectValue placeholder="No parent" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="none">No parent</SelectItem>
-                                {exercises
-                                  .filter((e) => e.id !== ex.id && !e.parent_exercise_id && !e.is_archived)
-                                  .map((e) => (
-                                    <SelectItem key={e.id} value={e.id}>
-                                      {e.name}
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          {editExerciseParent && ex.available_modifier_ids.length > 0 && (
-                            <div className="flex flex-wrap items-center gap-2 pl-12">
-                              <span className="text-xs text-muted-foreground">Include in parent stats only with:</span>
-                              {modifiers
-                                .filter((mod) => ex.available_modifier_ids.includes(mod.id))
-                                .map((mod) => (
-                                  <label key={mod.id} className="flex items-center gap-1 text-xs">
-                                    <input
-                                      type="checkbox"
-                                      checked={editExerciseParentModFilter.includes(mod.id)}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          setEditExerciseParentModFilter([...editExerciseParentModFilter, mod.id]);
-                                        } else {
-                                          setEditExerciseParentModFilter(editExerciseParentModFilter.filter((id) => id !== mod.id));
-                                        }
-                                      }}
-                                    />
-                                    {mod.name}
-                                  </label>
-                                ))}
-                              <span className="text-xs text-muted-foreground italic">
-                                {editExerciseParentModFilter.length === 0 ? "(all sessions count toward parent)" : ""}
-                              </span>
-                            </div>
-                          )}
-                        </div>
+                        <label className="flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={editExerciseTonnage}
+                            onChange={(e) => setEditExerciseTonnage(e.target.checked)}
+                          />
+                          <span className="text-muted-foreground">Count toward workout tonnage</span>
+                        </label>
                         <div className="flex gap-2">
                           <Button size="sm" onClick={saveEditExercise}>Save</Button>
                           <Button size="sm" variant="outline" onClick={() => setEditingExerciseId(null)}>Cancel</Button>
@@ -1059,20 +1011,8 @@ export default function ExerciseLibraryPage() {
                               {ex.group_ids.map(getGroupName).join(", ")}
                             </div>
                           )}
-                          {ex.parent_exercise_id && (
-                            <div className="text-xs text-blue-600">
-                              Linked to: {exercises.find((e) => e.id === ex.parent_exercise_id)?.name || "Unknown"}
-                              {ex.parent_modifier_filter && ex.parent_modifier_filter.length > 0 && (
-                                <span className="text-muted-foreground ml-1">
-                                  (only with {ex.parent_modifier_filter.map((id) => modifiers.find((m) => m.id === id)?.name || id).join(", ")})
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {exercises.some((e) => e.parent_exercise_id === ex.id) && (
-                            <div className="text-xs text-emerald-600">
-                              Children: {exercises.filter((e) => e.parent_exercise_id === ex.id).map((e) => e.name).join(", ")}
-                            </div>
+                          {ex.include_in_tonnage === false && (
+                            <div className="text-xs text-muted-foreground italic">excluded from tonnage</div>
                           )}
                         </div>
                         <div className="flex gap-1">
