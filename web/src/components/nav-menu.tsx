@@ -44,6 +44,15 @@ const modules: NavModule[] = [
       { href: "/workouts/exercises", label: "Exercises" },
     ],
   },
+  {
+    name: "Food",
+    links: [
+      { href: "/food", label: "Log" },
+      { href: "/food/log", label: "History" },
+      { href: "/food/library", label: "Library" },
+      { href: "/food/goals", label: "Goals" },
+    ],
+  },
 ];
 
 const settingsLink = { href: "/settings", label: "Settings" };
@@ -165,7 +174,7 @@ export function NavMenu() {
       {/* Mobile: hamburger menu */}
       <div className="flex sm:hidden items-center justify-between text-sm">
         <span className="font-semibold">
-          {activeModule?.name === "Books" ? "Books" : activeModule?.name === "Workouts" ? "Workouts" : "Daily Tracker"}
+          {activeModule?.name === "Books" ? "Books" : activeModule?.name === "Workouts" ? "Workouts" : activeModule?.name === "Food" ? "Food" : "Daily Tracker"}
         </span>
         <button
           onClick={() => setMobileOpen((v) => !v)}

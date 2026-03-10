@@ -1,0 +1,382 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { getAuthHeaders } from "@/lib/authHeaders";
+import { addDays } from "@/lib/dateUtils";
+
+interface FoodGoal {
+  nutrient: string;
+  direction: "min" | "max" | "target";
+  value: number;
+  value_type: "absolute" | "per_lb_bodyweight" | "pct_calories";
+  is_active: boolean;
+}
+import {
+  ResponsiveContainer,
+  ComposedChart,
+  Bar,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
+
+interface FoodLog {
+  id: string;
+  date: string;
+  notes: string | null;
+  is_submitted: boolean;
+  submitted_at: string | null;
+  total_calories: number;
+  total_protein: number;
+  total_fat: number;
+  total_carbs: number;
+  total_fiber: number;
+}
+
+interface RollingAverages {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function computeRollingAverages(logs: FoodLog[], days: number = 7): RollingAverages {
+  if (logs.length === 0) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+  // logs are sorted newest-first; build a date → log lookup
+  const logByDate = new Map(logs.map((l) => [l.date, l]));
+  const endDate = logs[0].date; // most recent logged date
+
+  // Walk backwards `days` calendar days from endDate, carrying forward last known values
+  type MacroDay = { calories: number; protein: number; carbs: number; fat: number };
+  const filled: MacroDay[] = [];
+  let lastKnown: MacroDay | null = null;
+
+  for (let i = days - 1; i >= 0; i--) {
+    const date = addDays(endDate, -i);
+    const log = logByDate.get(date);
+    if (log) {
+      lastKnown = {
+        calories: log.total_calories || 0,
+        protein: log.total_protein || 0,
+        carbs: log.total_carbs || 0,
+        fat: log.total_fat || 0,
+      };
+      filled.push(lastKnown);
+    } else if (lastKnown) {
+      filled.push(lastKnown); // carry forward
+    }
+    // Leading gap before first log: skip (don't inflate average with zeros)
+  }
+
+  if (filled.length === 0) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+
+  const sum = filled.reduce(
+    (acc, d) => ({
+      calories: acc.calories + d.calories,
+      protein: acc.protein + d.protein,
+      carbs: acc.carbs + d.carbs,
+      fat: acc.fat + d.fat,
+    }),
+    { calories: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+  return {
+    calories: Math.round(sum.calories / filled.length),
+    protein: Math.round(sum.protein / filled.length),
+    carbs: Math.round(sum.carbs / filled.length),
+    fat: Math.round(sum.fat / filled.length),
+  };
+}
+
+const PAGE_SIZE = 30;
+
+// Tooltip for the stacked macro chart
+function MacroTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
+  if (!active || !payload?.length || !label) return null;
+  const calories = payload.find((p) => p.name === "Calories");
+  const macros = payload.filter((p) => p.name !== "Calories");
+  return (
+    <div className="rounded-lg border border-border bg-popover px-3 py-2 shadow text-xs">
+      <p className="font-medium mb-1">{label}</p>
+      {calories && <p className="font-medium">{Math.round(calories.value)} kcal</p>}
+      {macros.map((p) => (
+        <p key={p.name} style={{ color: p.color }}>{p.name}: {Math.round(p.value)}g</p>
+      ))}
+    </div>
+  );
+}
+
+function goalMet(value: number, goal: FoodGoal): boolean {
+  if (goal.value_type !== "absolute") return false; // skip non-absolute for history
+  if (goal.direction === "min") return value >= goal.value;
+  if (goal.direction === "max") return value <= goal.value;
+  return Math.abs(value - goal.value) / goal.value <= 0.1;
+}
+
+export default function FoodLogPage() {
+  const router = useRouter();
+  const [logs, setLogs] = useState<FoodLog[]>([]);
+  const [goals, setGoals] = useState<FoodGoal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
+  const fetchLogs = useCallback(async (currentOffset: number, append: boolean = false) => {
+    try {
+      setError(null);
+      if (!append) setLoading(true);
+      else setLoadingMore(true);
+
+      const headers = await getAuthHeaders();
+      const params = new URLSearchParams({
+        limit: String(PAGE_SIZE),
+        offset: String(currentOffset),
+      });
+      const res = await fetch(`/api/food/logs?${params}`, { headers });
+      const json = await res.json();
+
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to load food logs");
+      }
+
+      const fetched: FoodLog[] = json.logs ?? json ?? [];
+      setHasMore(fetched.length >= PAGE_SIZE);
+
+      if (append) {
+        setLogs((prev) => [...prev, ...fetched]);
+      } else {
+        setLogs(fetched);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to load food logs");
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLogs(0, false);
+    // Fetch goals once (fire and forget)
+    getAuthHeaders().then((headers) =>
+      fetch("/api/food/goals", { headers })
+        .then((r) => r.json())
+        .then((data) => {
+          const g: FoodGoal[] = Array.isArray(data) ? data : (data.goals ?? []);
+          setGoals(g.filter((goal) => goal.is_active));
+        })
+        .catch(() => {/* ignore */})
+    );
+  }, [fetchLogs]);
+
+  const loadMore = async () => {
+    const nextOffset = offset + PAGE_SIZE;
+    setOffset(nextOffset);
+    await fetchLogs(nextOffset, true);
+  };
+
+  const avg = computeRollingAverages(logs, 7);
+  const hasMeaningfulAvg = logs.length > 0;
+
+  // Chart data — most recent 30 days, reversed so oldest is left
+  const chartData = logs
+    .slice(0, 30)
+    .reverse()
+    .map((log) => {
+      const [, month, day] = log.date.split("-");
+      return {
+        label: `${Number(month)}/${Number(day)}`,
+        date: log.date,
+        Protein: Math.round(log.total_protein),
+        Carbs: Math.round(log.total_carbs),
+        Fat: Math.round(log.total_fat),
+        Calories: Math.round(log.total_calories),
+      };
+    });
+
+  const handleDeleteAllHistory = async () => {
+    if (!confirm("DEV: Delete ALL food history? This cannot be undone.")) return;
+    setDeletingAll(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/food/logs", { method: "DELETE", headers });
+      if (!res.ok) throw new Error("Failed to delete");
+      setLogs([]);
+      setOffset(0);
+      setHasMore(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
+  return (
+    <main className="max-w-2xl mx-auto px-4 py-6">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-semibold">Food History</h1>
+        <button
+          onClick={handleDeleteAllHistory}
+          disabled={deletingAll}
+          className="text-xs px-2 py-1 rounded border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+          title="Dev: clear all food history"
+        >
+          {deletingAll ? "Deleting..." : "DEV: Clear History"}
+        </button>
+      </div>
+
+      {/* Rolling averages card */}
+      {hasMeaningfulAvg && (
+        <div className="bg-card border rounded-lg p-4 mb-4">
+          <h2 className="text-sm font-medium mb-2 text-muted-foreground">
+            7-Day Average (carry-forward)
+          </h2>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <span className="font-medium">{avg.calories} kcal</span>
+            <span className="text-green-500">{avg.protein}g protein</span>
+            <span className="text-amber-400">{avg.carbs}g carbs</span>
+            <span className="text-blue-400">{avg.fat}g fat</span>
+          </div>
+        </div>
+      )}
+
+      {/* Macro trend chart */}
+      {chartData.length >= 2 && (
+        <div className="bg-card border rounded-lg p-4 mb-6">
+          <h2 className="text-sm font-medium mb-3 text-muted-foreground">Macro Trend (last {chartData.length} days)</h2>
+          <div className="h-[220px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                <YAxis yAxisId="macro" tick={{ fontSize: 10 }} unit="g" />
+                <YAxis yAxisId="cal" orientation="right" tick={{ fontSize: 10 }} unit="k" tickFormatter={(v) => `${Math.round(v / 1000)}`} />
+                <Tooltip content={<MacroTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar yAxisId="macro" dataKey="Protein" stackId="macros" fill="#22c55e" fillOpacity={0.85} isAnimationActive={false} />
+                <Bar yAxisId="macro" dataKey="Carbs" stackId="macros" fill="#f59e0b" fillOpacity={0.85} isAnimationActive={false} />
+                <Bar yAxisId="macro" dataKey="Fat" stackId="macros" fill="#60a5fa" fillOpacity={0.85} isAnimationActive={false} />
+                <Line yAxisId="cal" type="monotone" dataKey="Calories" stroke="#e11d48" strokeWidth={2} dot={false} isAnimationActive={false} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="bg-destructive/10 text-destructive p-4 rounded-lg text-sm mb-4">
+          {error}
+        </div>
+      )}
+
+      {/* Loading skeleton */}
+      {loading && (
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div
+              key={i}
+              className="bg-card border rounded-lg p-4 h-[72px] animate-pulse"
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && logs.length === 0 && (
+        <div className="text-center py-12">
+          <p className="text-muted-foreground">No food logs yet</p>
+          <button
+            onClick={() => router.push("/food")}
+            className="mt-4 px-4 py-2 border rounded-lg text-sm hover:bg-accent transition-colors"
+          >
+            Log today&apos;s food
+          </button>
+        </div>
+      )}
+
+      {/* Log list */}
+      {!loading && logs.length > 0 && (
+        <div className="space-y-2">
+          {logs.map((log) => (
+            <button
+              key={log.id}
+              onClick={() => router.push(`/food?date=${log.date}`)}
+              className="w-full text-left bg-card border rounded-lg p-4 hover:bg-accent transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{formatDate(log.date)}</span>
+                <div className="flex items-center gap-2">
+                  {/* Goal dots */}
+                  {goals.length > 0 && (() => {
+                    const vals: Record<string, number> = {
+                      calories: log.total_calories,
+                      protein: log.total_protein,
+                      carbs: log.total_carbs,
+                      fat: log.total_fat,
+                      fiber: log.total_fiber,
+                    };
+                    const relevant = goals.filter((g) => g.value_type === "absolute" && vals[g.nutrient] !== undefined);
+                    if (relevant.length === 0) return null;
+                    const allMet = relevant.every((g) => goalMet(vals[g.nutrient], g));
+                    const anyOver = relevant.some((g) => g.direction === "max" && vals[g.nutrient] > g.value);
+                    return (
+                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${allMet ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : anyOver ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"}`}>
+                        {allMet ? "✓ Goals" : anyOver ? "Over" : "In progress"}
+                      </span>
+                    );
+                  })()}
+                  {log.is_submitted && (
+                    <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-0.5 rounded-full">
+                      Submitted
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3 mt-1 text-sm text-muted-foreground">
+                <span>{Math.round(log.total_calories)} kcal</span>
+                <span className="text-green-500">{Math.round(log.total_protein)}g P</span>
+                <span className="text-amber-400">{Math.round(log.total_carbs)}g C</span>
+                <span className="text-blue-400">{Math.round(log.total_fat)}g F</span>
+                {log.total_fiber > 0 && (
+                  <span>{Math.round(log.total_fiber)}g fiber</span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Load more */}
+      {hasMore && !loading && (
+        <div className="mt-4 text-center">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="px-4 py-2 border rounded-lg text-sm hover:bg-accent transition-colors disabled:opacity-50"
+          >
+            {loadingMore ? "Loading..." : "Load more"}
+          </button>
+        </div>
+      )}
+    </main>
+  );
+}

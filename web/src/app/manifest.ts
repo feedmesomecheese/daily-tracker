@@ -42,6 +42,13 @@ export default function manifest(): MetadataRoute.Manifest {
         url: "/books",
         icons: [{ src: "/icons/shortcut-books.svg", sizes: "96x96", type: "image/svg+xml" }],
       },
+      {
+        name: "Food Log",
+        short_name: "Food",
+        description: "Food and nutrition log",
+        url: "/food",
+        icons: [{ src: "/icons/shortcut-food.svg", sizes: "96x96", type: "image/svg+xml" }],
+      },
     ],
   };
 }
