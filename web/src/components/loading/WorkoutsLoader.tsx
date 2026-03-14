@@ -41,9 +41,11 @@ export function WorkoutsLoader() {
 
       {/* ── Filled kettlebell, revealed from bottom by the mask ── */}
       <g mask="url(#kb-reveal-mask)">
-        {/* Handle ring as a thick stroke — solid band, no hollow-center artifacts */}
+        {/* Handle ring: path follows the MIDPOINT between outer (x=20) and inner (x=28)
+            arches — center at x=24. strokeWidth=8 spans exactly from outer edge to inner
+            edge, so the fill band aligns with the outline on both sides. */}
         <path
-          d="M 20,61 L 20,42 Q 20,22 40,22 Q 60,22 60,42 L 60,61"
+          d="M 24,57 L 24,43 Q 24,26 40,26 Q 56,26 56,43 L 56,57"
           fill="none"
           stroke="currentColor"
           strokeWidth="8"
