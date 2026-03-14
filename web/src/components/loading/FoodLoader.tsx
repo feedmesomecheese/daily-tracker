@@ -9,6 +9,7 @@ export function FoodLoader() {
       width="60"
       height="75"
       fill="currentColor"
+      overflow="visible"
       aria-hidden="true"
     >
       {/* ── Fork (centered at x=20) ────────────────── */}

@@ -93,6 +93,8 @@ export default function BooksPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const firstLoadRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
@@ -208,8 +210,16 @@ export default function BooksPage() {
   }, []);
 
   const loadData = useCallback(async () => {
+    const isInitial = !firstLoadRef.current;
+    if (isInitial) firstLoadRef.current = true;
+    const loadStart = Date.now();
     setLoading(true);
-    await Promise.all([fetchBooks(), fetchStats(), delay(1000)]);
+    await Promise.all([fetchBooks(), fetchStats()]);
+    if (isInitial) {
+      const elapsed = Date.now() - loadStart;
+      if (elapsed < 1000) await delay(1000 - elapsed);
+      setInitialLoading(false);
+    }
     setLoading(false);
   }, [fetchBooks, fetchStats]);
 
@@ -311,6 +321,18 @@ export default function BooksPage() {
     tourLaunched.current = true;
     setTimeout(launchBooksTour, 400);
   }, [loading, tourCompleted, stats, launchBooksTour]);
+
+  if (initialLoading) {
+    return (
+      <main className="p-4 sm:p-6 max-w-5xl mx-auto">
+        <div className="flex items-center justify-between gap-4 mb-6">
+          <h1 className="text-2xl font-semibold">Books</h1>
+          <Button onClick={() => setAddSheetOpen(true)}>Add Book</Button>
+        </div>
+        <LoadingScreen><BooksLoader /></LoadingScreen>
+      </main>
+    );
+  }
 
   return (
     <main className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
