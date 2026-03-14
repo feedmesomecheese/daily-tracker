@@ -84,10 +84,10 @@
 }
 
 /* Timer animations */
-@keyframes timer-chase {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-}
+@keyframes chase-top    { from { left:   -25%; } to { left:   100%; } }
+@keyframes chase-right  { from { top:    -25%; } to { top:    100%; } }
+@keyframes chase-bottom { from { right:  -25%; } to { right:  100%; } }
+@keyframes chase-left   { from { bottom: -25%; } to { bottom: 100%; } }
 @keyframes charge-sweep {
   from { transform: scaleX(0); }
   to   { transform: scaleX(1); }
