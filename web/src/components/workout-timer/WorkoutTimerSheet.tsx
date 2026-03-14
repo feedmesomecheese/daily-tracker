@@ -443,13 +443,15 @@ function StopwatchBox({
 
   useEffect(() => {
     if (!timer.swRunning || !boxRef.current) return;
-    const { width, height } = boxRef.current.getBoundingClientRect();
-    if (width === 0) return;
-    // Path 2px inside the border, with radius 9 (matches rounded-xl ~12px minus inset)
-    const s = 2; // inset from edge
-    const r = 9;
-    const w = width;
-    const h = height;
+    // Use clientWidth/clientHeight: absolute children live in the padding-box coordinate
+    // system (border excluded). getBoundingClientRect includes the 2px border, pushing
+    // the right/bottom path segments outside overflow:hidden and making them invisible.
+    const w = boxRef.current.clientWidth;
+    const h = boxRef.current.clientHeight;
+    if (w === 0) return;
+    // Path 3px inside the padding edge so the 3px-tall comet stays within overflow:hidden
+    const s = 3;
+    const r = 8;
     setCometPath(
       `M ${s + r},${s} H ${w - s - r} Q ${w - s},${s} ${w - s},${s + r}` +
       ` V ${h - s - r} Q ${w - s},${h - s} ${w - s - r},${h - s}` +
