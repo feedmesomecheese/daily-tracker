@@ -476,6 +476,8 @@ function StopwatchBox({
             className="pointer-events-none"
             style={{
               position: "absolute",
+              top: 0,
+              left: 0,
               width: 64,
               height: 3,
               borderRadius: 2,
