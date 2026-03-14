@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Sheet,
   SheetContent,
@@ -437,9 +437,31 @@ function StopwatchBox({
     ? "Tap to resume"
     : "Tap to start";
 
+  // Measure the container to build the rounded-rect SVG path for the comet
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [cometPath, setCometPath] = useState("");
+
+  useEffect(() => {
+    if (!timer.swRunning || !boxRef.current) return;
+    const { width, height } = boxRef.current.getBoundingClientRect();
+    if (width === 0) return;
+    // Path 2px inside the border, with radius 9 (matches rounded-xl ~12px minus inset)
+    const s = 2; // inset from edge
+    const r = 9;
+    const w = width;
+    const h = height;
+    setCometPath(
+      `M ${s + r},${s} H ${w - s - r} Q ${w - s},${s} ${w - s},${s + r}` +
+      ` V ${h - s - r} Q ${w - s},${h - s} ${w - s - r},${h - s}` +
+      ` H ${s + r} Q ${s},${h - s} ${s},${h - s - r}` +
+      ` V ${s + r} Q ${s},${s} ${s + r},${s} Z`
+    );
+  }, [timer.swRunning]);
+
   return (
     <>
       <div
+        ref={boxRef}
         role="button"
         tabIndex={0}
         aria-label={swHint}
@@ -448,34 +470,24 @@ function StopwatchBox({
         className="relative rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none overflow-hidden w-full"
         style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
       >
-        {/* Light chase along the rectangular border when running */}
-        {timer.swRunning && (
-          <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ borderRadius: "inherit" }}>
-            {/* Top: left → right */}
-            <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2 }}>
-              <div style={{ position: "absolute", top: 0, width: "25%", height: "100%",
-                background: "linear-gradient(90deg, transparent, rgba(148,163,184,0.9), transparent)",
-                animation: "chase-top 0.5s linear infinite" }} />
-            </div>
-            {/* Right: top → bottom (delay = -0.3125s for constant-speed handoff at 3:1 aspect) */}
-            <div style={{ position: "absolute", top: 0, right: 0, bottom: 0, width: 2 }}>
-              <div style={{ position: "absolute", right: 0, width: "100%", height: "25%",
-                background: "linear-gradient(180deg, transparent, rgba(148,163,184,0.9), transparent)",
-                animation: "chase-right 0.5s linear infinite", animationDelay: "-0.3125s" }} />
-            </div>
-            {/* Bottom: right → left (delay = -0.25s) */}
-            <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 2 }}>
-              <div style={{ position: "absolute", bottom: 0, width: "25%", height: "100%",
-                background: "linear-gradient(270deg, transparent, rgba(148,163,184,0.9), transparent)",
-                animation: "chase-bottom 0.5s linear infinite", animationDelay: "-0.25s" }} />
-            </div>
-            {/* Left: bottom → top (delay = -0.0625s) */}
-            <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 2 }}>
-              <div style={{ position: "absolute", left: 0, width: "100%", height: "25%",
-                background: "linear-gradient(0deg, transparent, rgba(148,163,184,0.9), transparent)",
-                animation: "chase-left 0.5s linear infinite", animationDelay: "-0.0625s" }} />
-            </div>
-          </div>
+        {/* Single comet following the rounded-rect border via CSS Motion Path */}
+        {timer.swRunning && cometPath && (
+          <div
+            className="pointer-events-none"
+            style={{
+              position: "absolute",
+              width: 64,
+              height: 3,
+              borderRadius: 2,
+              background: "linear-gradient(90deg, transparent, rgba(148,163,184,0.95), transparent)",
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              offsetPath: `path('${cometPath}')`,
+              offsetDistance: "0%",
+              offsetRotate: "auto",
+              offsetAnchor: "50% 50%",
+              animation: "border-trip 1s linear infinite",
+            } as React.CSSProperties}
+          />
         )}
         <div className="relative z-10 font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
           {formatHMS(timer.swDisplay)}

@@ -84,10 +84,15 @@
 }
 
 /* Timer animations */
-@keyframes chase-top    { from { left:   -25%; } to { left:   100%; } }
-@keyframes chase-right  { from { top:    -25%; } to { top:    100%; } }
-@keyframes chase-bottom { from { right:  -25%; } to { right:  100%; } }
-@keyframes chase-left   { from { bottom: -25%; } to { bottom: 100%; } }
+
+/* Single comet traveling the rectangular border in 500ms, then invisible for 500ms */
+@keyframes border-trip {
+  0%     { offset-distance: 0%;   opacity: 1; }
+  50%    { offset-distance: 100%; opacity: 1; }
+  50.01% { offset-distance: 100%; opacity: 0; } /* snap invisible */
+  100%   { offset-distance: 100%; opacity: 0; } /* pause until next loop */
+}
+
 @keyframes charge-sweep {
   from { transform: scaleX(0); }
   to   { transform: scaleX(1); }
