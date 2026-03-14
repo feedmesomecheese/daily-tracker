@@ -19,6 +19,7 @@ export type TabataSplit = {
   id: string;
   name: string;
   warmup_seconds: number;
+  rounds?: number;   // how many times to repeat the on/off cycle block (default 1)
   cycles: number;
   on_seconds: number;
   off_seconds: number;
@@ -68,6 +69,7 @@ export type WorkoutTimerState = {
 
   // Computed
   anyRunning: boolean;
+  tabCompletedWorkCycles: number; // how many "on" phases have finished this run
 };
 
 // ─── Default split ─────────────────────────────────────────────────────────────
@@ -335,7 +337,7 @@ function computeNextPhase(phase: TabataPhase, cycle: number, split: TabataSplit)
   } else if (phase === "warmup") {
     nextPhase = "on"; nextCycle = 1; nextDuration = split.on_seconds; audio = split.on_audio;
   } else if (phase === "on") {
-    if (cycle < split.cycles) {
+    if (cycle < split.cycles * (split.rounds ?? 1)) {
       nextPhase = "off"; nextCycle = cycle; nextDuration = split.off_seconds; audio = split.off_audio;
     } else if (split.cooldown_seconds > 0) {
       nextPhase = "cooldown"; nextCycle = cycle; nextDuration = split.cooldown_seconds; audio = split.cooldown_audio;
@@ -517,6 +519,9 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const tabRunningRef = useRef(false);
   // Tracks which countdown seconds (3,2,1) have already played for the current phase
   const countdownFiredRef = useRef<Set<number>>(new Set());
+  // Counts how many "on" phases have completed this run (for fill animation)
+  const [tabCompletedWorkCycles, setTabCompletedWorkCycles] = useState(0);
+  const tabCompletedWorkCyclesRef = useRef(0);
 
   // Keep refs in sync
   useEffect(() => { tabPhaseRef.current = tabPhase; }, [tabPhase]);
@@ -559,6 +564,11 @@ export function useWorkoutTimer(): WorkoutTimerState {
     const split = tabSplitRef.current;
     if (!split) return;
     const result = computeNextPhase(tabPhaseRef.current, tabCycleRef.current, split);
+    // Track completed work cycles before transitioning
+    if (tabPhaseRef.current === "on") {
+      tabCompletedWorkCyclesRef.current += 1;
+      setTabCompletedWorkCycles(tabCompletedWorkCyclesRef.current);
+    }
     countdownFiredRef.current = new Set();
     if (result.audio) playTone(result.audio);
 
@@ -613,6 +623,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
     setTabCurrentCycle(0);
     tabCycleRef.current = 0;
     tabPhaseEndAt.current = null;
+    tabCompletedWorkCyclesRef.current = 0;
+    setTabCompletedWorkCycles(0);
     tabRunningRef.current = true;
     setTabRunning(true);
     // Immediately advance from idle
@@ -655,6 +667,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
     tabPhaseRef.current = "idle";
     setTabPhaseRemaining(0);
     setTabCurrentCycle(0);
+    tabCompletedWorkCyclesRef.current = 0;
+    setTabCompletedWorkCycles(0);
     try { localStorage.removeItem(HIIT_STORAGE_KEY); } catch {}
   }, []);
 
@@ -807,5 +821,6 @@ export function useWorkoutTimer(): WorkoutTimerState {
     exportSplits,
 
     anyRunning,
+    tabCompletedWorkCycles,
   };
 }

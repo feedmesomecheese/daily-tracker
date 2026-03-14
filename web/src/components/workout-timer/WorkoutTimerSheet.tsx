@@ -42,9 +42,13 @@ function formatMS(totalSeconds: number): string {
 }
 
 function splitSummary(split: TabataSplit): string {
+  const rounds = split.rounds ?? 1;
   const parts: string[] = [];
   if (split.warmup_seconds > 0) parts.push(`${split.warmup_seconds}s warmup`);
-  parts.push(`${split.cycles}×${split.on_seconds}s/${split.off_seconds}s`);
+  const cycleStr = rounds > 1
+    ? `${rounds}r × ${split.cycles}×${split.on_seconds}s/${split.off_seconds}s`
+    : `${split.cycles}×${split.on_seconds}s/${split.off_seconds}s`;
+  parts.push(cycleStr);
   if (split.cooldown_seconds > 0) parts.push(`${split.cooldown_seconds}s cooldown`);
   return parts.join(" · ");
 }
@@ -150,6 +154,7 @@ function SplitEditor({
   const [name, setName] = useState(initial?.name ?? "New Split");
   // Duration fields stored as total seconds (integers)
   const [warmup, setWarmup] = useState(initial?.warmup_seconds ?? 0);
+  const [rounds, setRounds] = useState(String(initial?.rounds ?? 1));
   const [cycles, setCycles] = useState(String(initial?.cycles ?? 8));
   const [on, setOn] = useState(initial?.on_seconds ?? 20);
   const [off, setOff] = useState(initial?.off_seconds ?? 10);
@@ -179,6 +184,7 @@ function SplitEditor({
       id: initial?.id ?? newSplitId(),
       name: name.trim() || "Split",
       warmup_seconds: Math.max(0, warmup),
+      rounds: Math.max(1, parseInt(rounds) || 1),
       cycles: Math.max(1, parseInt(cycles) || 1),
       on_seconds: Math.max(1, on),
       off_seconds: Math.max(0, off),
@@ -224,7 +230,17 @@ function SplitEditor({
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground block mb-0.5">Cycles</label>
+            <label className="text-xs text-muted-foreground block mb-0.5">Rounds</label>
+            <input
+              type="number"
+              min={1}
+              value={rounds}
+              onChange={(e) => setRounds(e.target.value)}
+              className="block w-full h-10 px-3 border rounded-md text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground block mb-0.5">Cycles / Round</label>
             <input
               type="number"
               min={1}
@@ -404,6 +420,72 @@ function SplitsView({
   );
 }
 
+// ─── StopwatchBox ─────────────────────────────────────────────────────────────
+// Reusable stopwatch display used both in StopwatchTab and inside TabataTab.
+
+function StopwatchBox({
+  timer,
+  onSendToWorkout,
+}: {
+  timer: WorkoutTimerState;
+  onSendToWorkout?: (seconds: number) => void;
+}) {
+  const swToggle = timer.swRunning ? timer.swPause : timer.swStart;
+  const swHint = timer.swRunning
+    ? "Tap to pause"
+    : timer.swDisplay > 0
+    ? "Tap to resume"
+    : "Tap to start";
+
+  return (
+    <>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={swHint}
+        onClick={swToggle}
+        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") swToggle(); }}
+        className="relative rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none overflow-hidden w-full"
+        style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
+      >
+        {/* Light chase around the border when running */}
+        {timer.swRunning && (
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              borderRadius: "inherit",
+              padding: "2px",
+              background: "conic-gradient(from 0turn, transparent 80%, rgba(255,255,255,0.55) 92%, transparent 100%)",
+              WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+              WebkitMaskComposite: "xor",
+              maskComposite: "exclude",
+              animation: "timer-chase 0.5s linear infinite",
+            }}
+          />
+        )}
+        <div className="relative z-10 font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
+          {formatHMS(timer.swDisplay)}
+        </div>
+        <div className="relative z-10 text-xs text-muted-foreground uppercase tracking-widest">
+          {swHint}
+        </div>
+      </div>
+      {timer.swDisplay > 0 && (
+        <div className="flex justify-center gap-2">
+          <Button variant="ghost" size="sm" onClick={timer.swReset} className="text-xs text-muted-foreground">
+            Reset Stopwatch
+          </Button>
+          {onSendToWorkout && (
+            <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
+              Send to Workout Duration
+            </Button>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Stopwatch Tab ─────────────────────────────────────────────────────────────
 
 function StopwatchTab({
@@ -413,28 +495,11 @@ function StopwatchTab({
   timer: WorkoutTimerState;
   onSendToWorkout?: (seconds: number) => void;
 }) {
-  const toggleSw = timer.swRunning ? timer.swPause : timer.swStart;
-  const swHint = timer.swRunning
-    ? "Tap to pause"
-    : timer.swDisplay > 0
-    ? "Tap to resume"
-    : "Tap to start";
-
   return (
-    <div className="flex flex-col items-center gap-6 py-4">
-      {/* Tappable time display */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={swHint}
-        onClick={toggleSw}
-        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") toggleSw(); }}
-        className="font-mono text-5xl font-bold tabular-nums tracking-tight cursor-pointer select-none active:opacity-70"
-      >
-        {formatHMS(timer.swDisplay)}
-      </div>
-      <p className="text-xs text-muted-foreground -mt-4">{swHint}</p>
-      <div className="flex gap-3">
+    <div className="flex flex-col gap-4 py-4">
+      {/* StopwatchBox — tappable display with chase animation + Reset button */}
+      <StopwatchBox timer={timer} onSendToWorkout={onSendToWorkout} />
+      <div className="flex gap-3 justify-center">
         {!timer.swRunning ? (
           <Button onClick={timer.swStart} className="w-28">
             {timer.swDisplay > 0 ? "Resume" : "Start"}
@@ -442,17 +507,7 @@ function StopwatchTab({
         ) : (
           <Button onClick={timer.swPause} variant="outline" className="w-28">Pause</Button>
         )}
-        <Button onClick={timer.swReset} variant="ghost">Reset</Button>
       </div>
-      {onSendToWorkout && timer.swDisplay > 0 && (
-        <Button
-          variant="secondary"
-          className="w-full"
-          onClick={() => onSendToWorkout(timer.swDisplay)}
-        >
-          Send to Workout Duration
-        </Button>
-      )}
       <p className="text-xs text-muted-foreground text-center max-w-xs">
         Keeps running when the panel is closed.
       </p>
@@ -474,7 +529,28 @@ function TabataTab({
   // Local state: split selected but timer not yet started
   const [pendingSplit, setPendingSplit] = useState<TabataSplit | null>(null);
 
+  // Cycle progress fill toggle — persisted to localStorage
+  const [showCycleProgress, setShowCycleProgress] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try { return localStorage.getItem("timer_cycle_progress") !== "false"; } catch { return true; }
+  });
+  const toggleProgress = () => {
+    setShowCycleProgress((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("timer_cycle_progress", String(next)); } catch {}
+      return next;
+    });
+  };
+
   const { tabPhase, tabRunning, tabSelectedSplit, tabPhaseRemaining, tabCurrentCycle } = timer;
+
+  // Fill fraction: completed work cycles + progress through current "on" phase
+  const totalWorkCycles = Math.max(1, (tabSelectedSplit?.rounds ?? 1) * (tabSelectedSplit?.cycles ?? 1));
+  const completedFraction = timer.tabCompletedWorkCycles / totalWorkCycles;
+  const inProgressFraction = tabPhase === "on" && tabSelectedSplit
+    ? (1 - tabPhaseRemaining / Math.max(1, tabSelectedSplit.on_seconds)) / totalWorkCycles
+    : 0;
+  const fillPct = Math.min(100, (completedFraction + inProgressFraction) * 100);
   const isActive = tabPhase !== "idle" && tabPhase !== "done";
   const isDone = tabPhase === "done";
   const color = phaseColor(tabPhase, tabSelectedSplit);
@@ -499,14 +575,6 @@ function TabataTab({
     setPendingSplit(tabSelectedSplit);
     timer.tabReset();
   };
-
-  // Stopwatch controls for the active HIIT screen
-  const swToggle = timer.swRunning ? timer.swPause : timer.swStart;
-  const swHint = timer.swRunning
-    ? "Tap to pause stopwatch"
-    : timer.swDisplay > 0
-    ? "Tap to resume stopwatch"
-    : "Tap to start stopwatch";
 
   // ── Idle — split selector ────────────────────────────────────────────────────
   if (tabPhase === "idle" && !tabRunning && !pendingSplit) {
@@ -575,34 +643,7 @@ function TabataTab({
         </div>
 
         {/* Stopwatch — visible on ready screen too */}
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={swHint}
-          onClick={swToggle}
-          onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") swToggle(); }}
-          className="rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none"
-          style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
-        >
-          <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
-            {formatHMS(timer.swDisplay)}
-          </div>
-          <div className="text-xs text-muted-foreground uppercase tracking-widest">
-            {swHint}
-          </div>
-        </div>
-        {timer.swDisplay > 0 && (
-          <div className="flex justify-center gap-2">
-            <Button variant="ghost" size="sm" onClick={timer.swReset} className="text-xs text-muted-foreground">
-              Reset Stopwatch
-            </Button>
-            {onSendToWorkout && (
-              <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
-                Send to Workout Duration
-              </Button>
-            )}
-          </div>
-        )}
+        <StopwatchBox timer={timer} onSendToWorkout={onSendToWorkout} />
       </div>
     );
   }
@@ -618,35 +659,8 @@ function TabataTab({
           <Button onClick={handleReset}>Repeat</Button>
           <Button variant="outline" onClick={handleChooseDifferent}>Choose Different</Button>
         </div>
-        {/* Tappable stopwatch */}
-        <div
-          role="button"
-          tabIndex={0}
-          aria-label={swHint}
-          onClick={swToggle}
-          onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") swToggle(); }}
-          className="rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none w-full"
-          style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
-        >
-          <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
-            {formatHMS(timer.swDisplay)}
-          </div>
-          <div className="text-xs text-muted-foreground uppercase tracking-widest">
-            {swHint}
-          </div>
-        </div>
-        {timer.swDisplay > 0 && (
-          <div className="flex justify-center gap-2">
-            <Button variant="ghost" size="sm" onClick={timer.swReset} className="text-xs text-muted-foreground">
-              Reset Stopwatch
-            </Button>
-            {onSendToWorkout && (
-              <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
-                Send to Workout Duration
-              </Button>
-            )}
-          </div>
-        )}
+        {/* Stopwatch */}
+        <StopwatchBox timer={timer} onSendToWorkout={onSendToWorkout} />
       </div>
     );
   }
@@ -665,23 +679,64 @@ function TabataTab({
             tabRunning ? timer.tabPause() : timer.tabResume();
           }
         }}
-        className="rounded-xl flex flex-col items-center justify-center py-8 gap-2 transition-colors duration-300 cursor-pointer select-none"
+        className="relative rounded-xl flex flex-col items-center justify-center py-8 gap-2 transition-colors duration-300 cursor-pointer select-none overflow-hidden"
         style={{ backgroundColor: color + "22", borderColor: color + "66", borderWidth: 2 }}
       >
-        <div className="text-5xl font-mono font-bold tabular-nums tracking-tight" style={{ color }}>
+        {/* Horizontal fill — work cycle progress */}
+        {showCycleProgress && (
+          <div
+            className="absolute inset-y-0 left-0 transition-all duration-500 pointer-events-none"
+            style={{ width: `${fillPct}%`, backgroundColor: color + "30" }}
+          />
+        )}
+
+        {/* Content */}
+        <div className="relative z-10 text-5xl font-mono font-bold tabular-nums tracking-tight" style={{ color }}>
           {formatMS(tabPhaseRemaining)}
         </div>
-        <div className="text-xl font-semibold" style={{ color }}>
+        <div className="relative z-10 text-xl font-semibold" style={{ color }}>
           {phaseLabel(tabPhase)}
         </div>
         {isActive && tabSelectedSplit && tabPhase !== "warmup" && tabPhase !== "cooldown" && (
-          <div className="text-sm text-muted-foreground">
-            Cycle {tabCurrentCycle} / {tabSelectedSplit.cycles}
+          <div className="relative z-10 text-sm text-muted-foreground">
+            {(() => {
+              const rounds = tabSelectedSplit.rounds ?? 1;
+              const cyclesPerRound = tabSelectedSplit.cycles;
+              if (rounds > 1) {
+                const cycleInRound = ((tabCurrentCycle - 1) % cyclesPerRound) + 1;
+                const currentRound = Math.ceil(tabCurrentCycle / cyclesPerRound);
+                return `Round ${currentRound}/${rounds} · Cycle ${cycleInRound}/${cyclesPerRound}`;
+              }
+              return `Cycle ${tabCurrentCycle} / ${cyclesPerRound}`;
+            })()}
           </div>
         )}
-        <div className="text-xs mt-1" style={{ color: color + "99" }}>
+        <div className="relative z-10 text-xs mt-1" style={{ color: color + "99" }}>
           {tabRunning ? "Tap to pause" : "Tap to resume"}
         </div>
+
+        {/* 3-2-1 charge bar — sweeps left→right over 1s on each countdown beep */}
+        {tabPhaseRemaining <= 3 && tabPhaseRemaining > 0 && tabPhase !== "idle" && (
+          <div
+            key={`charge-${tabPhaseRemaining}`}
+            className="absolute bottom-0 left-0 w-full h-1 pointer-events-none"
+            style={{
+              background: `linear-gradient(90deg, ${color}88, ${color})`,
+              animation: "charge-sweep 1s linear forwards",
+              transformOrigin: "left",
+            }}
+          />
+        )}
+
+        {/* Cycle progress toggle — top-right corner */}
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); toggleProgress(); }}
+          className="absolute top-2 right-2 z-20 w-6 h-6 flex items-center justify-center text-sm opacity-40 hover:opacity-90 transition-opacity"
+          title={showCycleProgress ? "Hide cycle progress" : "Show cycle progress"}
+        >
+          {showCycleProgress ? "⊙" : "⊗"}
+        </button>
       </div>
 
       {/* Controls row */}
@@ -710,40 +765,8 @@ function TabataTab({
         <Button onClick={handleReset} variant="ghost" size="sm">Reset</Button>
       </div>
 
-      {/* Stopwatch — tappable to start/pause/resume, with reset button */}
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={swHint}
-        onClick={swToggle}
-        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") swToggle(); }}
-        className="rounded-xl flex flex-col items-center justify-center py-4 gap-1 cursor-pointer select-none"
-        style={{ backgroundColor: "#6b728018", borderColor: "#6b728044", borderWidth: 2 }}
-      >
-        <div className="font-mono text-5xl font-bold tabular-nums tracking-tight text-muted-foreground">
-          {formatHMS(timer.swDisplay)}
-        </div>
-        <div className="text-xs text-muted-foreground uppercase tracking-widest">
-          {swHint}
-        </div>
-      </div>
-      {timer.swDisplay > 0 && (
-        <div className="flex justify-center">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={timer.swReset}
-            className="text-xs text-muted-foreground"
-          >
-            Reset Stopwatch
-          </Button>
-          {onSendToWorkout && (
-            <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
-              Send to Workout Duration
-            </Button>
-          )}
-        </div>
-      )}
+      {/* Stopwatch */}
+      <StopwatchBox timer={timer} onSendToWorkout={onSendToWorkout} />
     </div>
   );
 }

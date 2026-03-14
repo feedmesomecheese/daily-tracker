@@ -83,6 +83,16 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Timer animations */
+@keyframes timer-chase {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes charge-sweep {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
 /* Driver.js tour popover overrides */
 .driver-popover {
   min-width: 320px !important;

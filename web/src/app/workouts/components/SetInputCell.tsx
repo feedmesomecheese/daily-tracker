@@ -121,6 +121,7 @@ export default function SetInputCell({
         inputMode="numeric"
         value={reps}
         onChange={(e) => onRepsChange(e.target.value)}
+        onFocus={(e) => e.target.select()}
         onKeyDown={handleRepsKeyDown}
         placeholder={ghostReps != null ? String(ghostReps) : "R"}
         className="w-14 h-7 px-1 text-center border rounded text-sm tabular-nums placeholder:text-muted-foreground/40"
@@ -131,6 +132,7 @@ export default function SetInputCell({
         inputMode="numeric"
         value={weight}
         onChange={(e) => onWeightChange(e.target.value)}
+        onFocus={(e) => e.target.select()}
         onKeyDown={handleWeightKeyDown}
         placeholder={ghostWeight != null ? String(ghostWeight) : "W"}
         className="w-14 h-7 px-1 text-center border rounded text-sm tabular-nums placeholder:text-muted-foreground/40"
