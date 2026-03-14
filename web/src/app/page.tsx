@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { delay } from "@/lib/delay";
+import { LoadingScreen } from "@/components/loading/LoadingScreen";
+import { DailyTrackerLoader } from "@/components/loading/DailyTrackerLoader";
 import { supabaseBrowser } from "@/lib/supabaseBrowser";
 import React from "react";
 import { evaluateCalculatedMetricsV2 } from "@/lib/calc";
@@ -459,6 +462,7 @@ export default function Home() {
   useEffect(() => {
     if (!authChecked) return;
     (async () => {
+      const loadStart = Date.now();
       try {
         const headers = await getAuthHeaders();
 
@@ -497,6 +501,8 @@ export default function Home() {
             analytics_config: r.analytics_config ?? null,
           }));
           setMetrics(sortMetricsForForm(normalized.filter((r) => r.active)));
+          const elapsed = Date.now() - loadStart;
+          if (elapsed < 1000) await delay(1000 - elapsed);
           setMetricsLoaded(true);
         } else {
           const err = await configRes.json().catch(() => null);
@@ -1728,10 +1734,10 @@ export default function Home() {
     setDate(newDate);
   }, [dirty]);  
 
-  if (!authChecked) {
+  if (!authChecked || !metricsLoaded) {
     return (
       <main className="p-6">
-        <div className="text-sm text-gray-600">Checking session…</div>
+        <LoadingScreen><DailyTrackerLoader /></LoadingScreen>
       </main>
     );
   }

@@ -2,6 +2,9 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { delay } from "@/lib/delay";
+import { LoadingScreen } from "@/components/loading/LoadingScreen";
+import { FoodLoader } from "@/components/loading/FoodLoader";
 import { getLocalDateString, addDays } from "@/lib/dateUtils";
 import MacroSummaryBar, { type Totals, type GoalTarget } from "./components/MacroSummaryBar";
 import FoodLogMealCard, { type Meal, type FoodLogItem } from "./components/FoodLogMealCard";
@@ -180,6 +183,7 @@ export default function FoodPage() {
   }, []);
 
   const fetchAll = useCallback(async () => {
+    const loadStart = Date.now();
     try {
       setLoading(true);
       setError(null);
@@ -223,6 +227,8 @@ export default function FoodPage() {
       } else {
         setBodyWeight(null);
       }
+      const elapsed = Date.now() - loadStart;
+      if (elapsed < 1000) await delay(1000 - elapsed);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load food log");
     } finally {
@@ -541,14 +547,7 @@ export default function FoodPage() {
           </div>
         )}
 
-        {/* Loading skeleton */}
-        {loading && (
-          <div className="space-y-3">
-            <div className="rounded-xl border bg-card h-28 animate-pulse" />
-            <div className="rounded-xl border bg-card h-32 animate-pulse" />
-            <div className="rounded-xl border bg-card h-32 animate-pulse" />
-          </div>
-        )}
+        {loading && <LoadingScreen><FoodLoader /></LoadingScreen>}
 
         {!loading && (
           <>

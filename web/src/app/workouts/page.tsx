@@ -3,6 +3,9 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { delay } from "@/lib/delay";
+import { LoadingScreen } from "@/components/loading/LoadingScreen";
+import { WorkoutsLoader } from "@/components/loading/WorkoutsLoader";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -198,6 +201,7 @@ export default function WorkoutsPage() {
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
+    const loadStart = Date.now();
     try {
       setLoading(true);
       const headers = await getAuthHeaders();
@@ -229,6 +233,8 @@ export default function WorkoutsPage() {
       setWorkouts(workoutData);
       setTags(tagsData);
       if (bodyResult) setBodyData(bodyResult);
+      const elapsed = Date.now() - loadStart;
+      if (elapsed < 1000) await delay(1000 - elapsed);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load data");
     } finally {
@@ -1065,9 +1071,8 @@ export default function WorkoutsPage() {
 
   if (loading) {
     return (
-      <main className="p-6 max-w-5xl mx-auto">
-        <h1 className="text-2xl font-semibold mb-4">Workouts</h1>
-        <p className="text-muted-foreground">Loading...</p>
+      <main className="p-4 sm:p-6 max-w-5xl mx-auto">
+        <LoadingScreen><WorkoutsLoader /></LoadingScreen>
       </main>
     );
   }

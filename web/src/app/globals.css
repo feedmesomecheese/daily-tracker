@@ -98,6 +98,47 @@
   to   { transform: scaleX(1); }
 }
 
+/* ── Loading animations ─────────────────────────────────────────────────── */
+
+/* WorkoutsLoader: standing ↔ squat cross-fade (2 s cycle) */
+@keyframes squat-stand {
+  0%, 35%  { opacity: 1; }
+  47%      { opacity: 0; }
+  88%      { opacity: 0; }
+  100%     { opacity: 1; }
+}
+@keyframes squat-down {
+  0%, 40%  { opacity: 0; }
+  52%      { opacity: 1; }
+  88%      { opacity: 1; }
+  100%     { opacity: 0; }
+}
+
+/* DailyTrackerLoader: polyline draws left→right, holds, fades, resets */
+@keyframes draw-chart-line {
+  0%   { stroke-dashoffset: 200; opacity: 0; }
+  5%   { opacity: 1; }
+  70%  { stroke-dashoffset: 0; opacity: 1; }
+  85%  { stroke-dashoffset: 0; opacity: 0; }
+  100% { stroke-dashoffset: 200; opacity: 0; }
+}
+
+/* FoodLoader: utensils spin in-place */
+@keyframes utensil-spin {
+  0%   { transform: rotate(0deg); }
+  80%  { transform: rotate(360deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* BooksLoader: text lines fade in sequentially */
+@keyframes text-line-appear {
+  0%   { opacity: 0; }
+  15%  { opacity: 0.85; }
+  70%  { opacity: 0.85; }
+  85%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+
 /* Driver.js tour popover overrides */
 .driver-popover {
   min-width: 320px !important;

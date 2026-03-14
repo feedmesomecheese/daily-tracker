@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { delay } from "@/lib/delay";
+import { LoadingScreen } from "@/components/loading/LoadingScreen";
+import { BooksLoader } from "@/components/loading/BooksLoader";
 import { Button } from "@/components/ui/button";
 import { BookCard, BookCardSkeleton, type Book } from "@/components/book-card";
 import { BookSearchSheet } from "@/components/book-search-sheet";
@@ -206,7 +209,7 @@ export default function BooksPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchBooks(), fetchStats()]);
+    await Promise.all([fetchBooks(), fetchStats(), delay(1000)]);
     setLoading(false);
   }, [fetchBooks, fetchStats]);
 
@@ -518,13 +521,7 @@ export default function BooksPage() {
       )}
 
       {/* Loading */}
-      {loading && (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <BookCardSkeleton key={i} />
-          ))}
-        </div>
-      )}
+      {loading && <LoadingScreen><BooksLoader /></LoadingScreen>}
 
       {/* Book List */}
       {!loading && books.length === 0 && (
