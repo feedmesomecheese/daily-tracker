@@ -40,6 +40,7 @@ export type WorkoutExercise = {
     is_pr: boolean;
     is_cycle_max: boolean;
     is_missed: boolean;
+    is_move_up: boolean;
   }[];
   duration_minutes?: number | null;
   distance_miles?: number | null;
@@ -86,6 +87,7 @@ export type WorkoutHistory = {
     is_pr: boolean;
     is_cycle_max: boolean;
     is_missed: boolean;
+    is_move_up: boolean;
   }[];
 };
 

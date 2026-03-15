@@ -59,6 +59,7 @@ export async function POST(req: Request, { params }: Params) {
     is_pr: set.is_pr ?? false,
     is_cycle_max: set.is_cycle_max ?? false,
     is_missed: set.is_missed ?? false,
+    is_move_up: set.is_move_up ?? false,
     notes: set.notes || null,
   }));
 

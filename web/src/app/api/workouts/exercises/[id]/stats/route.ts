@@ -34,6 +34,7 @@ type SetRow = {
   is_pr: boolean;
   is_cycle_max: boolean;
   is_missed: boolean;
+  is_move_up: boolean;
 };
 
 // GET /api/workouts/exercises/[id]/stats
@@ -189,7 +190,7 @@ export async function GET(req: Request, { params }: Params) {
     while (true) {
       const { data: page } = await supabase
         .from("workout_sets")
-        .select("workout_exercise_id, set_number, reps, weight, is_pr, is_cycle_max, is_missed")
+        .select("workout_exercise_id, set_number, reps, weight, is_pr, is_cycle_max, is_missed, is_move_up")
         .in("workout_exercise_id", chunk)
         .order("set_number", { ascending: true })
         .range(setOffset, setOffset + SESSION_PAGE - 1);

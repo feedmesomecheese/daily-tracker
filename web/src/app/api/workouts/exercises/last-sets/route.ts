@@ -44,7 +44,7 @@ export async function GET(req: Request) {
 
   const result: Record<
     string,
-    { sets: Array<{ set_number: number; reps: number | null; weight: number | null; is_pr: boolean; is_cycle_max: boolean; is_missed: boolean }> }
+    { sets: Array<{ set_number: number; reps: number | null; weight: number | null; is_pr: boolean; is_cycle_max: boolean; is_missed: boolean; is_move_up: boolean }> }
   > = {};
 
   for (const { id: exerciseId, modifierIds } of exerciseList) {
@@ -74,7 +74,7 @@ export async function GET(req: Request) {
     if (match) {
       const { data: sets } = await supabase
         .from("workout_sets")
-        .select("set_number, reps, weight, is_pr, is_cycle_max, is_missed")
+        .select("set_number, reps, weight, is_pr, is_cycle_max, is_missed, is_move_up")
         .eq("workout_exercise_id", match.id)
         .order("set_number", { ascending: true });
 
@@ -84,7 +84,7 @@ export async function GET(req: Request) {
       const { data: legacySets } = await supabase
         .from("workout_sets")
         .select(`
-          set_number, reps, weight, is_pr, is_cycle_max, is_missed,
+          set_number, reps, weight, is_pr, is_cycle_max, is_missed, is_move_up,
           workout_id,
           workouts!inner(owner_id, date)
         `)
@@ -98,13 +98,14 @@ export async function GET(req: Request) {
         const firstWorkoutId = legacySets[0].workout_id;
         const setsFromMostRecent = legacySets
           .filter((s: { workout_id: string }) => s.workout_id === firstWorkoutId)
-          .map((s: { set_number: number; reps: number | null; weight: number | null; is_pr: boolean; is_cycle_max: boolean; is_missed: boolean }) => ({
+          .map((s: { set_number: number; reps: number | null; weight: number | null; is_pr: boolean; is_cycle_max: boolean; is_missed: boolean; is_move_up: boolean }) => ({
             set_number: s.set_number,
             reps: s.reps,
             weight: s.weight,
             is_pr: s.is_pr,
             is_cycle_max: s.is_cycle_max,
             is_missed: s.is_missed,
+            is_move_up: s.is_move_up,
           }));
         result[key] = { sets: setsFromMostRecent };
       }

@@ -38,6 +38,13 @@ function SetBadge({
       </span>
     );
   }
+  if (set.is_move_up) {
+    return (
+      <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-green-600/30 bg-green-600/10 text-green-700">
+        {label}
+      </span>
+    );
+  }
   return <span>{label}</span>;
 }
 

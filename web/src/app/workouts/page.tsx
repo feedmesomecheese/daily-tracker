@@ -88,6 +88,7 @@ type WorkoutExercise = {
     is_pr: boolean;
     is_cycle_max: boolean;
     is_missed: boolean;
+    is_move_up: boolean;
   }[];
   // Cardio/HIIT/sport fields
   duration_minutes?: number | null;
@@ -118,6 +119,7 @@ type WorkoutHistory = {
     is_pr: boolean;
     is_cycle_max: boolean;
     is_missed: boolean;
+    is_move_up: boolean;
   }[];
 };
 
@@ -423,6 +425,7 @@ export default function WorkoutsPage() {
               is_pr: s.is_pr,
               is_cycle_max: s.is_cycle_max,
               is_missed: s.is_missed,
+              is_move_up: s.is_move_up,
             }))
           : inputType === "strength"
             ? Array.from({ length: 5 }, () => ({
@@ -431,6 +434,7 @@ export default function WorkoutsPage() {
                 is_pr: false,
                 is_cycle_max: false,
                 is_missed: false,
+                is_move_up: false,
               }))
             : [],
         superset_group: ex.superset_group ?? null,
@@ -496,6 +500,7 @@ export default function WorkoutsPage() {
               is_pr: false,
               is_cycle_max: false,
               is_missed: false,
+              is_move_up: false,
             }))
           : inputType === "strength"
             ? Array.from({ length: 5 }, () => ({
@@ -504,6 +509,7 @@ export default function WorkoutsPage() {
                 is_pr: false,
                 is_cycle_max: false,
                 is_missed: false,
+                is_move_up: false,
               }))
             : [],
         superset_group: ex.superset_group ?? null,
@@ -558,6 +564,7 @@ export default function WorkoutsPage() {
               is_pr: false,
               is_cycle_max: false,
               is_missed: false,
+              is_move_up: false,
             }))
           : [],
         superset_group: null,
@@ -676,6 +683,7 @@ export default function WorkoutsPage() {
             is_pr: false,
             is_cycle_max: false,
             is_missed: false,
+            is_move_up: false,
           }))
         : [],
       superset_group: null,
@@ -716,6 +724,7 @@ export default function WorkoutsPage() {
             is_pr: false,
             is_cycle_max: false,
             is_missed: false,
+            is_move_up: false,
           }))
         : [],
       superset_group: null,
@@ -827,6 +836,7 @@ export default function WorkoutsPage() {
             is_pr: s.is_pr,
             is_cycle_max: s.is_cycle_max,
             is_missed: s.is_missed,
+            is_move_up: s.is_move_up,
           })),
           // Cardio fields
           duration_minutes: ex.duration_minutes ? parseFloat(ex.duration_minutes) : null,
@@ -1515,6 +1525,10 @@ export default function WorkoutsPage() {
                                         <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-red-700/30 bg-red-700/10 text-red-700" title="Missed set">
                                           {s.reps || 0}x{s.weight || 0}
                                         </span>
+                                      ) : s.is_move_up ? (
+                                        <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-green-600/30 bg-green-600/10 text-green-700" title="Ready to Progress — increase weight next workout">
+                                          {s.reps || 0}x{s.weight || 0}
+                                        </span>
                                       ) : (
                                         <span>{s.reps || 0}x{s.weight || 0}</span>
                                       )}
@@ -1603,6 +1617,10 @@ export default function WorkoutsPage() {
                                     </span>
                                   ) : s.is_missed ? (
                                     <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-red-700/30 bg-red-700/10 text-red-700" title="Missed set">
+                                      {s.reps || 0}x{s.weight || 0}
+                                    </span>
+                                  ) : s.is_move_up ? (
+                                    <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-green-600/30 bg-green-600/10 text-green-700" title="Ready to Progress — increase weight next workout">
                                       {s.reps || 0}x{s.weight || 0}
                                     </span>
                                   ) : (

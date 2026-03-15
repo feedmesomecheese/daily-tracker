@@ -12,6 +12,7 @@ export type BucketSet = {
   is_pr: boolean;
   is_cycle_max: boolean;
   is_missed: boolean;
+  is_move_up: boolean;
 };
 
 export type BucketExerciseData = {
@@ -99,6 +100,7 @@ export default function BucketExerciseRow({
           is_pr: false,
           is_cycle_max: false,
           is_missed: false,
+          is_move_up: false,
         })),
       ]
     : data.sets;
@@ -109,7 +111,7 @@ export default function BucketExerciseRow({
     onUpdate({ ...data, sets: newSets });
   };
 
-  const toggleFlag = (index: number, flag: "is_pr" | "is_cycle_max" | "is_missed") => {
+  const toggleFlag = (index: number, flag: "is_pr" | "is_cycle_max" | "is_missed" | "is_move_up") => {
     const newSets = [...displaySets];
     newSets[index] = { ...newSets[index], [flag]: !newSets[index][flag] };
     onUpdate({ ...data, sets: newSets });
@@ -118,7 +120,7 @@ export default function BucketExerciseRow({
   const addSet = () => {
     const newSets = [
       ...displaySets,
-      { reps: "", weight: "", is_pr: false, is_cycle_max: false, is_missed: false },
+      { reps: "", weight: "", is_pr: false, is_cycle_max: false, is_missed: false, is_move_up: false },
     ];
     onUpdate({ ...data, sets: newSets });
     // Focus new set's reps after render
@@ -213,6 +215,7 @@ export default function BucketExerciseRow({
                     isPr={set.is_pr}
                     isCycleMax={set.is_cycle_max}
                     isMissed={set.is_missed}
+                    isMoveUp={set.is_move_up}
                     onRepsChange={(v) => updateSet(i, "reps", v)}
                     onWeightChange={(v) => updateSet(i, "weight", v)}
                     onFlagToggle={(flag) => toggleFlag(i, flag)}

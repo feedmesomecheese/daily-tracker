@@ -35,6 +35,7 @@ export type WorkoutSet = {
   is_pr: boolean;
   is_cycle_max: boolean;
   is_missed: boolean;
+  is_move_up: boolean;
   notes: string | null;
   created_at: string;
 };
@@ -57,6 +58,7 @@ type ExerciseSetInput = {
   is_pr?: boolean;
   is_cycle_max?: boolean;
   is_missed?: boolean;
+  is_move_up?: boolean;
 };
 
 type ExerciseInput = {
@@ -389,6 +391,7 @@ export async function POST(req: Request) {
           is_pr: s.is_pr ?? false,
           is_cycle_max: s.is_cycle_max ?? false,
           is_missed: s.is_missed ?? false,
+          is_move_up: s.is_move_up ?? false,
         }));
 
         const { error: setsError } = await supabase
@@ -421,6 +424,7 @@ export async function POST(req: Request) {
       is_pr: set.is_pr ?? false,
       is_cycle_max: set.is_cycle_max ?? false,
       is_missed: set.is_missed ?? false,
+      is_move_up: set.is_move_up ?? false,
       notes: set.notes || null,
     }));
 

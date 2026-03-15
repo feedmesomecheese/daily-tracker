@@ -79,7 +79,7 @@ function buildExerciseCentricData(
 function SetBadge({
   set,
 }: {
-  set: { reps: number | null; weight: number | null; is_pr: boolean; is_cycle_max: boolean; is_missed: boolean };
+  set: { reps: number | null; weight: number | null; is_pr: boolean; is_cycle_max: boolean; is_missed: boolean; is_move_up: boolean };
 }) {
   const label = `${set.reps || 0}x${set.weight || 0}`;
   if (set.is_pr) {
@@ -99,6 +99,13 @@ function SetBadge({
   if (set.is_missed) {
     return (
       <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-red-700/30 bg-red-700/10 text-red-700">
+        {label}
+      </span>
+    );
+  }
+  if (set.is_move_up) {
+    return (
+      <span className="inline-block px-1.5 py-0.5 rounded text-xs border border-green-600/30 bg-green-600/10 text-green-700">
         {label}
       </span>
     );

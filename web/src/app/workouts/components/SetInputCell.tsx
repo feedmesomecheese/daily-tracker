@@ -12,9 +12,10 @@ type SetInputCellProps = {
   isPr: boolean;
   isCycleMax: boolean;
   isMissed: boolean;
+  isMoveUp: boolean;
   onRepsChange: (value: string) => void;
   onWeightChange: (value: string) => void;
-  onFlagToggle: (flag: "is_pr" | "is_cycle_max" | "is_missed") => void;
+  onFlagToggle: (flag: "is_pr" | "is_cycle_max" | "is_missed" | "is_move_up") => void;
   repsRef?: (el: HTMLInputElement | null) => void;
   weightRef?: (el: HTMLInputElement | null) => void;
   onRepsKeyDown?: (e: React.KeyboardEvent) => void;
@@ -30,6 +31,7 @@ export default function SetInputCell({
   isPr,
   isCycleMax,
   isMissed,
+  isMoveUp,
   onRepsChange,
   onWeightChange,
   onFlagToggle,
@@ -75,6 +77,11 @@ export default function SetInputCell({
         onFlagToggle("is_missed");
         return;
       }
+      if (e.key === "u" || e.key === "U") {
+        e.preventDefault();
+        onFlagToggle("is_move_up");
+        return;
+      }
     }
 
     // Tab over ghost text = accept ghost value
@@ -100,6 +107,11 @@ export default function SetInputCell({
       if (e.key === "x" || e.key === "X") {
         e.preventDefault();
         onFlagToggle("is_missed");
+        return;
+      }
+      if (e.key === "u" || e.key === "U") {
+        e.preventDefault();
+        onFlagToggle("is_move_up");
         return;
       }
     }
@@ -179,6 +191,20 @@ export default function SetInputCell({
           title="Missed (Ctrl+X)"
         >
           X
+        </button>
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => onFlagToggle("is_move_up")}
+          className={cn(
+            "w-4 h-4 rounded text-[8px] font-bold leading-none flex items-center justify-center transition-colors",
+            isMoveUp
+              ? "bg-green-500 text-green-950"
+              : "bg-muted text-muted-foreground/50 hover:text-muted-foreground"
+          )}
+          title="Ready to Progress (Ctrl+U)"
+        >
+          U
         </button>
       </div>
     </div>

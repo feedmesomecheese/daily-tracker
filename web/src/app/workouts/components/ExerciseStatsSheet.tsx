@@ -36,6 +36,7 @@ type SetRow = {
   is_pr: boolean;
   is_cycle_max: boolean;
   is_missed: boolean;
+  is_move_up: boolean;
 };
 
 type SessionData = {
