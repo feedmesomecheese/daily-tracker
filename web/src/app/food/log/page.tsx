@@ -61,7 +61,7 @@ function computeRollingAverages(logs: FoodLog[], days: number = 7): RollingAvera
   if (logs.length === 0) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
   const logByDate = new Map(logs.map((l) => [l.date, l]));
-  const endDate = logs[0].date;
+  const endDate = todayISO();
 
   type MacroDay = { calories: number; protein: number; carbs: number; fat: number };
   const filled: MacroDay[] = [];
@@ -70,16 +70,16 @@ function computeRollingAverages(logs: FoodLog[], days: number = 7): RollingAvera
   for (let i = days - 1; i >= 0; i--) {
     const date = addDays(endDate, -i);
     const log = logByDate.get(date);
-    if (log && !log.is_fasted) {
+    if (log && !log.is_fasted && log.total_calories > 0) {
       lastKnown = {
-        calories: log.total_calories || 0,
-        protein: log.total_protein || 0,
-        carbs: log.total_carbs || 0,
-        fat: log.total_fat || 0,
+        calories: log.total_calories,
+        protein: log.total_protein,
+        carbs: log.total_carbs,
+        fat: log.total_fat,
       };
       filled.push(lastKnown);
     } else if (!log?.is_fasted && lastKnown) {
-      filled.push(lastKnown); // carry forward (skip fasted days entirely)
+      filled.push(lastKnown); // carry forward empty/missing days (skip fasted entirely)
     }
   }
 
