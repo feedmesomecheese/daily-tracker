@@ -114,11 +114,17 @@ interface ChartDay {
   dayType: ChartDayType;
 }
 
+function todayISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function buildChartData(logs: FoodLog[], days: number = 30): ChartDay[] {
   if (logs.length === 0) return [];
 
   const logByDate = new Map(logs.map((l) => [l.date, l]));
-  const endDate = logs[0].date;
+  // Always extend chart window to today so recent un-logged days show carry-forward
+  const endDate = todayISO();
 
   const result: ChartDay[] = [];
   let lastKnown: { Protein: number; Carbs: number; Fat: number; Calories: number } | null = null;
@@ -131,7 +137,7 @@ function buildChartData(logs: FoodLog[], days: number = 30): ChartDay[] {
 
     if (log && log.is_fasted) {
       result.push({ label, date, Protein: 0, Carbs: 0, Fat: 0, Calories: 0, dayType: "fasted" });
-    } else if (log) {
+    } else if (log && log.total_calories > 0) {
       lastKnown = {
         Protein: Math.round(log.total_protein),
         Carbs: Math.round(log.total_carbs),
@@ -140,6 +146,7 @@ function buildChartData(logs: FoodLog[], days: number = 30): ChartDay[] {
       };
       result.push({ label, date, ...lastKnown, dayType: "actual" });
     } else if (lastKnown) {
+      // empty log (0 cal) or no log: carry forward last known data
       result.push({ label, date, ...lastKnown, dayType: "carried" });
     }
     // Days before any logged data: omit
@@ -304,17 +311,17 @@ export default function FoodLogPage() {
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Bar yAxisId="macro" dataKey="Protein" stackId="macros" fill="#22c55e" isAnimationActive={false}>
                   {chartData.map((entry, i) => (
-                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.3 : 0.12} />
+                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.5 : 0.12} />
                   ))}
                 </Bar>
                 <Bar yAxisId="macro" dataKey="Carbs" stackId="macros" fill="#f59e0b" isAnimationActive={false}>
                   {chartData.map((entry, i) => (
-                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.3 : 0.12} />
+                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.5 : 0.12} />
                   ))}
                 </Bar>
                 <Bar yAxisId="macro" dataKey="Fat" stackId="macros" fill="#60a5fa" isAnimationActive={false}>
                   {chartData.map((entry, i) => (
-                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.3 : 0.12} />
+                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.5 : 0.12} />
                   ))}
                 </Bar>
                 <Line yAxisId="cal" type="monotone" dataKey="Calories" stroke="#e11d48" strokeWidth={2} dot={false} isAnimationActive={false} />
