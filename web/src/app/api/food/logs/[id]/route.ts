@@ -17,7 +17,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const { data: log, error: logErr } = await supabase
     .from("food_logs")
-    .select("id, date, notes, is_submitted, submitted_at, created_at, updated_at")
+    .select("id, date, notes, is_submitted, submitted_at, is_fasted, created_at, updated_at")
     .eq("id", id)
     .eq("owner_id", user.id)
     .single();
@@ -109,13 +109,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if ("notes" in json) {
     updates.notes = typeof json.notes === "string" ? json.notes.trim() || null : null;
   }
+  if ("is_fasted" in json) {
+    updates.is_fasted = json.is_fasted === true;
+  }
 
   const { data: updated, error: updateErr } = await supabase
     .from("food_logs")
     .update(updates)
     .eq("id", id)
     .eq("owner_id", user.id)
-    .select("id, date, notes, is_submitted, submitted_at, updated_at")
+    .select("id, date, notes, is_submitted, submitted_at, is_fasted, updated_at")
     .single();
 
   if (updateErr || !updated) return NextResponse.json({ error: updateErr?.message ?? "Not found" }, { status: updateErr ? 500 : 404 });

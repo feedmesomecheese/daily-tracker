@@ -37,6 +37,7 @@ interface FoodLog {
   date: string;
   notes: string | null;
   is_submitted: boolean;
+  is_fasted: boolean;
   meals: Meal[];
 }
 
@@ -416,6 +417,39 @@ export default function FoodPage() {
     }
   };
 
+  const handleToggleFasted = async () => {
+    if (!logIdRef.current) return;
+    const newValue = !foodLog?.is_fasted;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/food/logs/${logIdRef.current}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ is_fasted: newValue }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      await refreshLog();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update");
+    }
+  };
+
+  const handleUnsubmit = async () => {
+    if (!logIdRef.current) return;
+    if (!confirm("Remove this day's food data from Daily Tracker?")) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/food/logs/${logIdRef.current}/submit`, {
+        method: "DELETE",
+        headers,
+      });
+      if (!res.ok) throw new Error("Failed to unsubmit");
+      await refreshLog();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to unsubmit");
+    }
+  };
+
   const loadTemplates = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
@@ -600,7 +634,7 @@ export default function FoodPage() {
               )}
             </div>
 
-            {/* Footer: notes + submit */}
+            {/* Footer: notes + actions */}
             <div className="rounded-xl border bg-card text-card-foreground shadow p-4 flex flex-col gap-3">
               <textarea
                 placeholder="Daily notes..."
@@ -610,17 +644,43 @@ export default function FoodPage() {
                 rows={3}
                 className="w-full resize-none rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               />
-              <button
-                onClick={handleSubmit}
-                disabled={submitting}
-                className="w-full rounded-lg bg-primary text-primary-foreground py-2.5 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {submitting
-                  ? "Submitting..."
-                  : foodLog?.is_submitted
-                  ? "Submitted — Resubmit to DT"
-                  : "Submit Day to DT"}
-              </button>
+              <div className="flex gap-2">
+                {/* Fasted toggle */}
+                <button
+                  onClick={handleToggleFasted}
+                  className={`rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors ${
+                    foodLog?.is_fasted
+                      ? "border-muted-foreground/40 bg-muted text-foreground"
+                      : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/30"
+                  }`}
+                >
+                  {foodLog?.is_fasted ? "✓ Fasted" : "Fasted"}
+                </button>
+
+                {/* Submit / Resubmit */}
+                <button
+                  onClick={handleSubmit}
+                  disabled={submitting}
+                  className="flex-1 rounded-lg bg-primary text-primary-foreground py-2.5 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {submitting
+                    ? "Submitting..."
+                    : foodLog?.is_submitted
+                    ? "Resubmit to DT"
+                    : "Submit Day to DT"}
+                </button>
+
+                {/* Unsubmit — only when submitted */}
+                {foodLog?.is_submitted && (
+                  <button
+                    onClick={handleUnsubmit}
+                    className="rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 px-3 py-2.5 text-sm font-medium transition-colors"
+                    title="Remove from Daily Tracker"
+                  >
+                    Unsubmit
+                  </button>
+                )}
+              </div>
             </div>
           </>
         )}

@@ -126,3 +126,45 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   return NextResponse.json({ success: true, totals });
 }
+
+// DELETE /api/food/logs/[id]/submit — remove DT entries and clear submitted flag
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { supabase, user } = await getAuthedClient(req);
+  if (!supabase || !user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const { id } = await params;
+
+  // 1. Fetch the food_log to get the date
+  const { data: log, error: logErr } = await supabase
+    .from("food_logs")
+    .select("id, date")
+    .eq("id", id)
+    .eq("owner_id", user.id)
+    .single();
+
+  if (logErr || !log) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const { date } = log as { id: string; date: string };
+
+  // 2. Delete the 5 food metric rows from DT log table
+  const foodMetricIds = ["food_calories", "food_protein", "food_fat", "food_carbs", "food_fiber"];
+  const { error: deleteErr } = await supabase
+    .from("log")
+    .delete()
+    .eq("owner_id", user.id)
+    .eq("date", date)
+    .in("metric_id", foodMetricIds);
+
+  if (deleteErr) return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+
+  // 3. Clear submitted flag on food_log
+  const { error: clearErr } = await supabase
+    .from("food_logs")
+    .update({ is_submitted: false, submitted_at: null, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("owner_id", user.id);
+
+  if (clearErr) return NextResponse.json({ error: clearErr.message }, { status: 500 });
+
+  return NextResponse.json({ success: true });
+}

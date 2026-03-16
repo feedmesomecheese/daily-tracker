@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
   const { data: logs, error: logsErr } = await supabase
     .from("food_logs")
-    .select("id, date, notes, is_submitted, submitted_at, created_at, updated_at")
+    .select("id, date, notes, is_submitted, submitted_at, is_fasted, created_at, updated_at")
     .eq("owner_id", user.id)
     .order("date", { ascending: false })
     .range(offset, offset + limit - 1);
@@ -95,6 +95,7 @@ export async function GET(req: Request) {
     notes: string | null;
     is_submitted: boolean;
     submitted_at: string | null;
+    is_fasted: boolean;
   }[]).map((log) => {
     const t = totalsMap.get(log.id) ?? { calories: 0, fat: 0, carbs: 0, protein: 0, fiber: 0 };
     return {
@@ -103,6 +104,7 @@ export async function GET(req: Request) {
       notes: log.notes,
       is_submitted: log.is_submitted,
       submitted_at: log.submitted_at,
+      is_fasted: log.is_fasted,
       total_calories: t.calories,
       total_protein: t.protein,
       total_fat: t.fat,

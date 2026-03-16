@@ -22,6 +22,7 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  Cell,
 } from "recharts";
 
 interface FoodLog {
@@ -30,6 +31,7 @@ interface FoodLog {
   notes: string | null;
   is_submitted: boolean;
   submitted_at: string | null;
+  is_fasted: boolean;
   total_calories: number;
   total_protein: number;
   total_fat: number;
@@ -58,11 +60,9 @@ function formatDate(dateStr: string): string {
 function computeRollingAverages(logs: FoodLog[], days: number = 7): RollingAverages {
   if (logs.length === 0) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
 
-  // logs are sorted newest-first; build a date → log lookup
   const logByDate = new Map(logs.map((l) => [l.date, l]));
-  const endDate = logs[0].date; // most recent logged date
+  const endDate = logs[0].date;
 
-  // Walk backwards `days` calendar days from endDate, carrying forward last known values
   type MacroDay = { calories: number; protein: number; carbs: number; fat: number };
   const filled: MacroDay[] = [];
   let lastKnown: MacroDay | null = null;
@@ -70,7 +70,7 @@ function computeRollingAverages(logs: FoodLog[], days: number = 7): RollingAvera
   for (let i = days - 1; i >= 0; i--) {
     const date = addDays(endDate, -i);
     const log = logByDate.get(date);
-    if (log) {
+    if (log && !log.is_fasted) {
       lastKnown = {
         calories: log.total_calories || 0,
         protein: log.total_protein || 0,
@@ -78,10 +78,9 @@ function computeRollingAverages(logs: FoodLog[], days: number = 7): RollingAvera
         fat: log.total_fat || 0,
       };
       filled.push(lastKnown);
-    } else if (lastKnown) {
-      filled.push(lastKnown); // carry forward
+    } else if (!log?.is_fasted && lastKnown) {
+      filled.push(lastKnown); // carry forward (skip fasted days entirely)
     }
-    // Leading gap before first log: skip (don't inflate average with zeros)
   }
 
   if (filled.length === 0) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
@@ -101,6 +100,52 @@ function computeRollingAverages(logs: FoodLog[], days: number = 7): RollingAvera
     carbs: Math.round(sum.carbs / filled.length),
     fat: Math.round(sum.fat / filled.length),
   };
+}
+
+type ChartDayType = "actual" | "carried" | "fasted";
+
+interface ChartDay {
+  label: string;
+  date: string;
+  Protein: number;
+  Carbs: number;
+  Fat: number;
+  Calories: number;
+  dayType: ChartDayType;
+}
+
+function buildChartData(logs: FoodLog[], days: number = 30): ChartDay[] {
+  if (logs.length === 0) return [];
+
+  const logByDate = new Map(logs.map((l) => [l.date, l]));
+  const endDate = logs[0].date;
+
+  const result: ChartDay[] = [];
+  let lastKnown: { Protein: number; Carbs: number; Fat: number; Calories: number } | null = null;
+
+  for (let i = days - 1; i >= 0; i--) {
+    const date = addDays(endDate, -i);
+    const log = logByDate.get(date);
+    const [, month, day] = date.split("-");
+    const label = `${Number(month)}/${Number(day)}`;
+
+    if (log && log.is_fasted) {
+      result.push({ label, date, Protein: 0, Carbs: 0, Fat: 0, Calories: 0, dayType: "fasted" });
+    } else if (log) {
+      lastKnown = {
+        Protein: Math.round(log.total_protein),
+        Carbs: Math.round(log.total_carbs),
+        Fat: Math.round(log.total_fat),
+        Calories: Math.round(log.total_calories),
+      };
+      result.push({ label, date, ...lastKnown, dayType: "actual" });
+    } else if (lastKnown) {
+      result.push({ label, date, ...lastKnown, dayType: "carried" });
+    }
+    // Days before any logged data: omit
+  }
+
+  return result;
 }
 
 const PAGE_SIZE = 30;
@@ -196,21 +241,7 @@ export default function FoodLogPage() {
   const avg = computeRollingAverages(logs, 7);
   const hasMeaningfulAvg = logs.length > 0;
 
-  // Chart data — most recent 30 days, reversed so oldest is left
-  const chartData = logs
-    .slice(0, 30)
-    .reverse()
-    .map((log) => {
-      const [, month, day] = log.date.split("-");
-      return {
-        label: `${Number(month)}/${Number(day)}`,
-        date: log.date,
-        Protein: Math.round(log.total_protein),
-        Carbs: Math.round(log.total_carbs),
-        Fat: Math.round(log.total_fat),
-        Calories: Math.round(log.total_calories),
-      };
-    });
+  const chartData = buildChartData(logs, 30);
 
   const handleDeleteAllHistory = async () => {
     if (!confirm("DEV: Delete ALL food history? This cannot be undone.")) return;
@@ -271,9 +302,21 @@ export default function FoodLogPage() {
                 <YAxis yAxisId="cal" orientation="right" tick={{ fontSize: 10 }} unit="k" tickFormatter={(v) => `${Math.round(v / 1000)}`} />
                 <Tooltip content={<MacroTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar yAxisId="macro" dataKey="Protein" stackId="macros" fill="#22c55e" fillOpacity={0.85} isAnimationActive={false} />
-                <Bar yAxisId="macro" dataKey="Carbs" stackId="macros" fill="#f59e0b" fillOpacity={0.85} isAnimationActive={false} />
-                <Bar yAxisId="macro" dataKey="Fat" stackId="macros" fill="#60a5fa" fillOpacity={0.85} isAnimationActive={false} />
+                <Bar yAxisId="macro" dataKey="Protein" stackId="macros" fill="#22c55e" isAnimationActive={false}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.3 : 0.12} />
+                  ))}
+                </Bar>
+                <Bar yAxisId="macro" dataKey="Carbs" stackId="macros" fill="#f59e0b" isAnimationActive={false}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.3 : 0.12} />
+                  ))}
+                </Bar>
+                <Bar yAxisId="macro" dataKey="Fat" stackId="macros" fill="#60a5fa" isAnimationActive={false}>
+                  {chartData.map((entry, i) => (
+                    <Cell key={i} fillOpacity={entry.dayType === "actual" ? 0.85 : entry.dayType === "carried" ? 0.3 : 0.12} />
+                  ))}
+                </Bar>
                 <Line yAxisId="cal" type="monotone" dataKey="Calories" stroke="#e11d48" strokeWidth={2} dot={false} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
@@ -344,6 +387,11 @@ export default function FoodLogPage() {
                       </span>
                     );
                   })()}
+                  {log.is_fasted && (
+                    <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                      Fasted
+                    </span>
+                  )}
                   {log.is_submitted && (
                     <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-0.5 rounded-full">
                       Submitted
