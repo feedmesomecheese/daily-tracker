@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { validateAiKey, getAiSupabase, getAiOwnerId } from "@/lib/aiAuth";
+import { validateAiKey, getAiSupabase, getAiOwnerId, AI_CORS_HEADERS, handleAiOptions } from "@/lib/aiAuth";
+
+export async function OPTIONS() { return handleAiOptions(); }
 
 export async function GET(req: Request) {
   const authError = validateAiKey(req);
@@ -28,7 +30,7 @@ export async function GET(req: Request) {
   }
 
   if (!workouts || workouts.length === 0) {
-    return NextResponse.json({ period: { start, end, days }, workouts: [] });
+    return NextResponse.json({ period: { start, end, days }, workouts: [] }, { headers: AI_CORS_HEADERS });
   }
 
   const workoutIds = workouts.map((w) => w.id);
@@ -63,5 +65,5 @@ export async function GET(req: Request) {
     exercises: exercisesByWorkout.get(w.id) || [],
   }));
 
-  return NextResponse.json({ period: { start, end, days }, workouts: result });
+  return NextResponse.json({ period: { start, end, days }, workouts: result }, { headers: AI_CORS_HEADERS });
 }

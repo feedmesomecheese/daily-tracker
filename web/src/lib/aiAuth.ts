@@ -1,6 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 
+export const AI_CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+};
+
+export function handleAiOptions() {
+  return new NextResponse(null, { status: 204, headers: AI_CORS_HEADERS });
+}
+
 /**
  * Validates the Authorization: Bearer <key> header against AI_API_KEY env var.
  * Returns a 401 response if invalid, or null if valid.

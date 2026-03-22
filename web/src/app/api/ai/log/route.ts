@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { validateAiKey, getAiSupabase, getAiOwnerId } from "@/lib/aiAuth";
+import { validateAiKey, getAiSupabase, getAiOwnerId, AI_CORS_HEADERS, handleAiOptions } from "@/lib/aiAuth";
+
+export async function OPTIONS() { return handleAiOptions(); }
 
 export async function GET(req: Request) {
   const authError = validateAiKey(req);
@@ -65,5 +67,5 @@ export async function GET(req: Request) {
       type: m.type,
       group: m.group,
     })),
-  });
+  }, { headers: AI_CORS_HEADERS });
 }
