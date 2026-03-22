@@ -208,6 +208,40 @@ export async function GET(req: Request) {
         },
       },
     },
+      "/api/ai/food": {
+        get: {
+          operationId: "getFoodLog",
+          summary: "Get food/nutrition log",
+          description:
+            "Returns daily food logs with per-meal macro breakdowns (calories, protein, fat, carbs, fiber). Only days with logged food are included — gaps do not mean the user didn't eat.",
+          parameters: [
+            {
+              name: "start",
+              in: "query",
+              description: "Start date in YYYY-MM-DD format.",
+              schema: { type: "string", format: "date" },
+            },
+            {
+              name: "end",
+              in: "query",
+              description: "End date in YYYY-MM-DD format (default: today)",
+              schema: { type: "string", format: "date" },
+            },
+            {
+              name: "days",
+              in: "query",
+              description: "Number of days to look back from end (default 30, max 3650). Ignored if start is provided.",
+              schema: { type: "integer", default: 30 },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Food log with meal-level macro breakdowns",
+            },
+          },
+        },
+      },
+    },
     components: {
       schemas: {},
     },
