@@ -6,7 +6,7 @@ export async function GET(req: Request) {
   const baseUrl = `${protocol}://${host}`;
 
   const spec = {
-    openapi: "3.0.0",
+    openapi: "3.1.0",
     info: {
       title: "Daily Tracker API",
       description: "Access personal health, workout, and reading data from Daily Tracker.",
