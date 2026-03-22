@@ -174,6 +174,47 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
     return markers;
   }, [weightFiltered, bfFiltered]);
 
+  // BF% vs. weight regression
+  const bfTrend = useMemo(() => {
+    if (!bodyData) return null;
+    const weightEntries = bodyData.weight;
+    const bfEntries = bodyData.bodyfat;
+    if (weightEntries.length < 3 || bfEntries.length < 3) return null;
+
+    // Build (weight, bf) pairs: for each BF entry, find nearest prior weight
+    const pairs: { x: number; y: number }[] = [];
+    for (const bfEntry of bfEntries) {
+      const w = findNearestPrior(weightEntries, bfEntry.date);
+      if (w !== null) pairs.push({ x: w, y: bfEntry.value });
+    }
+    if (pairs.length < 5) return null;
+
+    // Linear regression: BF% = a * weight + b
+    const n = pairs.length;
+    const sumX = pairs.reduce((s, p) => s + p.x, 0);
+    const sumY = pairs.reduce((s, p) => s + p.y, 0);
+    const sumXY = pairs.reduce((s, p) => s + p.x * p.y, 0);
+    const sumX2 = pairs.reduce((s, p) => s + p.x * p.x, 0);
+    const denom = n * sumX2 - sumX * sumX;
+    if (Math.abs(denom) < 1e-10) return null;
+
+    const slope = (n * sumXY - sumX * sumY) / denom;
+    const intercept = (sumY - slope * sumX) / n;
+
+    if (currentWeight === null || currentBF === null) return null;
+
+    const expectedBF = slope * currentWeight + intercept;
+    const deltaPct = currentBF - expectedBF;
+    const deltaLbs = (deltaPct / 100) * currentWeight;
+
+    return {
+      expectedBF: Math.round(expectedBF * 10) / 10,
+      deltaPct: Math.round(deltaPct * 10) / 10,
+      deltaLbs: Math.round(deltaLbs * 10) / 10,
+      pairCount: pairs.length,
+    };
+  }, [bodyData, currentWeight, currentBF]);
+
   // All-time stats
   const weightStats = useMemo(() => {
     const entries = bodyData?.weight ?? [];
@@ -251,6 +292,45 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                 </span>
               </div>
             </div>
+
+            {/* BF% vs trend */}
+            {bfTrend && (
+              <Card>
+                <CardHeader className="py-3">
+                  <CardTitle className="text-sm">BF% vs. Your Weight Trend</CardTitle>
+                </CardHeader>
+                <CardContent className="pb-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">Expected BF%</span>
+                      <span className="text-lg font-semibold tabular-nums">{bfTrend.expectedBF}%</span>
+                      <span className="text-xs text-muted-foreground">at {currentWeight} lbs</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">Actual BF%</span>
+                      <span className="text-lg font-semibold tabular-nums">{currentBF}%</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">vs. Trend</span>
+                      <span className={`text-lg font-semibold tabular-nums ${bfTrend.deltaPct < 0 ? "text-green-500" : bfTrend.deltaPct > 0 ? "text-amber-500" : ""}`}>
+                        {bfTrend.deltaPct > 0 ? "+" : ""}{bfTrend.deltaPct}%
+                      </span>
+                      <span className={`text-xs font-medium ${bfTrend.deltaLbs < 0 ? "text-green-500" : bfTrend.deltaLbs > 0 ? "text-amber-500" : ""}`}>
+                        {bfTrend.deltaLbs > 0 ? "+" : ""}{bfTrend.deltaLbs} lbs fat
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {bfTrend.deltaPct < 0
+                      ? `${Math.abs(bfTrend.deltaPct)}% leaner than expected for this weight`
+                      : bfTrend.deltaPct > 0
+                      ? `${bfTrend.deltaPct}% above expected for this weight`
+                      : "Right on your historical trend"
+                    } · based on {bfTrend.pairCount} data points
+                  </p>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Range selector */}
             {hasChartData && (
