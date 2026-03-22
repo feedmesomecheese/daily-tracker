@@ -526,9 +526,9 @@ export default function WorkoutsPage() {
 
     setBucketExercises(bucketData);
 
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    }, 150);
   };
 
   const loadFromTemplate = (template: WorkoutTemplate) => {

@@ -273,7 +273,9 @@ export default function FoodPage() {
         body: JSON.stringify({ meal_name: `Meal ${mealCount}` }),
       });
       if (!res.ok) throw new Error("Failed to add meal");
+      const newMeal = await res.json();
       await refreshLog();
+      openFoodSearch(newMeal.id);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to add meal");
     }

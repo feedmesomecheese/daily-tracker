@@ -745,6 +745,16 @@ export function useWorkoutTimer(): WorkoutTimerState {
             countdownFiredRef.current.add(remaining);
             playTone({ enabled: true, soundType: "tone", frequency: 1200, oscType: "sine" });
           }
+          // 30-second warning beep during rest phase (only if rest > 30s)
+          if (
+            remaining === 30 &&
+            tabPhaseRef.current === "off" &&
+            (tabSplitRef.current?.off_seconds ?? 0) > 30 &&
+            !countdownFiredRef.current.has(30)
+          ) {
+            countdownFiredRef.current.add(30);
+            playTone({ enabled: true, soundType: "tone", frequency: 880, oscType: "sine" });
+          }
         }
       }
     };
