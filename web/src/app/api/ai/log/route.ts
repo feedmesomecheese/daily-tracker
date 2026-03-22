@@ -11,11 +11,16 @@ export async function GET(req: Request) {
   const ownerId = getAiOwnerId();
 
   const url = new URL(req.url);
-  const days = Math.min(parseInt(url.searchParams.get("days") || "30"), 365);
-  const end = url.searchParams.get("end") || new Date().toISOString().slice(0, 10);
-  const startDate = new Date(end);
-  startDate.setDate(startDate.getDate() - days + 1);
-  const start = startDate.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const end = url.searchParams.get("end") || today;
+  // If explicit start provided, use it; otherwise fall back to days param
+  let start = url.searchParams.get("start") || "";
+  if (!start) {
+    const days = Math.min(parseInt(url.searchParams.get("days") || "30"), 3650);
+    const startDate = new Date(end);
+    startDate.setDate(startDate.getDate() - days + 1);
+    start = startDate.toISOString().slice(0, 10);
+  }
 
   const [configResult, logResult] = await Promise.all([
     supabase
@@ -59,7 +64,7 @@ export async function GET(req: Request) {
     .sort((a, b) => b.date.localeCompare(a.date));
 
   return NextResponse.json({
-    period: { start, end, days },
+    period: { start, end },
     entries,
     metrics: (configResult.data || []).map((m) => ({
       id: m.metric_id,

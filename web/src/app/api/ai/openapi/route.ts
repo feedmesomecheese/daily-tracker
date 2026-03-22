@@ -22,16 +22,22 @@ export async function GET(req: Request) {
             "Returns daily tracked metrics (health, habits, etc.) for a given period. Each entry is a date with a map of metric names to values.",
           parameters: [
             {
-              name: "days",
+              name: "start",
               in: "query",
-              description: "Number of days to return (default 30, max 365)",
-              schema: { type: "integer", default: 30 },
+              description: "Start date in YYYY-MM-DD format. Use this with end to query a specific range (e.g. a full year).",
+              schema: { type: "string", format: "date" },
             },
             {
               name: "end",
               in: "query",
               description: "End date in YYYY-MM-DD format (default: today)",
               schema: { type: "string", format: "date" },
+            },
+            {
+              name: "days",
+              in: "query",
+              description: "Number of days to return counting back from end (default 30, max 3650). Ignored if start is provided.",
+              schema: { type: "integer", default: 30 },
             },
           ],
           responses: {
@@ -88,16 +94,22 @@ export async function GET(req: Request) {
             "Returns workouts with type, duration, rating, notes, and list of exercises performed.",
           parameters: [
             {
-              name: "days",
+              name: "start",
               in: "query",
-              description: "Number of days to look back (default 60, max 365)",
-              schema: { type: "integer", default: 60 },
+              description: "Start date in YYYY-MM-DD format. Use this with end to query a specific range.",
+              schema: { type: "string", format: "date" },
             },
             {
               name: "end",
               in: "query",
               description: "End date in YYYY-MM-DD format (default: today)",
               schema: { type: "string", format: "date" },
+            },
+            {
+              name: "days",
+              in: "query",
+              description: "Number of days to look back from end (default 60, max 3650). Ignored if start is provided.",
+              schema: { type: "integer", default: 60 },
             },
           ],
           responses: {

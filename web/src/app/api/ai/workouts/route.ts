@@ -11,11 +11,15 @@ export async function GET(req: Request) {
   const ownerId = getAiOwnerId();
 
   const url = new URL(req.url);
-  const days = Math.min(parseInt(url.searchParams.get("days") || "60"), 365);
-  const end = url.searchParams.get("end") || new Date().toISOString().slice(0, 10);
-  const startDate = new Date(end);
-  startDate.setDate(startDate.getDate() - days + 1);
-  const start = startDate.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const end = url.searchParams.get("end") || today;
+  let start = url.searchParams.get("start") || "";
+  if (!start) {
+    const days = Math.min(parseInt(url.searchParams.get("days") || "60"), 3650);
+    const startDate = new Date(end);
+    startDate.setDate(startDate.getDate() - days + 1);
+    start = startDate.toISOString().slice(0, 10);
+  }
 
   const { data: workouts, error: workoutsError } = await supabase
     .from("workouts")
@@ -30,7 +34,7 @@ export async function GET(req: Request) {
   }
 
   if (!workouts || workouts.length === 0) {
-    return NextResponse.json({ period: { start, end, days }, workouts: [] }, { headers: AI_CORS_HEADERS });
+    return NextResponse.json({ period: { start, end }, workouts: [] }, { headers: AI_CORS_HEADERS });
   }
 
   const workoutIds = workouts.map((w) => w.id);
@@ -65,5 +69,5 @@ export async function GET(req: Request) {
     exercises: exercisesByWorkout.get(w.id) || [],
   }));
 
-  return NextResponse.json({ period: { start, end, days }, workouts: result }, { headers: AI_CORS_HEADERS });
+  return NextResponse.json({ period: { start, end }, workouts: result }, { headers: AI_CORS_HEADERS });
 }
