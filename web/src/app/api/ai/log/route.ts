@@ -26,7 +26,7 @@ export async function GET(req: Request) {
       .or("private.is.null,private.eq.false"),
     supabase
       .from("log")
-      .select("date, metric_id, value, text_value")
+      .select("date, metric_id, value")
       .eq("owner_id", ownerId)
       .gte("date", start)
       .lte("date", end)
@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     if (!meta) continue;
     if (!byDate.has(row.date)) byDate.set(row.date, {});
     const entry = byDate.get(row.date)!;
-    entry[meta.name] = row.text_value !== null ? row.text_value : row.value;
+    entry[meta.name] = row.value;
   }
 
   const entries = Array.from(byDate.entries())
