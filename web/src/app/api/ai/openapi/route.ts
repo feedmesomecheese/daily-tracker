@@ -207,7 +207,6 @@ export async function GET(req: Request) {
           },
         },
       },
-    },
       "/api/ai/food": {
         get: {
           operationId: "getFoodLog",
