@@ -216,6 +216,9 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded 
       setAllServings([]);
       setSelectedServingId("");
       setQtyStr("1");
+      setQuery("");
+      setResults([]);
+      setTimeout(() => searchInputRef.current?.focus(), 50);
     } catch (e) {
       setAddError(e instanceof Error ? e.message : "Failed to add item");
     } finally {

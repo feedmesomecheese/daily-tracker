@@ -215,6 +215,25 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
     };
   }, [bodyData, currentWeight, currentBF]);
 
+  // Smart Y-axis domains
+  const weightYDomain = useMemo(() => {
+    if (!weightChartData.length) return undefined;
+    const values = weightChartData.map((d) => d.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = Math.max((max - min) * 0.1, 2);
+    return [Math.floor(min - pad), Math.ceil(max + pad)];
+  }, [weightChartData]);
+
+  const bfYDomain = useMemo(() => {
+    if (!bfChartData.length) return undefined;
+    const values = bfChartData.map((d) => d.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = Math.max((max - min) * 0.1, 0.5);
+    return [Math.floor((min - pad) * 10) / 10, Math.ceil((max + pad) * 10) / 10];
+  }, [bfChartData]);
+
   // All-time stats
   const weightStats = useMemo(() => {
     const entries = bodyData?.weight ?? [];
@@ -388,7 +407,7 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                         tickCount={5}
                         tickFormatter={tsToShortDate}
                       />
-                      <YAxis tick={{ fontSize: 10 }} width={40} />
+                      <YAxis tick={{ fontSize: 10 }} width={40} domain={weightYDomain} />
                       <Tooltip
                         content={<ChartTooltip formatter={(e) => `${e.value} lbs`} />}
                       />
@@ -445,6 +464,7 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                       <YAxis
                         tick={{ fontSize: 10 }}
                         width={40}
+                        domain={bfYDomain}
                         tickFormatter={(v) => `${v}%`}
                       />
                       <Tooltip
