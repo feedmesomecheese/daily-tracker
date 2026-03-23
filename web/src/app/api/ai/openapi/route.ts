@@ -91,7 +91,7 @@ export async function GET(req: Request) {
           operationId: "getWorkouts",
           summary: "Get workout history",
           description:
-            "Returns workouts with type, duration, rating, notes, and list of exercises performed.",
+            "Returns workouts with type, duration, rating, notes, per-exercise sets (reps and weight), exercise tonnage, and total workout tonnage.",
           parameters: [
             {
               name: "start",
@@ -204,6 +204,30 @@ export async function GET(req: Request) {
                 },
               },
             },
+          },
+        },
+      },
+      "/api/ai/body": {
+        get: {
+          operationId: "getBodyMeasurements",
+          summary: "Get weight and body fat history",
+          description: "Returns all historical weight and body fat percentage entries. Optionally filter by date range.",
+          parameters: [
+            {
+              name: "start",
+              in: "query",
+              description: "Start date in YYYY-MM-DD format (default: all history)",
+              schema: { type: "string", format: "date" },
+            },
+            {
+              name: "end",
+              in: "query",
+              description: "End date in YYYY-MM-DD format (default: today)",
+              schema: { type: "string", format: "date" },
+            },
+          ],
+          responses: {
+            "200": { description: "Weight and body fat history" },
           },
         },
       },

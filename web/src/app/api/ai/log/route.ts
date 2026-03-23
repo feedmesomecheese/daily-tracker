@@ -27,8 +27,7 @@ export async function GET(req: Request) {
       .from("config")
       .select("metric_id, metric_name, type, group")
       .eq("owner_id", ownerId)
-      .eq("active", true)
-      .or("private.is.null,private.eq.false"),
+      .eq("active", true),
     supabase
       .from("log")
       .select("date, metric_id, value")
