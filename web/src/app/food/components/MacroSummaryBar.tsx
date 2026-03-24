@@ -34,9 +34,16 @@ interface NutrientRowProps {
 
 function goalStatus(value: number, goal: GoalTarget): "met" | "warn" | "over" | null {
   const pct = goal.target > 0 ? value / goal.target : 0;
-  if (goal.direction === "min") return pct >= 1 ? "met" : pct >= 0.8 ? "warn" : "warn";
-  if (goal.direction === "max") return value > goal.target ? "over" : "met";
-  if (goal.direction === "target") return Math.abs(pct - 1) <= 0.1 ? "met" : "warn";
+  if (goal.direction === "target") {
+    const delta = Math.abs(pct - 1);
+    return delta <= 0.02 ? "met" : delta <= 0.10 ? "warn" : "over";
+  }
+  if (goal.direction === "max") {
+    return pct <= 1 ? "met" : pct <= 1.10 ? "warn" : "over";
+  }
+  if (goal.direction === "min") {
+    return pct >= 1 ? "met" : pct >= 0.90 ? "warn" : "over";
+  }
   return null;
 }
 
@@ -65,12 +72,9 @@ function NutrientRow({ label, value, unit, goal, barColor, large = false }: Nutr
 
   // Determine bar fill color based on direction and progress
   let fillColor = barColor;
-  if (hasGoal) {
-    if (goal.direction === "max" && value > goal.target) {
-      fillColor = "bg-red-500";
-    } else if (goal.direction === "min" && pct < 80) {
-      fillColor = "bg-amber-500";
-    }
+  if (hasGoal && status) {
+    if (status === "over") fillColor = "bg-red-500";
+    else if (status === "warn") fillColor = "bg-amber-500";
   }
 
   return (

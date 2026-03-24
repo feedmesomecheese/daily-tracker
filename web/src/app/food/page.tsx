@@ -74,7 +74,15 @@ function computeGoalTargets(goals: FoodGoal[], totals: Totals, bodyWeight: numbe
     } else if (g.value_type === "per_lb_bodyweight") {
       target = bodyWeight != null ? g.value * bodyWeight : 0;
     } else if (g.value_type === "pct_calories") {
-      target = (g.value / 100) * totals.calories;
+      const calTarget = (g.value / 100) * totals.calories;
+      if (g.nutrient === "calories") {
+        target = calTarget;
+      } else if (g.nutrient === "fat") {
+        target = calTarget / 9;
+      } else {
+        // protein, carbs, fiber — 4 cal/g
+        target = calTarget / 4;
+      }
     }
     return { nutrient: g.nutrient, target, direction: g.direction };
   });
