@@ -74,13 +74,21 @@ export async function GET(req: Request) {
       avg_rating: s.ratings.length > 0 ? Math.round((s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length) * 10) / 10 : null,
     }));
 
-  // Only return the books array when a filter is applied — the full list is too large
+  // Only return books when a filter is applied; cap at limit to stay within response size limits
+  const limitParam = url.searchParams.get("limit");
+  const limit = Math.min(parseInt(limitParam ?? "50", 10) || 50, 200);
+
   let books: typeof all = [];
   let booksNote: string | undefined;
   if (status || year) {
-    books = all;
-    if (status) books = books.filter((b) => b.status === status);
-    if (year) books = books.filter((b) => b.finished_at && String(b.finished_at).startsWith(year));
+    let filtered = all;
+    if (status) filtered = filtered.filter((b) => b.status === status);
+    if (year) filtered = filtered.filter((b) => b.finished_at && String(b.finished_at).startsWith(year));
+    const total = filtered.length;
+    books = filtered.slice(0, limit);
+    if (total > limit) {
+      booksNote = `Showing ${limit} of ${total} books (most recent first). Use ?limit= (max 200) or narrow with ?year= to get more.`;
+    }
   } else {
     booksNote = "Use ?status= or ?year= to retrieve the books list. Counts and stats above cover all time.";
   }

@@ -167,6 +167,12 @@ export async function GET(req: Request) {
               description: "Filter books by the year they were finished (e.g. 2025). Only applies to the books array — counts and stats always cover all time.",
               schema: { type: "string" },
             },
+            {
+              name: "limit",
+              in: "query",
+              description: "Max books to return (default 50, max 200). Use with status/year filters.",
+              schema: { type: "integer", default: 50 },
+            },
           ],
           responses: {
             "200": {
