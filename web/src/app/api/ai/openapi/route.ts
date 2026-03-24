@@ -150,7 +150,7 @@ export async function GET(req: Request) {
           operationId: "getBooks",
           summary: "Get reading list with stats",
           description:
-            "Returns the full book library plus pre-computed stats. Always includes: counts (total/completed/reading/to_read/dnf across ALL books regardless of filters), year_stats (books read, pages read, avg rating, top genres per year), and genre_stats (count + avg rating per genre). The books array is the filtered list. Use ?status= to filter by reading status, ?year= to filter by the year a book was finished. Ratings are 0–10.",
+            "Returns books plus stats: counts (all statuses, unfiltered), year_stats (books/pages/avg rating per year), genre_stats (count/avg rating per genre), and a filterable books array. Use ?status= to filter by status, ?year= (e.g. 2025) to filter by finish year. Ratings are 0–10.",
           parameters: [
             {
               name: "status",
