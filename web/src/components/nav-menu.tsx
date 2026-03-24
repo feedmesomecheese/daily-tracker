@@ -48,6 +48,7 @@ const modules: NavModule[] = [
     name: "Food",
     links: [
       { href: "/food", label: "Log" },
+      { href: "/food/plan", label: "Plan" },
       { href: "/food/log", label: "History" },
       { href: "/food/library", label: "Library" },
       { href: "/food/goals", label: "Goals" },

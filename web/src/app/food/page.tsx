@@ -10,6 +10,7 @@ import MacroSummaryBar, { type Totals, type GoalTarget } from "./components/Macr
 import FoodLogMealCard, { type Meal, type FoodLogItem } from "./components/FoodLogMealCard";
 import FoodSearchSheet from "./components/FoodSearchSheet";
 import MealTemplateSheet, { type MealTemplate } from "./components/MealTemplateSheet";
+import DayTemplateSheet, { type DayTemplate } from "./components/DayTemplateSheet";
 import {
   DndContext,
   PointerSensor,
@@ -156,11 +157,16 @@ export default function FoodPage() {
   const [searchSheetOpen, setSearchSheetOpen] = useState(false);
   const [searchTargetMealId, setSearchTargetMealId] = useState<string>("");
 
-  // Template state
+  // Meal template state
   const [templates, setTemplates] = useState<MealTemplate[]>([]);
   const [templateSheetOpen, setTemplateSheetOpen] = useState(false);
   const [templateSheetMode, setTemplateSheetMode] = useState<"add_meal" | "apply">("add_meal");
   const [templateTargetMealId, setTemplateTargetMealId] = useState<string>("");
+
+  // Day template state
+  const [dayTemplates, setDayTemplates] = useState<DayTemplate[]>([]);
+  const [dayTemplateSheetOpen, setDayTemplateSheetOpen] = useState(false);
+  const [savingDayTemplate, setSavingDayTemplate] = useState(false);
 
   const logIdRef = useRef<string | null>(null);
 
@@ -202,13 +208,14 @@ export default function FoodPage() {
       logIdRef.current = logMeta.id;
 
       // 2. Parallel fetches
-      const [logData, goalsData, bodyData, templatesData] = await Promise.all([
+      const [logData, goalsData, bodyData, templatesData, dayTemplatesData] = await Promise.all([
         fetch(`/api/food/logs/${logMeta.id}`, { headers }).then((r) =>
           r.ok ? r.json() : null
         ),
         fetch("/api/food/goals", { headers }).then((r) => (r.ok ? r.json() : [])),
         fetch("/api/metrics/body", { headers }).then((r) => (r.ok ? r.json() : null)),
         fetch("/api/food/templates", { headers }).then((r) => (r.ok ? r.json() : [])),
+        fetch("/api/food/day-templates", { headers }).then((r) => (r.ok ? r.json() : [])),
       ]);
 
       if (logData) {
@@ -218,6 +225,7 @@ export default function FoodPage() {
 
       setGoals(Array.isArray(goalsData) ? goalsData : goalsData?.goals ?? []);
       setTemplates(Array.isArray(templatesData) ? templatesData : []);
+      setDayTemplates(Array.isArray(dayTemplatesData) ? dayTemplatesData : []);
 
       // Extract latest body weight from body data
       if (bodyData?.weight && Array.isArray(bodyData.weight) && bodyData.weight.length > 0) {
@@ -489,6 +497,63 @@ export default function FoodPage() {
     }
   };
 
+  const loadDayTemplates = useCallback(async () => {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/food/day-templates", { headers });
+      if (res.ok) setDayTemplates(await res.json());
+    } catch { /* best effort */ }
+  }, []);
+
+  const handleSaveDayTemplate = async () => {
+    if (!logIdRef.current) return;
+    const name = window.prompt("Name this day template:");
+    if (!name?.trim()) return;
+    setSavingDayTemplate(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/food/day-templates", {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), log_id: logIdRef.current }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error || "Failed to save");
+      }
+      await loadDayTemplates();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save day template");
+    } finally {
+      setSavingDayTemplate(false);
+    }
+  };
+
+  const handleLoadDayTemplate = async (templateId: string, mode: "replace" | "add") => {
+    if (!logIdRef.current) return;
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/food/logs/${logIdRef.current}/from-day-template`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ day_template_id: templateId, mode }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body?.error || "Failed to load template");
+    }
+    await refreshLog();
+  };
+
+  const handleDeleteDayTemplate = async (templateId: string) => {
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/food/day-templates/${templateId}`, { method: "DELETE", headers });
+      setDayTemplates((prev) => prev.filter((t) => t.id !== templateId));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to delete template");
+    }
+  };
+
   const handleApplyTemplate = (mealId: string) => {
     setTemplateTargetMealId(mealId);
     setTemplateSheetMode("apply");
@@ -631,7 +696,15 @@ export default function FoodPage() {
                   onClick={() => { setTemplateSheetMode("add_meal"); setTemplateSheetOpen(true); }}
                   className="rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap"
                 >
-                  From Template
+                  Meal Template
+                </button>
+              )}
+              {dayTemplates.length > 0 && (
+                <button
+                  onClick={() => setDayTemplateSheetOpen(true)}
+                  className="rounded-xl border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/30 px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap"
+                >
+                  Day Template
                 </button>
               )}
             </div>
@@ -683,6 +756,17 @@ export default function FoodPage() {
                   </button>
                 )}
               </div>
+
+              {/* Save as day template */}
+              {(foodLog?.meals?.length ?? 0) > 0 && (
+                <button
+                  onClick={handleSaveDayTemplate}
+                  disabled={savingDayTemplate}
+                  className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors self-start disabled:opacity-50"
+                >
+                  {savingDayTemplate ? "Saving..." : "Save day as template"}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -708,6 +792,15 @@ export default function FoodPage() {
         onAction={templateSheetMode === "add_meal" ? handleAddMealFromTemplate : handleApplyTemplateToMeal}
         onDelete={handleDeleteTemplate}
         onAddBlank={templateSheetMode === "add_meal" ? handleAddMeal : undefined}
+      />
+
+      {/* Day template sheet */}
+      <DayTemplateSheet
+        open={dayTemplateSheetOpen}
+        onClose={() => setDayTemplateSheetOpen(false)}
+        templates={dayTemplates}
+        onLoad={handleLoadDayTemplate}
+        onDelete={handleDeleteDayTemplate}
       />
     </>
   );

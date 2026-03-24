@@ -42,12 +42,28 @@ type SelectableServing =
   | (FoodServing & { isVirtual?: false })
   | (VirtualServing & { isVirtual: true });
 
+interface AddPayload {
+  food_item_id: string;
+  food_item_serving_id: string | null;
+  food_name_snapshot: string;
+  serving_label_snapshot: string;
+  qty: number;
+  calories: number;
+  fat: number;
+  carbs: number;
+  protein: number;
+  fiber: number;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
-  logId: string;
+  logId?: string;
   mealId: string;
   onAdded: () => void;
+  /** Optional override: called instead of the default log-item POST */
+  onAdd?: (payload: AddPayload) => Promise<void>;
+  title?: string;
 }
 
 // ── Unit parsing ─────────────────────────────────────────────────────────────
@@ -111,7 +127,7 @@ function buildSelectableServings(food: FoodItem): SelectableServing[] {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded }: Props) {
+export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded, onAdd, title = "Add Food" }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FoodItem[]>([]);
   const [searching, setSearching] = useState(false);
@@ -188,28 +204,33 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded 
     setAdding(true);
     setAddError(null);
     try {
-      const headers = await getAuthHeaders();
       const isVirtual = selectedServing.isVirtual;
-      const res = await fetch(`/api/food/logs/${logId}/meals/${mealId}/items`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          food_item_id:          selectedFood.id,
-          // Virtual servings post with null serving_id; qty edits scale proportionally
-          food_item_serving_id:  isVirtual ? null : selectedServing.id,
-          food_name_snapshot:    selectedFood.name,
-          serving_label_snapshot: selectedServing.label,
-          qty,
-          calories: qty * selectedServing.calories,
-          fat:      qty * selectedServing.fat,
-          carbs:    qty * selectedServing.carbs,
-          protein:  qty * selectedServing.protein,
-          fiber:    qty * selectedServing.fiber,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? "Failed to add item");
+      const payload: AddPayload = {
+        food_item_id:           selectedFood.id,
+        food_item_serving_id:   isVirtual ? null : selectedServing.id,
+        food_name_snapshot:     selectedFood.name,
+        serving_label_snapshot: selectedServing.label,
+        qty,
+        calories: qty * selectedServing.calories,
+        fat:      qty * selectedServing.fat,
+        carbs:    qty * selectedServing.carbs,
+        protein:  qty * selectedServing.protein,
+        fiber:    qty * selectedServing.fiber,
+      };
+
+      if (onAdd) {
+        await onAdd(payload);
+      } else {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`/api/food/logs/${logId}/meals/${mealId}/items`, {
+          method: "POST",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error ?? "Failed to add item");
+        }
       }
       onAdded();
       setSelectedFood(null);
@@ -257,7 +278,7 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded 
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border shrink-0">
-          <h2 className="text-base font-semibold">Add Food</h2>
+          <h2 className="text-base font-semibold">{title}</h2>
           <button onClick={handleClose}
             className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -374,7 +395,7 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded 
                 disabled={adding || !selectedServing}
                 className="w-full rounded-lg bg-primary text-primary-foreground py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                {adding ? "Adding..." : "Add to Meal"}
+                {adding ? "Adding..." : onAdd ? "Add to Template" : "Add to Meal"}
               </button>
             </div>
           )}
