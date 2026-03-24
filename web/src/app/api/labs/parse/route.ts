@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { PDFParse } = require("pdf-parse") as { PDFParse: new (opts: { data: Uint8Array }) => { getText(): Promise<{ text: string }> } };
+import { extractText } from "unpdf";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
 const PARSE_PROMPT = `You are extracting lab test results from a medical lab report.
@@ -57,10 +56,8 @@ export async function POST(req: Request) {
 
     // Extract text from PDF
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
-    const parser = new PDFParse({ data: buffer });
-    const pdf = await parser.getText();
-    const text = pdf.text?.trim();
+    const { text: pages } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true });
+    const text = (Array.isArray(pages) ? pages.join("\n") : String(pages ?? "")).trim();
 
     if (!text) {
       return NextResponse.json({ error: "Could not extract text from PDF. The file may be a scanned image — try a text-based PDF." }, { status: 422 });

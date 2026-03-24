@@ -34,13 +34,13 @@
     "lucide-react": "^0.469.0",
     "next": "^16.1.4",
     "openai": "^6.32.0",
-    "pdf-parse": "^2.4.5",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-mobile-picker": "^1.2.0",
     "recharts": "^3.4.1",
     "resend": "^6.8.0",
     "tailwind-merge": "^3.4.0",
+    "unpdf": "^1.4.0",
     "zod": "^4.1.12"
   },
   "devDependencies": {
