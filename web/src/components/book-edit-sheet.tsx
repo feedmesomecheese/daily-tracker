@@ -191,6 +191,19 @@ export function BookEditSheet({
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Auto-update status when dates change
+  useEffect(() => {
+    setFormData((prev) => {
+      if (prev.finished_at) {
+        return prev.status !== "completed" ? { ...prev, status: "completed" } : prev;
+      }
+      if (prev.started_at && prev.status === "to_read") {
+        return { ...prev, status: "reading" };
+      }
+      return prev;
+    });
+  }, [formData.started_at, formData.finished_at]);
+
   const handleFindCover = async () => {
     if (!formData.title) return;
 
@@ -460,25 +473,13 @@ export function BookEditSheet({
                 <CalendarInput
                   label="Started"
                   value={formData.started_at}
-                  onChange={(date) => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      started_at: date,
-                      status: date && !prev.finished_at && prev.status === "to_read" ? "reading" : prev.status,
-                    }));
-                  }}
+                  onChange={(date) => updateField("started_at", date)}
                   placeholder="Select date"
                 />
                 <CalendarInput
                   label="Finished"
                   value={formData.finished_at}
-                  onChange={(date) => {
-                    setFormData((prev) => ({
-                      ...prev,
-                      finished_at: date,
-                      status: date ? "completed" : (prev.started_at ? "reading" : prev.status),
-                    }));
-                  }}
+                  onChange={(date) => updateField("finished_at", date)}
                   placeholder="Select date"
                 />
               </div>
