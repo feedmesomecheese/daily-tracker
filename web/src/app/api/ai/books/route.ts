@@ -7,6 +7,7 @@ export async function GET(req: Request) {
   const authError = validateAiKey(req);
   if (authError) return authError;
 
+  try {
   const supabase = getAiSupabase();
   const ownerId = getAiOwnerId();
 
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
     .eq("owner_id", ownerId)
     .order("finished_at", { ascending: false, nullsFirst: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: AI_CORS_HEADERS });
 
   const all = allBooks ?? [];
 
@@ -82,4 +83,8 @@ export async function GET(req: Request) {
     { counts, year_stats: yearStats, genre_stats: genreStats, books },
     { headers: AI_CORS_HEADERS }
   );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500, headers: AI_CORS_HEADERS });
+  }
 }
