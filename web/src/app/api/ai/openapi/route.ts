@@ -148,23 +148,29 @@ export async function GET(req: Request) {
       "/api/ai/books": {
         get: {
           operationId: "getBooks",
-          summary: "Get reading list",
+          summary: "Get reading list with stats",
           description:
-            "Returns books with status, ratings, dates, and notes. Filter by status to see completed, currently reading, or to-read books.",
+            "Returns the full book library plus pre-computed stats. Always includes: counts (total/completed/reading/to_read/dnf across ALL books regardless of filters), year_stats (books read, pages read, avg rating, top genres per year), and genre_stats (count + avg rating per genre). The books array is the filtered list. Use ?status= to filter by reading status, ?year= to filter by the year a book was finished. Ratings are 0–10.",
           parameters: [
             {
               name: "status",
               in: "query",
-              description: "Filter by status: to_read, reading, completed, dnf",
+              description: "Filter books by status: to_read, reading, completed, dnf",
               schema: {
                 type: "string",
                 enum: ["to_read", "reading", "completed", "dnf"],
               },
             },
+            {
+              name: "year",
+              in: "query",
+              description: "Filter books by the year they were finished (e.g. 2025). Only applies to the books array — counts and stats always cover all time.",
+              schema: { type: "string" },
+            },
           ],
           responses: {
             "200": {
-              description: "Book list",
+              description: "Book list with reading stats",
               content: {
                 "application/json": {
                   schema: {
@@ -180,6 +186,30 @@ export async function GET(req: Request) {
                           dnf: { type: "integer" },
                         },
                       },
+                      year_stats: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            year: { type: "string" },
+                            books_read: { type: "integer" },
+                            pages_read: { type: "integer" },
+                            avg_rating: { type: "number" },
+                            top_genres: { type: "array", items: { type: "object" } },
+                          },
+                        },
+                      },
+                      genre_stats: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            genre: { type: "string" },
+                            count: { type: "integer" },
+                            avg_rating: { type: "number" },
+                          },
+                        },
+                      },
                       books: {
                         type: "array",
                         items: {
@@ -190,9 +220,12 @@ export async function GET(req: Request) {
                             pages: { type: "integer" },
                             genre: { type: "string" },
                             format: { type: "string" },
+                            source: { type: "string" },
                             status: { type: "string" },
                             rating: { type: "number" },
                             notes: { type: "string" },
+                            added_at: { type: "string" },
+                            started_at: { type: "string" },
                             finished_at: { type: "string" },
                             would_reread: { type: "boolean" },
                             reading_number: { type: "integer" },

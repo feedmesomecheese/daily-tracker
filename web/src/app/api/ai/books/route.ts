@@ -12,48 +12,74 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const status = url.searchParams.get("status"); // to_read | reading | completed | dnf
+  const year = url.searchParams.get("year");     // e.g. "2025" — filters by finished_at year
 
-  let query = supabase
+  // Always fetch all books for accurate counts and stats
+  const { data: allBooks, error } = await supabase
     .from("books")
     .select("title, author, pages, genre, format, source, status, priority, added_at, started_at, finished_at, rating, notes, would_reread, reading_number")
     .eq("owner_id", ownerId)
     .order("finished_at", { ascending: false, nullsFirst: false });
 
-  if (status) {
-    query = query.eq("status", status);
-  }
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const { data, error } = await query;
+  const all = allBooks ?? [];
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  const books = (data || []).map((b) => ({
-    title: b.title,
-    author: b.author,
-    pages: b.pages,
-    genre: b.genre,
-    format: b.format,
-    source: b.source,
-    status: b.status,
-    priority: b.priority,
-    added_at: b.added_at,
-    started_at: b.started_at,
-    finished_at: b.finished_at,
-    rating: b.rating,
-    notes: b.notes,
-    would_reread: b.would_reread,
-    reading_number: b.reading_number,
-  }));
-
+  // Always-accurate counts across the full library
   const counts = {
-    total: books.length,
-    completed: books.filter((b) => b.status === "completed").length,
-    reading: books.filter((b) => b.status === "reading").length,
-    to_read: books.filter((b) => b.status === "to_read").length,
-    dnf: books.filter((b) => b.status === "dnf").length,
+    total: all.length,
+    completed: all.filter((b) => b.status === "completed").length,
+    reading: all.filter((b) => b.status === "reading").length,
+    to_read: all.filter((b) => b.status === "to_read").length,
+    dnf: all.filter((b) => b.status === "dnf").length,
   };
 
-  return NextResponse.json({ counts, books }, { headers: AI_CORS_HEADERS });
+  // Reading stats by year (completed books only)
+  const completed = all.filter((b) => b.status === "completed" && b.finished_at);
+  const statsByYear: Record<string, { books: number; pages: number; ratings: number[]; genres: Record<string, number> }> = {};
+
+  for (const b of completed) {
+    const y = String(b.finished_at).slice(0, 4);
+    if (!statsByYear[y]) statsByYear[y] = { books: 0, pages: 0, ratings: [], genres: {} };
+    statsByYear[y].books += 1;
+    statsByYear[y].pages += b.pages ?? 0;
+    if (b.rating != null) statsByYear[y].ratings.push(b.rating);
+    if (b.genre) statsByYear[y].genres[b.genre] = (statsByYear[y].genres[b.genre] ?? 0) + 1;
+  }
+
+  const yearStats = Object.entries(statsByYear)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([y, s]) => ({
+      year: y,
+      books_read: s.books,
+      pages_read: s.pages,
+      avg_rating: s.ratings.length > 0 ? Math.round((s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length) * 10) / 10 : null,
+      top_genres: Object.entries(s.genres).sort(([, a], [, b]) => b - a).slice(0, 3).map(([g, n]) => ({ genre: g, count: n })),
+    }));
+
+  // Genre breakdown (all completed books)
+  const genreMap: Record<string, { count: number; ratings: number[] }> = {};
+  for (const b of completed) {
+    const g = b.genre ?? "Unknown";
+    if (!genreMap[g]) genreMap[g] = { count: 0, ratings: [] };
+    genreMap[g].count += 1;
+    if (b.rating != null) genreMap[g].ratings.push(b.rating);
+  }
+  const genreStats = Object.entries(genreMap)
+    .sort(([, a], [, b]) => b.count - a.count)
+    .map(([genre, s]) => ({
+      genre,
+      count: s.count,
+      avg_rating: s.ratings.length > 0 ? Math.round((s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length) * 10) / 10 : null,
+    }));
+
+  // Apply filters to the returned books list
+  let books = all;
+  if (status) books = books.filter((b) => b.status === status);
+  if (year) books = books.filter((b) => b.finished_at && String(b.finished_at).startsWith(year));
+
+  return NextResponse.json(
+    { counts, year_stats: yearStats, genre_stats: genreStats, books },
+    { headers: AI_CORS_HEADERS }
+  );
 }
