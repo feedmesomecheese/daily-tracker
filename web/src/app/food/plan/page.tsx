@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { getLocalDateString } from "@/lib/dateUtils";
-import MacroSummaryBar, { type Totals } from "../components/MacroSummaryBar";
+import MacroSummaryBar, { type Totals, type GoalTarget } from "../components/MacroSummaryBar";
 import FoodLogMealCard, { type Meal } from "../components/FoodLogMealCard";
 import FoodSearchSheet from "../components/FoodSearchSheet";
 import MealTemplateSheet, { type MealTemplate } from "../components/MealTemplateSheet";
@@ -27,6 +27,29 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
+
+interface FoodGoal {
+  id: string;
+  nutrient: string;
+  value_type: "absolute" | "per_lb_bodyweight" | "pct_calories";
+  value: number;
+  direction: "min" | "max" | "target";
+}
+
+function computeGoalTargets(goals: FoodGoal[], totals: Totals): GoalTarget[] {
+  return goals.map((g) => {
+    let target = 0;
+    if (g.value_type === "absolute") {
+      target = g.value;
+    } else if (g.value_type === "pct_calories") {
+      const calTarget = (g.value / 100) * totals.calories;
+      if (g.nutrient === "calories") target = calTarget;
+      else if (g.nutrient === "fat") target = calTarget / 9;
+      else target = calTarget / 4;
+    }
+    return { nutrient: g.nutrient, target, direction: g.direction };
+  });
+}
 
 interface Plan {
   id: string;
@@ -161,6 +184,8 @@ export default function FoodPlanPage() {
   const [logAsTodayOpen, setLogAsTodayOpen] = useState(false);
   const [loggingAsToday, setLoggingAsToday] = useState(false);
 
+  const [goals, setGoals] = useState<FoodGoal[]>([]);
+
   const [searchSheetOpen, setSearchSheetOpen] = useState(false);
   const [searchTargetMealId, setSearchTargetMealId] = useState("");
   const [templates, setTemplates] = useState<MealTemplate[]>([]);
@@ -179,11 +204,16 @@ export default function FoodPlanPage() {
   const fetchPlans = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
-      const [plansRes, templatesRes] = await Promise.all([
+      const [plansRes, templatesRes, goalsRes] = await Promise.all([
         fetch("/api/food/plans", { headers }),
         fetch("/api/food/templates", { headers }),
+        fetch("/api/food/goals", { headers }),
       ]);
       if (templatesRes.ok) setTemplates(await templatesRes.json());
+      if (goalsRes.ok) {
+        const gd = await goalsRes.json();
+        setGoals(Array.isArray(gd) ? gd : gd?.goals ?? []);
+      }
       if (plansRes.ok) {
         const data: PlanSummary[] = await plansRes.json();
         setPlans(data);
@@ -193,19 +223,19 @@ export default function FoodPlanPage() {
     return [];
   }, []);
 
-  const fetchPlan = useCallback(async (id: string) => {
-    setLoadingPlan(true);
+  const fetchPlan = useCallback(async (id: string, silent = false) => {
+    if (!silent) setLoadingPlan(true);
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/food/plans/${id}`, { headers });
       if (!res.ok) throw new Error("Failed to load plan");
       const data: Plan = await res.json();
       setActivePlan(data);
-      setRenameValue(data.name);
+      if (!silent) setRenameValue(data.name);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load plan");
     } finally {
-      setLoadingPlan(false);
+      if (!silent) setLoadingPlan(false);
     }
   }, []);
 
@@ -227,7 +257,7 @@ export default function FoodPlanPage() {
 
   const refreshPlan = useCallback(async () => {
     if (!currentPlanId) return;
-    await fetchPlan(currentPlanId);
+    await fetchPlan(currentPlanId, true);
   }, [currentPlanId, fetchPlan]);
 
   // ── Plan management ───────────────────────────────────────────────────
@@ -589,7 +619,7 @@ export default function FoodPlanPage() {
               </div>
             ) : (
               <>
-                <MacroSummaryBar totals={totals} goals={[]} />
+                <MacroSummaryBar totals={totals} goals={computeGoalTargets(goals, totals)} />
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMealDragStart} onDragEnd={handleMealDragEnd}>
                   <SortableContext items={(activePlan?.meals ?? []).map((m) => m.id)} strategy={verticalListSortingStrategy}>

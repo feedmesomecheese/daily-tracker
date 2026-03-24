@@ -460,13 +460,25 @@ export function BookEditSheet({
                 <CalendarInput
                   label="Started"
                   value={formData.started_at}
-                  onChange={(date) => updateField("started_at", date)}
+                  onChange={(date) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      started_at: date,
+                      status: date && !prev.finished_at && prev.status === "to_read" ? "reading" : prev.status,
+                    }));
+                  }}
                   placeholder="Select date"
                 />
                 <CalendarInput
                   label="Finished"
                   value={formData.finished_at}
-                  onChange={(date) => updateField("finished_at", date)}
+                  onChange={(date) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      finished_at: date,
+                      status: date ? "completed" : (prev.started_at ? "reading" : prev.status),
+                    }));
+                  }}
                   placeholder="Select date"
                 />
               </div>

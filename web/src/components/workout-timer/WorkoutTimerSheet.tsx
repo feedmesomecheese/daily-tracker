@@ -430,6 +430,17 @@ function StopwatchBox({
   timer: WorkoutTimerState;
   onSendToWorkout?: (seconds: number) => void;
 }) {
+  const [sent, setSent] = useState(false);
+  const sentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSend = () => {
+    if (!onSendToWorkout) return;
+    onSendToWorkout(timer.swDisplay);
+    setSent(true);
+    if (sentTimerRef.current) clearTimeout(sentTimerRef.current);
+    sentTimerRef.current = setTimeout(() => setSent(false), 2000);
+  };
+
   const swToggle = timer.swRunning ? timer.swPause : timer.swStart;
   const swHint = timer.swRunning
     ? "Tap to pause"
@@ -506,8 +517,13 @@ function StopwatchBox({
             Reset Stopwatch
           </Button>
           {onSendToWorkout && (
-            <Button variant="secondary" size="sm" className="text-xs" onClick={() => onSendToWorkout(timer.swDisplay)}>
-              Send to Workout Duration
+            <Button
+              variant={sent ? "default" : "secondary"}
+              size="sm"
+              className={`text-xs transition-colors duration-200 ${sent ? "bg-green-600 hover:bg-green-600 text-white" : ""}`}
+              onClick={handleSend}
+            >
+              {sent ? "✓ Sent" : "Send to Workout Duration"}
             </Button>
           )}
         </div>
