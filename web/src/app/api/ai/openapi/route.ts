@@ -303,6 +303,44 @@ export async function GET(req: Request) {
           },
         },
       },
+      "/api/ai/labs": {
+        get: {
+          operationId: "getLabResults",
+          summary: "Get medical lab results",
+          description: "Returns lab visit history and test results. Use ?test= to trend a specific test, ?abnormal=true for out-of-range results, ?category= to filter by panel type.",
+          parameters: [
+            {
+              name: "test",
+              in: "query",
+              description: "Filter by test name (partial match, e.g. 'cholesterol', 'TSH', 'HbA1c')",
+              schema: { type: "string" },
+            },
+            {
+              name: "category",
+              in: "query",
+              description: "Filter by category: CBC, Metabolic, Lipid, Thyroid, Hormone, Vitamin, Urinalysis, Other",
+              schema: { type: "string" },
+            },
+            {
+              name: "since",
+              in: "query",
+              description: "Only return results on or after this date (YYYY-MM-DD)",
+              schema: { type: "string", format: "date" },
+            },
+            {
+              name: "abnormal",
+              in: "query",
+              description: "Set to true to return only out-of-range results",
+              schema: { type: "boolean" },
+            },
+          ],
+          responses: {
+            "200": {
+              description: "Lab visits, latest values per test, and full results list",
+            },
+          },
+        },
+      },
     },
     components: {
       schemas: {},
