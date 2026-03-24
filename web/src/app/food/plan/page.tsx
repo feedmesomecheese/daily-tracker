@@ -183,12 +183,12 @@ export default function FoodPlanPage() {
         fetch("/api/food/plans", { headers }),
         fetch("/api/food/templates", { headers }),
       ]);
+      if (templatesRes.ok) setTemplates(await templatesRes.json());
       if (plansRes.ok) {
         const data: PlanSummary[] = await plansRes.json();
         setPlans(data);
         return data;
       }
-      if (templatesRes.ok) setTemplates(await templatesRes.json());
     } catch { /* best effort */ }
     return [];
   }, []);
@@ -403,8 +403,8 @@ export default function FoodPlanPage() {
         body: JSON.stringify({ name, from_meal_id: mealId }),
       });
       if (!res.ok) throw new Error("Failed to save template");
-      const newTemplates = await fetch("/api/food/templates", { headers });
-      if (newTemplates.ok) setTemplates(await newTemplates.json());
+      const refreshRes = await fetch("/api/food/templates", { headers });
+      if (refreshRes.ok) setTemplates(await refreshRes.json());
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to save template");
       throw e;
