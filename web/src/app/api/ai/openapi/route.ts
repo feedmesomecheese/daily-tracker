@@ -150,7 +150,7 @@ export async function GET(req: Request) {
           operationId: "getBooks",
           summary: "Get reading list with stats",
           description:
-            "Returns books plus stats: counts (all statuses, unfiltered), year_stats (books/pages/avg rating per year), genre_stats (count/avg rating per genre), and a filterable books array. Use ?status= to filter by status, ?year= (e.g. 2025) to filter by finish year. Ratings are 0–10.",
+            "Returns stats: counts (all statuses), year_stats (books/pages/avg rating per year), genre_stats (count/avg rating per genre). Books array is empty unless filtered — always use ?status= or ?year= to retrieve books. Ratings are 0–10.",
           parameters: [
             {
               name: "status",

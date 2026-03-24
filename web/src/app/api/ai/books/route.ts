@@ -74,13 +74,19 @@ export async function GET(req: Request) {
       avg_rating: s.ratings.length > 0 ? Math.round((s.ratings.reduce((a, b) => a + b, 0) / s.ratings.length) * 10) / 10 : null,
     }));
 
-  // Apply filters to the returned books list
-  let books = all;
-  if (status) books = books.filter((b) => b.status === status);
-  if (year) books = books.filter((b) => b.finished_at && String(b.finished_at).startsWith(year));
+  // Only return the books array when a filter is applied — the full list is too large
+  let books: typeof all = [];
+  let booksNote: string | undefined;
+  if (status || year) {
+    books = all;
+    if (status) books = books.filter((b) => b.status === status);
+    if (year) books = books.filter((b) => b.finished_at && String(b.finished_at).startsWith(year));
+  } else {
+    booksNote = "Use ?status= or ?year= to retrieve the books list. Counts and stats above cover all time.";
+  }
 
   return NextResponse.json(
-    { counts, year_stats: yearStats, genre_stats: genreStats, books },
+    { counts, year_stats: yearStats, genre_stats: genreStats, books, ...(booksNote ? { note: booksNote } : {}) },
     { headers: AI_CORS_HEADERS }
   );
   } catch (err: unknown) {
