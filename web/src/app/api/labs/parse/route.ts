@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfParse = require("pdf-parse/dist/pdf-parse/cjs/index.cjs") as (buffer: Buffer) => Promise<{ text: string }>;
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
-const PARSE_PROMPT = `You are extracting lab test results from a medical lab report PDF.
+const PARSE_PROMPT = `You are extracting lab test results from a medical lab report.
 
 Return ONLY a valid JSON object with this exact structure:
 {
@@ -37,8 +39,8 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
+  if (!process.env.OPENAI_API_KEY) {
+    return NextResponse.json({ error: "OPENAI_API_KEY is not configured" }, { status: 500 });
   }
 
   try {
@@ -49,47 +51,39 @@ export async function POST(req: Request) {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       return NextResponse.json({ error: "File must be a PDF" }, { status: 400 });
     }
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
+    if (file.size > 20 * 1024 * 1024) {
+      return NextResponse.json({ error: "File too large (max 20MB)" }, { status: 400 });
     }
 
+    // Extract text from PDF
     const arrayBuffer = await file.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    const buffer = Buffer.from(arrayBuffer);
+    const pdf = await pdfParse(buffer);
+    const text = pdf.text?.trim();
 
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    if (!text) {
+      return NextResponse.json({ error: "Could not extract text from PDF. The file may be a scanned image — try a text-based PDF." }, { status: 422 });
+    }
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
       max_tokens: 4096,
       messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: base64,
-              },
-            },
-            {
-              type: "text",
-              text: PARSE_PROMPT,
-            },
-          ],
-        },
+        { role: "system", content: PARSE_PROMPT },
+        { role: "user", content: text },
       ],
     });
 
-    const text = message.content[0].type === "text" ? message.content[0].text : "";
-    const jsonText = text.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
+    const raw = completion.choices[0]?.message?.content ?? "";
+    const jsonText = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(jsonText);
     } catch {
-      return NextResponse.json({ error: "Failed to parse Claude response", raw: text }, { status: 500 });
+      return NextResponse.json({ error: "Failed to parse response", raw }, { status: 500 });
     }
 
     return NextResponse.json(parsed);

@@ -100,7 +100,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
   const processFiles = useCallback(async (files: File[]) => {
     const pdfs = files.filter((f) => f.name.toLowerCase().endsWith(".pdf"));
     if (pdfs.length === 0) { setError("Please select PDF files only"); return; }
-    if (pdfs.length > 10) { setError("Maximum 10 files at once"); return; }
+    if (pdfs.length > 100) { setError("Maximum 100 files at once"); return; }
 
     setError(null);
     setParsing(true);
