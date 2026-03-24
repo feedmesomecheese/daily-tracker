@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse/dist/pdf-parse/cjs/index.cjs") as (buffer: Buffer) => Promise<{ text: string }>;
+const pdfParse = require("pdf-parse") as (buffer: Buffer) => Promise<{ text: string }>;
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
 const PARSE_PROMPT = `You are extracting lab test results from a medical lab report.
