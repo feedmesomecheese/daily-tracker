@@ -47,6 +47,7 @@ interface Props {
 
 export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCounterRef = useRef(0);
   const [step, setStep] = useState<"upload" | "review">("upload");
   const [parsing, setParsing] = useState(false);
   const [parseProgress, setParseProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
@@ -63,6 +64,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
     setError(null);
     setVisits([]);
     setDragging(false);
+    dragCounterRef.current = 0;
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -128,12 +130,13 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
     if (files.length) processFiles(files);
   };
 
-  // Drag and drop handlers
-  const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragging(true); };
-  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setDragging(false); };
-  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); };
+  // Drag and drop handlers — use a counter to avoid flicker when crossing child elements
+  const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); dragCounterRef.current++; setDragging(true); };
+  const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); dragCounterRef.current--; if (dragCounterRef.current === 0) setDragging(false); };
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
   const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault(); e.stopPropagation();
+    e.preventDefault();
+    dragCounterRef.current = 0;
     setDragging(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length) processFiles(files);
@@ -235,7 +238,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
                 onDrop={handleDrop}
                 onClick={() => !parsing && fileInputRef.current?.click()}
                 className={cn(
-                  "border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center gap-3 transition-colors",
+                  "border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-3 transition-colors h-48",
                   parsing ? "cursor-default" : "cursor-pointer",
                   dragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50 hover:bg-accent/20"
                 )}
@@ -246,7 +249,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
                     <p className="text-sm font-medium">
                       Parsing {parseProgress.done} of {parseProgress.total}…
                     </p>
-                    <p className="text-xs text-muted-foreground">Claude is extracting your lab results</p>
+                    <p className="text-xs text-muted-foreground">Extracting your lab results…</p>
                     {/* Progress bar */}
                     <div className="w-full max-w-xs h-1.5 bg-muted rounded-full overflow-hidden">
                       <div

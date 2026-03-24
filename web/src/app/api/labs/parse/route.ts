@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require("pdf-parse") as (buffer: Buffer) => Promise<{ text: string }>;
+const { PDFParse } = require("pdf-parse") as { PDFParse: new (opts: { data: Uint8Array }) => { getText(): Promise<{ text: string }> } };
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
 const PARSE_PROMPT = `You are extracting lab test results from a medical lab report.
@@ -57,8 +57,9 @@ export async function POST(req: Request) {
 
     // Extract text from PDF
     const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const pdf = await pdfParse(buffer);
+    const buffer = new Uint8Array(arrayBuffer);
+    const parser = new PDFParse({ data: buffer });
+    const pdf = await parser.getText();
     const text = pdf.text?.trim();
 
     if (!text) {
