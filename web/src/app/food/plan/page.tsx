@@ -36,11 +36,13 @@ interface FoodGoal {
   direction: "min" | "max" | "target";
 }
 
-function computeGoalTargets(goals: FoodGoal[], totals: Totals): GoalTarget[] {
+function computeGoalTargets(goals: FoodGoal[], totals: Totals, bodyWeight: number | null): GoalTarget[] {
   return goals.map((g) => {
     let target = 0;
     if (g.value_type === "absolute") {
       target = g.value;
+    } else if (g.value_type === "per_lb_bodyweight") {
+      target = bodyWeight != null ? g.value * bodyWeight : 0;
     } else if (g.value_type === "pct_calories") {
       const calTarget = (g.value / 100) * totals.calories;
       if (g.nutrient === "calories") target = calTarget;
@@ -185,6 +187,7 @@ export default function FoodPlanPage() {
   const [loggingAsToday, setLoggingAsToday] = useState(false);
 
   const [goals, setGoals] = useState<FoodGoal[]>([]);
+  const [bodyWeight, setBodyWeight] = useState<number | null>(null);
 
   const [searchSheetOpen, setSearchSheetOpen] = useState(false);
   const [searchTargetMealId, setSearchTargetMealId] = useState("");
@@ -204,15 +207,23 @@ export default function FoodPlanPage() {
   const fetchPlans = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
-      const [plansRes, templatesRes, goalsRes] = await Promise.all([
+      const [plansRes, templatesRes, goalsRes, bodyRes] = await Promise.all([
         fetch("/api/food/plans", { headers }),
         fetch("/api/food/templates", { headers }),
         fetch("/api/food/goals", { headers }),
+        fetch("/api/metrics/body", { headers }),
       ]);
       if (templatesRes.ok) setTemplates(await templatesRes.json());
       if (goalsRes.ok) {
         const gd = await goalsRes.json();
         setGoals(Array.isArray(gd) ? gd : gd?.goals ?? []);
+      }
+      if (bodyRes.ok) {
+        const bd = await bodyRes.json();
+        if (bd?.weight && Array.isArray(bd.weight) && bd.weight.length > 0) {
+          const sorted = [...bd.weight].sort((a: { date: string }, b: { date: string }) => b.date.localeCompare(a.date));
+          setBodyWeight(sorted[0].value ?? null);
+        }
       }
       if (plansRes.ok) {
         const data: PlanSummary[] = await plansRes.json();
@@ -619,7 +630,7 @@ export default function FoodPlanPage() {
               </div>
             ) : (
               <>
-                <MacroSummaryBar totals={totals} goals={computeGoalTargets(goals, totals)} />
+                <MacroSummaryBar totals={totals} goals={computeGoalTargets(goals, totals, bodyWeight)} />
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMealDragStart} onDragEnd={handleMealDragEnd}>
                   <SortableContext items={(activePlan?.meals ?? []).map((m) => m.id)} strategy={verticalListSortingStrategy}>
