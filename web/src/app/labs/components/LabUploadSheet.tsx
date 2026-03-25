@@ -51,7 +51,6 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
 
   // Resizable sheet width
   const MIN_WIDTH = 400;
-  const MAX_WIDTH = typeof window !== "undefined" ? window.innerWidth - 48 : 1200;
   const [sheetWidth, setSheetWidth] = useState<number>(() => {
     if (typeof window === "undefined") return 720;
     return Math.min(parseInt(localStorage.getItem("labs_sheet_width") ?? "720", 10) || 720, window.innerWidth - 48);
@@ -247,8 +246,8 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
     <Sheet open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
       <SheetContent
         side="right"
-        className="overflow-hidden flex flex-col !w-auto !max-w-none"
-        style={{ width: sheetWidth, maxWidth: MAX_WIDTH }}
+        className="overflow-hidden flex flex-col"
+        style={{ width: sheetWidth, maxWidth: "calc(100vw - 48px)", minWidth: MIN_WIDTH }}
       >
         {/* Drag-to-resize handle */}
         <div
