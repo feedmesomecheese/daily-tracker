@@ -216,7 +216,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <SheetContent side="right" className="sm:max-w-2xl w-full overflow-hidden flex flex-col">
+      <SheetContent side="right" className="w-[90vw] max-w-5xl overflow-hidden flex flex-col">
         <SheetHeader className="flex-shrink-0">
           <SheetTitle>{step === "upload" ? "Upload Lab Reports" : `Review ${visits.length} Report${visits.length !== 1 ? "s" : ""}`}</SheetTitle>
         </SheetHeader>
@@ -363,36 +363,68 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
                               <p className="text-xs text-muted-foreground font-medium">{visit.results.length} results</p>
                               <button onClick={() => addRow(vi)} className="text-xs text-primary hover:underline">+ Add row</button>
                             </div>
-                            <div className="space-y-1">
-                              <div className="grid gap-1 text-xs text-muted-foreground font-medium px-1 hidden sm:grid" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr auto" }}>
-                                <span>Test</span><span>Category</span><span>Value</span><span>Unit</span><span>Ref Low</span><span>Ref High</span><span></span>
-                              </div>
-                              {[...visit.results]
-                                .map((r, origIdx) => ({ r, origIdx }))
-                                .sort((a, b) => CATEGORY_ORDER.indexOf(a.r.category || "Other") - CATEGORY_ORDER.indexOf(b.r.category || "Other"))
-                                .map(({ r, origIdx }) => (
-                                  <div key={origIdx}
-                                    className={cn("grid gap-1 items-center rounded-lg px-1 py-1", r.in_range === false ? "bg-red-500/5 border border-red-500/20" : "bg-muted/30")}
-                                    style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr auto" }}
-                                  >
-                                    <input value={r.test_name} onChange={(e) => updateResult(vi, origIdx, "test_name", e.target.value)}
-                                      className="h-7 px-2 border rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring" placeholder="Test name" />
-                                    <select value={r.category || "Other"} onChange={(e) => updateResult(vi, origIdx, "category", e.target.value)}
-                                      className="h-7 px-1 border rounded text-xs bg-background focus:outline-none">
-                                      {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                                    </select>
-                                    <input type="number" value={r.value ?? ""} onChange={(e) => updateResult(vi, origIdx, "value", e.target.value)}
-                                      className={cn("h-7 px-2 border rounded text-xs bg-background focus:outline-none font-mono", r.in_range === false ? "text-red-600 font-semibold" : "")}
-                                      placeholder="—" />
-                                    <input value={r.unit || ""} onChange={(e) => updateResult(vi, origIdx, "unit", e.target.value)}
-                                      className="h-7 px-2 border rounded text-xs bg-background focus:outline-none" placeholder="unit" />
-                                    <input type="number" value={r.ref_low ?? ""} onChange={(e) => updateResult(vi, origIdx, "ref_low", e.target.value)}
-                                      className="h-7 px-2 border rounded text-xs bg-background focus:outline-none" placeholder="—" />
-                                    <input type="number" value={r.ref_high ?? ""} onChange={(e) => updateResult(vi, origIdx, "ref_high", e.target.value)}
-                                      className="h-7 px-2 border rounded text-xs bg-background focus:outline-none" placeholder="—" />
-                                    <button onClick={() => removeResult(vi, origIdx)} className="text-muted-foreground hover:text-destructive text-xs px-1">✕</button>
-                                  </div>
-                                ))}
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs border-separate border-spacing-y-0.5" style={{ minWidth: 560 }}>
+                                <colgroup>
+                                  <col style={{ minWidth: 140 }} />
+                                  <col style={{ width: 100 }} />
+                                  <col style={{ width: 72 }} />
+                                  <col style={{ width: 80 }} />
+                                  <col style={{ width: 76 }} />
+                                  <col style={{ width: 76 }} />
+                                  <col style={{ width: 28 }} />
+                                </colgroup>
+                                <thead>
+                                  <tr className="text-muted-foreground font-medium">
+                                    <th className="text-left px-2 pb-1 font-medium">Test</th>
+                                    <th className="text-left px-2 pb-1 font-medium">Category</th>
+                                    <th className="text-left px-2 pb-1 font-medium">Value</th>
+                                    <th className="text-left px-2 pb-1 font-medium">Unit</th>
+                                    <th className="text-left px-2 pb-1 font-medium">Ref Low</th>
+                                    <th className="text-left px-2 pb-1 font-medium">Ref High</th>
+                                    <th />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {[...visit.results]
+                                    .map((r, origIdx) => ({ r, origIdx }))
+                                    .sort((a, b) => CATEGORY_ORDER.indexOf(a.r.category || "Other") - CATEGORY_ORDER.indexOf(b.r.category || "Other"))
+                                    .map(({ r, origIdx }) => (
+                                      <tr key={origIdx} className={cn("rounded-lg", r.in_range === false ? "bg-red-500/5" : "bg-muted/30")}>
+                                        <td className="px-1 py-0.5">
+                                          <input value={r.test_name} onChange={(e) => updateResult(vi, origIdx, "test_name", e.target.value)}
+                                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring" placeholder="Test name" />
+                                        </td>
+                                        <td className="px-1 py-0.5">
+                                          <select value={r.category || "Other"} onChange={(e) => updateResult(vi, origIdx, "category", e.target.value)}
+                                            className="w-full h-7 px-1 border rounded text-xs bg-background focus:outline-none">
+                                            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                                          </select>
+                                        </td>
+                                        <td className="px-1 py-0.5">
+                                          <input type="number" value={r.value ?? ""} onChange={(e) => updateResult(vi, origIdx, "value", e.target.value)}
+                                            className={cn("w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none font-mono", r.in_range === false ? "text-red-600 font-semibold" : "")}
+                                            placeholder="—" />
+                                        </td>
+                                        <td className="px-1 py-0.5">
+                                          <input value={r.unit || ""} onChange={(e) => updateResult(vi, origIdx, "unit", e.target.value)}
+                                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none" placeholder="—" />
+                                        </td>
+                                        <td className="px-1 py-0.5">
+                                          <input type="number" value={r.ref_low ?? ""} onChange={(e) => updateResult(vi, origIdx, "ref_low", e.target.value)}
+                                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none" placeholder="—" />
+                                        </td>
+                                        <td className="px-1 py-0.5">
+                                          <input type="number" value={r.ref_high ?? ""} onChange={(e) => updateResult(vi, origIdx, "ref_high", e.target.value)}
+                                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none" placeholder="—" />
+                                        </td>
+                                        <td className="px-1 py-0.5 text-center">
+                                          <button onClick={() => removeResult(vi, origIdx)} className="text-muted-foreground hover:text-destructive px-1">✕</button>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                </tbody>
+                              </table>
                             </div>
                           </div>
                         </>
