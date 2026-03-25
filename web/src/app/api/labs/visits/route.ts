@@ -41,11 +41,12 @@ export async function POST(req: Request) {
 
   if (Array.isArray(results) && results.length > 0) {
     const rows = results.map((r: {
-      test_name: string; category?: string; value?: number; unit?: string;
+      test_name: string; canonical_name?: string; category?: string; value?: number; unit?: string;
       ref_low?: number; ref_high?: number; ref_text?: string; in_range?: boolean; notes?: string;
     }) => ({
       visit_id: visit.id,
       test_name: r.test_name,
+      canonical_name: r.canonical_name || null,
       category: r.category || null,
       value: r.value ?? null,
       unit: r.unit || null,

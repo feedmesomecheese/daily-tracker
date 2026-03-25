@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 interface ParsedResult {
   test_name: string;
+  canonical_name: string | null;
   category: string | null;
   value: number | null;
   unit: string | null;
@@ -26,6 +27,7 @@ interface VisitDraft {
   results: ParsedResult[];
   error?: string;
   expanded: boolean;
+  duplicate?: boolean; // matches an existing visit by date+lab
 }
 
 const CATEGORIES = ["CBC", "Metabolic", "Lipid", "Thyroid", "Hormone", "Vitamin", "Urinalysis", "Other"];
@@ -111,7 +113,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
         visitDate: json.visit_date || "",
         labName: json.lab_name || "",
         provider: json.provider || "",
-        results: (json.results || []).map((r: ParsedResult) => ({ ...r, in_range: inferInRange(r) })),
+        results: (json.results || []).map((r: ParsedResult) => ({ ...r, canonical_name: r.canonical_name || null, in_range: inferInRange(r) })),
         expanded: true,
       };
     } catch (err: unknown) {
@@ -144,6 +146,22 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
         setParseProgress((prev) => ({ ...prev, done: prev.done + 1 }));
       })
     );
+
+    // Check for duplicates against existing visits
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/labs/visits", { headers });
+      if (res.ok) {
+        const existing: { visit_date: string; lab_name: string | null }[] = await res.json();
+        const existingKeys = new Set(existing.map((v) => `${v.visit_date}|${(v.lab_name || "").toLowerCase()}`));
+        for (const draft of results) {
+          if (draft.visitDate) {
+            const key = `${draft.visitDate}|${(draft.labName || "").toLowerCase()}`;
+            draft.duplicate = existingKeys.has(key);
+          }
+        }
+      }
+    } catch { /* non-fatal */ }
 
     // Sort by visit date desc
     results.sort((a, b) => b.visitDate.localeCompare(a.visitDate));
@@ -212,7 +230,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
     setVisits((prev) => prev.map((v, i) =>
       i === vi ? {
         ...v,
-        results: [...v.results, { test_name: "", category: "Other", value: null, unit: null, ref_low: null, ref_high: null, ref_text: null, in_range: null }],
+        results: [...v.results, { test_name: "", canonical_name: null, category: "Other", value: null, unit: null, ref_low: null, ref_high: null, ref_text: null, in_range: null }],
       } : v
     ));
   };
@@ -319,7 +337,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
                 <p className="text-xs text-muted-foreground font-medium mb-3">Or enter manually</p>
                 <Button variant="outline" className="w-full" onClick={() => {
                   setVisits([{ fileName: "", visitDate: "", labName: "", provider: "", results: [
-                    { test_name: "", category: "Other", value: null, unit: null, ref_low: null, ref_high: null, ref_text: null, in_range: null },
+                    { test_name: "", canonical_name: null, category: "Other", value: null, unit: null, ref_low: null, ref_high: null, ref_text: null, in_range: null },
                   ], expanded: true }]);
                   setStep("review");
                 }}>
@@ -333,7 +351,7 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
           {step === "review" && (
             <div className="space-y-4">
               {visits.map((visit, vi) => (
-                <div key={vi} className={cn("border rounded-xl overflow-hidden", visit.error ? "border-destructive/40" : "border-border")}>
+                <div key={vi} className={cn("border rounded-xl overflow-hidden", visit.error ? "border-destructive/40" : visit.duplicate ? "border-amber-500/50" : "border-border")}>
                   {/* Visit header */}
                   <div
                     className="flex items-center gap-2 px-4 py-3 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
@@ -349,6 +367,11 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
                       </span>
                       {visit.visitDate && <span className="text-xs text-muted-foreground ml-2">{visit.visitDate}</span>}
                       {visit.error && <span className="text-xs text-destructive ml-2">Parse error</span>}
+                      {visit.duplicate && (
+                        <span className="text-xs text-amber-600 ml-2 inline-flex items-center gap-1">
+                          ⚠ Already imported
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       {!visit.error && (
@@ -432,6 +455,16 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
                                         <td className="px-1 py-0.5">
                                           <input value={r.test_name} onChange={(e) => updateResult(vi, origIdx, "test_name", e.target.value)}
                                             className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring" placeholder="Test name" />
+                                          <input
+                                            value={r.canonical_name || ""}
+                                            onChange={(e) => updateResult(vi, origIdx, "canonical_name", e.target.value)}
+                                            className={cn(
+                                              "w-full h-6 px-2 mt-0.5 border border-dashed rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring",
+                                              r.canonical_name && r.canonical_name !== r.test_name ? "text-muted-foreground" : "text-muted-foreground/40"
+                                            )}
+                                            placeholder="+ link name"
+                                            title="Canonical name — links this test across labs for trend tracking"
+                                          />
                                         </td>
                                         <td className="px-1 py-0.5">
                                           <select value={r.category || "Other"} onChange={(e) => updateResult(vi, origIdx, "category", e.target.value)}

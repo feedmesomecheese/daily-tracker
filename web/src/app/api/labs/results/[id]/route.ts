@@ -17,6 +17,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     .from("lab_results")
     .update({
       test_name: body.test_name,
+      canonical_name: body.canonical_name ?? null,
       category: body.category ?? null,
       value: body.value ?? null,
       unit: body.unit ?? null,

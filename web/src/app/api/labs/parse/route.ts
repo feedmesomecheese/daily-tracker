@@ -12,7 +12,8 @@ Return ONLY a valid JSON object with this exact structure:
   "provider": "ordering provider name or null",
   "results": [
     {
-      "test_name": "exact test name as shown",
+      "test_name": "exact test name as shown on the report",
+      "canonical_name": "standardized medical name for this test (see rules below)",
       "category": "one of: CBC, Metabolic, Lipid, Thyroid, Hormone, Vitamin, Urinalysis, Other",
       "value": numeric value or null if not numeric,
       "unit": "unit string or null",
@@ -26,6 +27,8 @@ Return ONLY a valid JSON object with this exact structure:
 
 Rules:
 - Include every test result on the report, even if value is missing
+- test_name: copy exactly as printed on the report
+- canonical_name: normalize to a consistent standard name so the same test from different labs matches. Examples: "WBC", "WHITE BLOOD CELL COUNT", "Leukocytes" → "WBC"; "HEMOGLOBIN A1C", "HbA1c", "Est. Avg. Glucose (HbA1c)" → "Hemoglobin A1c"; "CHOL", "Total Cholesterol" → "Total Cholesterol"; "eGFR", "GFR (estimated)" → "eGFR"; "25-OH Vitamin D", "Vitamin D, 25-Hydroxy" → "Vitamin D (25-OH)". Use Title Case. If already standard, canonical_name may equal test_name.
 - For reference ranges like "3.5-5.0", set ref_low=3.5 and ref_high=5.0
 - For "<5.0", set ref_high=5.0 and ref_low=null
 - For ">0.1", set ref_low=0.1 and ref_high=null
