@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+import type { ChatCompletion } from "openai/resources/chat/completions";
 import { extractText } from "unpdf";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
@@ -57,25 +58,43 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "File too large (max 20MB)" }, { status: 400 });
     }
 
-    // Extract text from PDF
     const arrayBuffer = await file.arrayBuffer();
-    const { text: pages } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true });
-    const text = (Array.isArray(pages) ? pages.join("\n") : String(pages ?? "")).trim();
-
-    if (!text) {
-      return NextResponse.json({ error: "Could not extract text from PDF. The file may be a scanned image — try a text-based PDF." }, { status: 422 });
-    }
-
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 4096,
-      messages: [
-        { role: "system", content: PARSE_PROMPT },
-        { role: "user", content: text },
-      ],
-    });
+    // Try text extraction first (cheaper). Fall back to GPT-4o PDF vision.
+    const completion: ChatCompletion = await (async () => {
+      try {
+        const { text: pages } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true });
+        const text = (Array.isArray(pages) ? pages.join("\n") : String(pages ?? "")).trim();
+        if (text) {
+          return openai.chat.completions.create({
+            stream: false,
+            model: "gpt-4o-mini",
+            max_tokens: 4096,
+            messages: [
+              { role: "system", content: PARSE_PROMPT },
+              { role: "user", content: text },
+            ],
+          });
+        }
+      } catch { /* fall through to vision */ }
+
+      // Fallback: send PDF directly to gpt-4o (handles scanned/unusual encodings)
+      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      return openai.chat.completions.create({
+        stream: false,
+        model: "gpt-4o",
+        max_tokens: 4096,
+        messages: [
+          { role: "system", content: PARSE_PROMPT },
+          {
+            role: "user",
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            content: [{ type: "file", file: { filename: file.name, file_data: `data:application/pdf;base64,${base64}` } }] as any,
+          },
+        ],
+      });
+    })();
 
     const raw = completion.choices[0]?.message?.content ?? "";
     const jsonText = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
