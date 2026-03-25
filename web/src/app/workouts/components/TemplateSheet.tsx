@@ -64,7 +64,7 @@ export default function TemplateSheet({ open, onOpenChange, onLoad }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col">
+      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col" storageKey="workout_template_sheet_width" defaultWidth={448}>
         <SheetHeader>
           <SheetTitle>Load Template</SheetTitle>
           <SheetDescription>

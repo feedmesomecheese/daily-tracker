@@ -93,7 +93,7 @@ export function MetricMappingSheet({
       <SheetTrigger asChild>
         <Button variant="outline">Configure Metrics</Button>
       </SheetTrigger>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto" storageKey="oura_mapping_sheet_width" defaultWidth={512}>
         <SheetHeader>
           <SheetTitle>Metric Mapping</SheetTitle>
         </SheetHeader>

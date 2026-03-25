@@ -2058,7 +2058,7 @@ export default function MetricsPage() {
 
       {/* Formula help sheet */}
       <Sheet open={showFormulaHelp} onOpenChange={setShowFormulaHelp}>
-        <SheetContent className="overflow-auto">
+        <SheetContent className="overflow-auto" storageKey="metrics_formula_sheet_width" defaultWidth={560}>
           <SheetHeader>
             <SheetTitle>Formula Reference</SheetTitle>
             <SheetDescription>
@@ -2112,7 +2112,7 @@ export default function MetricsPage() {
         open={notificationMetric !== null}
         onOpenChange={(open) => !open && setNotificationMetric(null)}
       >
-        <SheetContent>
+        <SheetContent storageKey="metrics_notification_sheet_width" defaultWidth={480}>
           <SheetHeader>
             <SheetTitle>Notification Settings</SheetTitle>
             <SheetDescription>

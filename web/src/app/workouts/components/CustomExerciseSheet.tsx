@@ -107,7 +107,7 @@ export default function CustomExerciseSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-auto">
+      <SheetContent className="overflow-auto" storageKey="custom_exercise_sheet_width" defaultWidth={560}>
         <SheetHeader>
           <SheetTitle>Create Exercise</SheetTitle>
           <SheetDescription>

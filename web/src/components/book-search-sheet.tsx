@@ -291,6 +291,8 @@ export function BookSearchSheet({ open, onOpenChange, onBookAdded }: BookSearchS
             ? "h-[90vh] overflow-hidden flex flex-col rounded-t-xl"
             : "sm:max-w-[480px] overflow-hidden flex flex-col"
         }
+        storageKey="book_search_sheet_width"
+        defaultWidth={480}
       >
         {isMobile && (
           <div className="flex justify-center pt-2 pb-1">

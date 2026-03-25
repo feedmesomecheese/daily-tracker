@@ -178,7 +178,7 @@ export function QuickAddMetricSheet({ open, onOpenChange, existingGroups, onCrea
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col">
+      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col" storageKey="quick_add_metric_sheet_width" defaultWidth={448}>
         <SheetHeader>
           <SheetTitle>Add Metric</SheetTitle>
           <SheetDescription>

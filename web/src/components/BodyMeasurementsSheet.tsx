@@ -264,7 +264,7 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="overflow-y-auto w-full sm:max-w-[50vw]">
+      <SheetContent side="right" className="overflow-y-auto w-full sm:max-w-[50vw]" storageKey="body_measurements_sheet_width" defaultWidth={720}>
         <SheetHeader>
           <SheetTitle>Body Measurements</SheetTitle>
           <SheetDescription>

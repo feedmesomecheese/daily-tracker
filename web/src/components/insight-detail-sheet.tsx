@@ -165,6 +165,8 @@ export function InsightDetailSheet({
             ? "h-[90vh] overflow-hidden flex flex-col rounded-t-xl"
             : "sm:max-w-[560px] overflow-hidden flex flex-col"
         }
+        storageKey="insight_detail_sheet_width"
+        defaultWidth={560}
       >
         {isMobile && (
           <div className="flex justify-center pt-2 pb-1">

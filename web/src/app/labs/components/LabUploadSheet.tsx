@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -51,32 +51,6 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
 
-  // Resizable sheet width
-  const MIN_WIDTH = 400;
-  const [sheetWidth, setSheetWidth] = useState<number>(() => {
-    if (typeof window === "undefined") return 720;
-    return Math.min(parseInt(localStorage.getItem("labs_sheet_width") ?? "720", 10) || 720, window.innerWidth - 48);
-  });
-  const isResizing = useRef(false);
-
-  useEffect(() => {
-    const onMouseMove = (e: MouseEvent) => {
-      if (!isResizing.current) return;
-      const newWidth = Math.min(Math.max(window.innerWidth - e.clientX, MIN_WIDTH), window.innerWidth - 48);
-      setSheetWidth(newWidth);
-    };
-    const onMouseUp = () => {
-      if (!isResizing.current) return;
-      isResizing.current = false;
-      document.body.style.userSelect = "";
-      document.body.style.cursor = "";
-      setSheetWidth((w) => { localStorage.setItem("labs_sheet_width", String(w)); return w; });
-    };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-    return () => { window.removeEventListener("mousemove", onMouseMove); window.removeEventListener("mouseup", onMouseUp); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const [step, setStep] = useState<"upload" | "review">("upload");
   const [parsing, setParsing] = useState(false);
@@ -276,14 +250,9 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
       <SheetContent
         side="right"
         className="overflow-hidden flex flex-col"
-        style={{ width: sheetWidth, maxWidth: "calc(100vw - 48px)", minWidth: MIN_WIDTH }}
+        storageKey="labs_sheet_width"
+        defaultWidth={720}
       >
-        {/* Drag-to-resize handle */}
-        <div
-          onMouseDown={(e) => { e.preventDefault(); isResizing.current = true; document.body.style.userSelect = "none"; document.body.style.cursor = "ew-resize"; }}
-          className="absolute left-0 top-0 h-full w-1.5 cursor-ew-resize hover:bg-primary/20 transition-colors z-10"
-          title="Drag to resize"
-        />
         <SheetHeader className="flex-shrink-0">
           <SheetTitle>{step === "upload" ? "Upload Lab Reports" : `Review ${visits.length} Report${visits.length !== 1 ? "s" : ""}`}</SheetTitle>
         </SheetHeader>

@@ -132,7 +132,7 @@ export function GoalConfigSheet({
   if (metricType === "text") {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="overflow-y-auto">
+        <SheetContent className="overflow-y-auto" storageKey="goal_config_sheet_width" defaultWidth={512}>
           <SheetHeader>
             <SheetTitle>Goals: {metricName}</SheetTitle>
             <SheetDescription>
@@ -146,7 +146,7 @@ export function GoalConfigSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="overflow-y-auto sm:max-w-lg">
+      <SheetContent className="overflow-y-auto sm:max-w-lg" storageKey="goal_config_sheet_width" defaultWidth={512}>
         <SheetHeader>
           <SheetTitle>Goals: {metricName}</SheetTitle>
           <SheetDescription>

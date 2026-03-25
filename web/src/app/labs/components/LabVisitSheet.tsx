@@ -91,7 +91,7 @@ export default function LabVisitSheet({ open, onOpenChange, visit, onUpdated, on
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="sm:max-w-xl w-full overflow-hidden flex flex-col">
+      <SheetContent side="right" className="sm:max-w-xl w-full overflow-hidden flex flex-col" storageKey="lab_visit_sheet_width" defaultWidth={576}>
         <SheetHeader className="flex-shrink-0">
           <SheetTitle>{formatDate(visit.visit_date)}</SheetTitle>
           <div className="text-sm text-muted-foreground">

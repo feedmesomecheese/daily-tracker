@@ -367,7 +367,7 @@ export default function ExerciseStatsSheet({
   return (
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="overflow-y-auto w-full sm:max-w-[50vw]">
+      <SheetContent side="right" className="overflow-y-auto w-full sm:max-w-[50vw]" storageKey="exercise_stats_sheet_width" defaultWidth={720}>
         <SheetHeader>
           <SheetTitle>{exerciseName || "Exercise Stats"}</SheetTitle>
           <SheetDescription>

@@ -373,100 +373,52 @@ function DayOfWeekBar({
   );
 }
 
-// Full-width sparkline component with MA line and daily value points
 function FullWidthSparkline({
   maValues,
   dailyValues,
-  height = 60
+  height = 60,
 }: {
   maValues: number[];
   dailyValues?: (number | null)[];
   height?: number;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(300);
-
-  // Update width on mount and resize
-  useEffect(() => {
-    const updateWidth = () => {
-      if (containerRef.current) {
-        setWidth(containerRef.current.offsetWidth);
-      }
-    };
-    updateWidth();
-    window.addEventListener("resize", updateWidth);
-    return () => window.removeEventListener("resize", updateWidth);
-  }, []);
-
-  if (maValues.length < 2) return null;
-
-  // Calculate min/max across both datasets
-  const allValues = [
-    ...maValues,
-    ...(dailyValues?.filter((v): v is number => v !== null) ?? [])
-  ];
-  const min = Math.min(...allValues);
-  const max = Math.max(...allValues);
-  const range = max - min || 1;
-
-  const padding = 8;
-  const chartHeight = height - padding * 2;
-
-  // Create MA line path
-  const maPoints = maValues.map((v, i) => {
-    const x = (i / (maValues.length - 1)) * width;
-    const y = padding + chartHeight - ((v - min) / range) * chartHeight;
-    return `${x},${y}`;
-  });
-  const maPathD = `M ${maPoints.join(" L ")}`;
-
-  // Determine trend color for MA line
   const startAvg = maValues.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, maValues.length);
   const endAvg = maValues.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, maValues.length);
   const strokeColor = endAvg > startAvg ? "#22c55e" : endAvg < startAvg ? "#ef4444" : "#6b7280";
 
-  // Calculate daily value points
-  const dailyPoints = dailyValues?.map((v, i) => {
-    if (v === null) return null;
-    const x = (i / (dailyValues.length - 1)) * width;
-    const y = padding + chartHeight - ((v - min) / range) * chartHeight;
-    return { x, y, value: v };
-  }).filter((p): p is { x: number; y: number; value: number } => p !== null) ?? [];
+  const data = maValues.map((v, i) => ({
+    i,
+    ma: v,
+    daily: dailyValues?.[i] ?? null,
+  }));
 
   return (
-    <div ref={containerRef} className="w-full">
-      <svg width="100%" height={height} className="overflow-visible">
-        {/* Daily value points - rendered first so MA line is on top */}
-        {dailyPoints.map((point, i) => (
-          <circle
-            key={i}
-            cx={point.x}
-            cy={point.y}
-            r={2.5}
-            fill="#94a3b8"
-            opacity={0.6}
-          />
-        ))}
-
-        {/* MA line */}
-        <path
-          d={maPathD}
-          fill="none"
+    <ResponsiveContainer width="100%" height={height} debounce={500}>
+      <LineChart data={data} margin={{ top: 8, right: 4, bottom: 8, left: 4 }}>
+        <YAxis domain={["auto", "auto"]} hide />
+        <Line
+          type="monotone"
+          dataKey="daily"
+          stroke="#94a3b8"
+          dot={{ r: 2.5, fill: "#94a3b8", strokeWidth: 0, opacity: 0.6 }}
+          activeDot={false}
+          strokeWidth={0}
+          isAnimationActive={true}
+          animationDuration={400}
+          connectNulls={false}
+        />
+        <Line
+          type="monotone"
+          dataKey="ma"
           stroke={strokeColor}
+          dot={false}
+          activeDot={false}
           strokeWidth={2.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          isAnimationActive={true}
+          animationDuration={400}
         />
-
-        {/* End dot on MA line */}
-        <circle
-          cx={width}
-          cy={padding + chartHeight - ((maValues[maValues.length - 1] - min) / range) * chartHeight}
-          r={4}
-          fill={strokeColor}
-        />
-      </svg>
-    </div>
+      </LineChart>
+    </ResponsiveContainer>
   );
 }
 
@@ -1120,6 +1072,8 @@ export function MetricStatsSheet({
             ? "h-full overflow-y-auto overflow-x-hidden"
             : "w-full sm:max-w-[50vw] overflow-y-auto"
         }
+        storageKey="metric_stats_sheet_width"
+        defaultWidth={720}
         onTouchStart={isMobile ? handleTouchStart : undefined}
         onTouchMove={isMobile ? handleTouchMove : undefined}
         onTouchEnd={isMobile ? handleTouchEnd : undefined}
@@ -1468,7 +1422,7 @@ export function MetricStatsSheet({
                 </CardHeader>
                 <CardContent className="px-2 sm:px-6">
                   <div style={{ width: "100%", height: 280 }}>
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" debounce={500}>
                       <LineChart
                         data={chartDataWithMetricComparison}
                         margin={{ top: 20, right: 5, left: -10, bottom: 5 }}
