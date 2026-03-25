@@ -148,17 +148,28 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
     );
 
     // Check for duplicates against existing visits
+    // A duplicate requires: same date + lab AND at least one overlapping test name
     try {
       const headers = await getAuthHeaders();
       const res = await fetch("/api/labs/visits", { headers });
       if (res.ok) {
-        const existing: { visit_date: string; lab_name: string | null }[] = await res.json();
-        const existingKeys = new Set(existing.map((v) => `${v.visit_date}|${(v.lab_name || "").toLowerCase()}`));
+        const existing: { visit_date: string; lab_name: string | null; lab_results: { test_name: string; canonical_name?: string | null }[] }[] = await res.json();
         for (const draft of results) {
-          if (draft.visitDate) {
-            const key = `${draft.visitDate}|${(draft.labName || "").toLowerCase()}`;
-            draft.duplicate = existingKeys.has(key);
+          if (!draft.visitDate) continue;
+          const dateLabMatch = existing.filter(
+            (v) => v.visit_date === draft.visitDate && (v.lab_name || "").toLowerCase() === (draft.labName || "").toLowerCase()
+          );
+          if (dateLabMatch.length === 0) continue;
+          // Build set of existing test names for matched visits
+          const existingNames = new Set<string>();
+          for (const v of dateLabMatch) {
+            for (const r of v.lab_results) {
+              existingNames.add((r.canonical_name || r.test_name).toLowerCase());
+            }
           }
+          // Check if any draft test overlaps
+          const draftNames = draft.results.map((r) => (r.canonical_name || r.test_name).toLowerCase());
+          draft.duplicate = draftNames.some((n) => existingNames.has(n));
         }
       }
     } catch { /* non-fatal */ }

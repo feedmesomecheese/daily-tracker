@@ -58,13 +58,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "File too large (max 20MB)" }, { status: 400 });
     }
 
-    const arrayBuffer = await file.arrayBuffer();
+    // Copy into a Node Buffer immediately — pdfjs may detach the original ArrayBuffer
+    const fileBuffer = Buffer.from(await file.arrayBuffer());
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     // Try text extraction first (cheaper). Fall back to GPT-4o PDF vision.
     const completion: ChatCompletion = await (async () => {
       try {
-        const { text: pages } = await extractText(new Uint8Array(arrayBuffer), { mergePages: true });
+        // Use a fresh Uint8Array copy so unpdf can't detach fileBuffer's memory
+        const { text: pages } = await extractText(new Uint8Array(fileBuffer), { mergePages: true });
         const text = (Array.isArray(pages) ? pages.join("\n") : String(pages ?? "")).trim();
         if (text) {
           return openai.chat.completions.create({
@@ -80,7 +82,7 @@ export async function POST(req: Request) {
       } catch { /* fall through to vision */ }
 
       // Fallback: send PDF directly to gpt-4o (handles scanned/unusual encodings)
-      const base64 = Buffer.from(arrayBuffer).toString("base64");
+      const base64 = fileBuffer.toString("base64");
       return openai.chat.completions.create({
         stream: false,
         model: "gpt-4o",
