@@ -8,8 +8,8 @@ async function getAuthedClient(req: Request) {
   return { supabase, user };
 }
 
-// POST /api/food/items/[id]/favorite — toggle favorite for current user
-export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
+// PATCH /api/food/items/[id]/favorite — toggle favorite for current user
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { supabase, user } = await getAuthedClient(req);
   if (!supabase || !user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 

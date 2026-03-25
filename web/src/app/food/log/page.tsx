@@ -46,7 +46,8 @@ interface RollingAverages {
   fat: number;
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return "Unknown date";
   const [year, month, day] = dateStr.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   return date.toLocaleDateString("en-US", {
@@ -366,7 +367,7 @@ export default function FoodLogPage() {
       {/* Log list */}
       {!loading && logs.length > 0 && (
         <div className="space-y-2">
-          {logs.map((log) => (
+          {logs.filter((log) => log.date).map((log) => (
             <button
               key={log.id}
               onClick={() => router.push(`/food?date=${log.date}`)}

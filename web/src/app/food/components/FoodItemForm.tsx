@@ -1,8 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import type { FoodItem } from "./FoodLibraryRow";
+
+// ── USDA search types ─────────────────────────────────────────────
+interface USDAResult {
+  fdcId: number;
+  name: string;
+  brand: string | null;
+  dataType: string;
+  per100g: {
+    calories: number;
+    protein: number;
+    fat: number;
+    carbs: number;
+    fiber: number;
+  };
+}
 
 interface ServingRow {
   id?: string;
@@ -70,6 +85,24 @@ export function FoodItemForm({ item, onClose, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ── USDA search state ─────────────────────────────────────────────
+  const [showUSDA, setShowUSDA] = useState(false);
+  const [usdaQuery, setUsdaQuery] = useState("");
+  const [usdaResults, setUsdaResults] = useState<USDAResult[]>([]);
+  const [usdaLoading, setUsdaLoading] = useState(false);
+  const [usdaError, setUsdaError] = useState<string | null>(null);
+  const usdaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── USDA serving configurator state ──────────────────────────────
+  const [usdaPicked, setUsdaPicked] = useState<USDAResult | null>(null);
+  const [usdaPortions, setUsdaPortions] = useState<{ label: string; grams: number }[]>([]);
+  const [usdaPortionsLoading, setUsdaPortionsLoading] = useState(false);
+  // Current serving being configured
+  const [cfgGrams, setCfgGrams] = useState("113"); // default 4 oz
+  const [cfgLabel, setCfgLabel] = useState("4 oz");
+  // Staged servings to import
+  const [stagedServings, setStagedServings] = useState<{ label: string; grams: number }[]>([]);
+
   // Prevent background scroll
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -112,6 +145,117 @@ export function FoodItemForm({ item, onClose, onSaved }: Props) {
         return filtered;
       }
     });
+  };
+
+  // ── USDA search ──────────────────────────────────────────────────
+
+  const searchUSDA = useCallback(async (q: string) => {
+    if (!q.trim()) { setUsdaResults([]); return; }
+    setUsdaLoading(true);
+    setUsdaError(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/food/usda/search?q=${encodeURIComponent(q)}`, { headers });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Search failed");
+      setUsdaResults(json.results ?? []);
+    } catch (e: unknown) {
+      setUsdaError(e instanceof Error ? e.message : "Search failed");
+    } finally {
+      setUsdaLoading(false);
+    }
+  }, []);
+
+  const handleUsdaQueryChange = (q: string) => {
+    setUsdaQuery(q);
+    if (usdaDebounceRef.current) clearTimeout(usdaDebounceRef.current);
+    usdaDebounceRef.current = setTimeout(() => searchUSDA(q), 400);
+  };
+
+  // Step 2: user picked a result — open serving configurator
+  const pickUSDAResult = async (result: USDAResult) => {
+    setUsdaPicked(result);
+    setStagedServings([]);
+    setCfgGrams("113");
+    setCfgLabel("4 oz");
+    // Fetch USDA named portions in background
+    setUsdaPortions([]);
+    setUsdaPortionsLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/food/usda/food/${result.fdcId}`, { headers });
+      const json = await res.json();
+      setUsdaPortions(json.portions ?? []);
+    } catch {
+      // Non-fatal — user can still use manual sizes
+    } finally {
+      setUsdaPortionsLoading(false);
+    }
+  };
+
+  // Scale macros from per-100g base to target grams
+  const scaleNutrient = (per100: number, grams: number) =>
+    Math.round(per100 * (grams / 100) * 10) / 10;
+
+  const cfgGramsNum = parseFloat(cfgGrams) || 0;
+
+  // Quick-pick a portion size
+  const applyPortionPreset = (label: string, grams: number) => {
+    setCfgLabel(label);
+    setCfgGrams(String(grams));
+  };
+
+  // Add the current configured serving to the staged list
+  const stageServing = () => {
+    if (!cfgGramsNum || !cfgLabel.trim()) return;
+    setStagedServings((prev) => [...prev, { label: cfgLabel.trim(), grams: cfgGramsNum }]);
+  };
+
+  const removeStagedServing = (i: number) => {
+    setStagedServings((prev) => prev.filter((_, idx) => idx !== i));
+  };
+
+  // Step 3: commit — set form fields from picked result + staged servings
+  const importUSDAResult = () => {
+    if (!usdaPicked) return;
+    const result = usdaPicked;
+
+    const titleCase = result.name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+    setName(titleCase);
+
+    const lower = result.name.toLowerCase();
+    if (/chicken|beef|pork|turkey|fish|salmon|tuna|shrimp|lamb|bison|venison|flounder|cod|tilapia|halibut|bass|trout|crab|lobster|clam|oyster|scallop|anchov|sardine|herring|mackerel|catfish|perch|pike|walleye|whiting|haddock|pollock|snapper|grouper|mahi|swordfish/.test(lower)) {
+      setCategory("Meat");
+    } else if (/milk|cheese|yogurt|cream|butter|dairy|whey|casein/.test(lower)) {
+      setCategory("Dairy");
+    } else if (/bread|rice|oat|wheat|pasta|flour|corn|barley|rye|cereal|grain|tortilla|bagel|cracker|pretzel|granola/.test(lower)) {
+      setCategory("Grains");
+    } else if (/apple|banana|orange|grape|berry|broccoli|spinach|lettuce|carrot|tomato|potato|onion|pepper|bean|lentil|pea|nut|seed|vegetable|fruit|avocado|cucumber|zucchini|squash|mushroom|cabbage|kale|celery/.test(lower)) {
+      setCategory("Plants");
+    } else {
+      setCategory("Misc");
+    }
+
+    // Build serving rows from staged list (or fall back to 100g if nothing staged)
+    const toImport = stagedServings.length > 0 ? stagedServings : [{ label: "100g", grams: 100 }];
+    setServings(toImport.map((s, i) => ({
+      label: s.label,
+      calories: String(scaleNutrient(result.per100g.calories, s.grams)),
+      protein:  String(scaleNutrient(result.per100g.protein,  s.grams)),
+      fat:      String(scaleNutrient(result.per100g.fat,      s.grams)),
+      carbs:    String(scaleNutrient(result.per100g.carbs,    s.grams)),
+      fiber:    String(scaleNutrient(result.per100g.fiber,    s.grams)),
+      is_default: i === 0,
+      sort_order: i,
+      is_global: false,
+    })));
+
+    // Reset USDA state
+    setShowUSDA(false);
+    setUsdaPicked(null);
+    setUsdaQuery("");
+    setUsdaResults([]);
+    setStagedServings([]);
   };
 
   // ── Validation ───────────────────────────────────────────────────
@@ -298,8 +442,252 @@ export function FoodItemForm({ item, onClose, onSaved }: Props) {
             <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-lg">{error}</div>
           )}
 
-          {/* Name / category — only for new or custom foods */}
-          {!isGlobal && (
+          {/* USDA search — only when creating a new food */}
+          {!isEditing && (
+            <div>
+              {/* Step 0: collapsed button */}
+              {!showUSDA && !usdaPicked && (
+                <button
+                  type="button"
+                  onClick={() => setShowUSDA(true)}
+                  className="w-full h-9 border border-dashed rounded-lg text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  Search USDA Database
+                </button>
+              )}
+
+              {/* Step 1: search results */}
+              {showUSDA && !usdaPicked && (
+                <div className="border rounded-lg overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+                      fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                      className="shrink-0 text-muted-foreground">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="text"
+                      value={usdaQuery}
+                      onChange={(e) => handleUsdaQueryChange(e.target.value)}
+                      placeholder="Search USDA (e.g. flounder, chicken breast...)"
+                      autoFocus
+                      className="flex-1 text-sm bg-transparent focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setShowUSDA(false); setUsdaQuery(""); setUsdaResults([]); setUsdaError(null); }}
+                      className="text-muted-foreground hover:text-foreground text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+
+                  {usdaLoading && (
+                    <div className="px-3 py-3 text-xs text-muted-foreground">Searching...</div>
+                  )}
+                  {usdaError && (
+                    <div className="px-3 py-2 text-xs text-destructive">{usdaError}</div>
+                  )}
+                  {!usdaLoading && usdaResults.length === 0 && usdaQuery.trim() && !usdaError && (
+                    <div className="px-3 py-3 text-xs text-muted-foreground">No results found.</div>
+                  )}
+                  {!usdaLoading && !usdaQuery.trim() && (
+                    <div className="px-3 py-3 text-xs text-muted-foreground">Type to search the USDA FoodData Central database.</div>
+                  )}
+
+                  {usdaResults.length > 0 && (
+                    <ul className="max-h-56 overflow-y-auto divide-y">
+                      {usdaResults.map((result) => (
+                        <li key={result.fdcId}>
+                          <button
+                            type="button"
+                            onClick={() => pickUSDAResult(result)}
+                            className="w-full text-left px-3 py-2.5 hover:bg-accent transition-colors"
+                          >
+                            <div className="text-sm font-medium leading-snug">
+                              {result.name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-0.5 flex items-center gap-2">
+                              <span>{result.per100g.calories} cal</span>
+                              <span>P{result.per100g.protein}g</span>
+                              <span>C{result.per100g.carbs}g</span>
+                              <span>F{result.per100g.fat}g</span>
+                              {result.brand && <span className="truncate max-w-[120px]">· {result.brand}</span>}
+                              <span className="ml-auto text-muted-foreground/60 shrink-0">{result.dataType}</span>
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2: serving configurator */}
+              {usdaPicked && (
+                <div className="border rounded-lg overflow-hidden">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
+                    <div className="text-sm font-medium truncate">
+                      {usdaPicked.name.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setUsdaPicked(null); setShowUSDA(true); }}
+                      className="text-xs text-muted-foreground hover:text-foreground shrink-0 ml-2"
+                    >
+                      ← Back
+                    </button>
+                  </div>
+
+                  <div className="px-3 py-3 space-y-3">
+                    {/* Per-100g reference */}
+                    <div className="text-xs text-muted-foreground">
+                      Per 100g: {usdaPicked.per100g.calories} cal · P{usdaPicked.per100g.protein}g · C{usdaPicked.per100g.carbs}g · F{usdaPicked.per100g.fat}g
+                    </div>
+
+                    {/* Quick presets */}
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1.5">Common sizes</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: "1 oz", grams: 28.35 },
+                          { label: "2 oz", grams: 56.7 },
+                          { label: "3 oz", grams: 85.05 },
+                          { label: "4 oz", grams: 113.4 },
+                          { label: "5 oz", grams: 141.75 },
+                          { label: "6 oz", grams: 170.1 },
+                          { label: "8 oz", grams: 226.8 },
+                          { label: "100g", grams: 100 },
+                        ].map((p) => (
+                          <button
+                            key={p.label}
+                            type="button"
+                            onClick={() => applyPortionPreset(p.label, p.grams)}
+                            className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                              cfgLabel === p.label
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "hover:bg-accent"
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* USDA named portions */}
+                    {(usdaPortionsLoading || usdaPortions.length > 0) && (
+                      <div>
+                        <div className="text-xs text-muted-foreground mb-1.5">
+                          {usdaPortionsLoading ? "Loading USDA portions..." : "USDA portions"}
+                        </div>
+                        {!usdaPortionsLoading && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {usdaPortions.map((p) => (
+                              <button
+                                key={`${p.label}-${p.grams}`}
+                                type="button"
+                                onClick={() => applyPortionPreset(p.label, p.grams)}
+                                className={`px-2.5 py-1 rounded-full text-xs border transition-colors ${
+                                  cfgLabel === p.label
+                                    ? "bg-primary text-primary-foreground border-primary"
+                                    : "hover:bg-accent"
+                                }`}
+                              >
+                                {p.label} <span className="opacity-60">({p.grams}g)</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Custom label + grams */}
+                    <div className="flex gap-2 items-end">
+                      <div className="flex-1">
+                        <label className="text-xs text-muted-foreground block mb-1">Label</label>
+                        <input
+                          type="text"
+                          value={cfgLabel}
+                          onChange={(e) => setCfgLabel(e.target.value)}
+                          placeholder="e.g. 4 oz fillet"
+                          className="w-full h-8 px-2 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-background"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <label className="text-xs text-muted-foreground block mb-1">Grams</label>
+                        <input
+                          type="number"
+                          min="1"
+                          step="0.5"
+                          value={cfgGrams}
+                          onChange={(e) => setCfgGrams(e.target.value)}
+                          className="w-full h-8 px-2 border rounded text-sm focus:outline-none focus:ring-1 focus:ring-ring bg-background"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Live macro preview */}
+                    {cfgGramsNum > 0 && (
+                      <div className="bg-muted/40 rounded-lg px-3 py-2 text-xs flex gap-3">
+                        <span className="font-medium">{scaleNutrient(usdaPicked.per100g.calories, cfgGramsNum)} cal</span>
+                        <span>P {scaleNutrient(usdaPicked.per100g.protein, cfgGramsNum)}g</span>
+                        <span>C {scaleNutrient(usdaPicked.per100g.carbs, cfgGramsNum)}g</span>
+                        <span>F {scaleNutrient(usdaPicked.per100g.fat, cfgGramsNum)}g</span>
+                        <span>Fiber {scaleNutrient(usdaPicked.per100g.fiber, cfgGramsNum)}g</span>
+                      </div>
+                    )}
+
+                    {/* Add to staged list */}
+                    <button
+                      type="button"
+                      onClick={stageServing}
+                      disabled={!cfgGramsNum || !cfgLabel.trim()}
+                      className="w-full h-8 border rounded-lg text-xs hover:bg-accent transition-colors disabled:opacity-40"
+                    >
+                      + Add this serving size
+                    </button>
+
+                    {/* Staged servings */}
+                    {stagedServings.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="text-xs text-muted-foreground">Servings to import:</div>
+                        {stagedServings.map((s, i) => (
+                          <div key={i} className="flex items-center justify-between text-xs bg-primary/5 border border-primary/20 rounded px-2.5 py-1.5">
+                            <span className="font-medium">{s.label}</span>
+                            <span className="text-muted-foreground mx-2">
+                              {scaleNutrient(usdaPicked.per100g.calories, s.grams)} cal · P{scaleNutrient(usdaPicked.per100g.protein, s.grams)}g
+                            </span>
+                            <button type="button" onClick={() => removeStagedServing(i)}
+                              className="text-muted-foreground hover:text-destructive ml-auto">×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Import button */}
+                    <button
+                      type="button"
+                      onClick={importUSDAResult}
+                      className="w-full h-9 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+                    >
+                      {stagedServings.length > 0
+                        ? `Import with ${stagedServings.length} serving${stagedServings.length > 1 ? "s" : ""}`
+                        : "Import with 100g serving"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Name / category — only for new or custom foods, hidden while USDA configurator is open */}
+          {!isGlobal && !(showUSDA || usdaPicked) && (
             <>
               <div>
                 <label className="text-sm font-medium mb-1 block">
@@ -335,8 +723,8 @@ export function FoodItemForm({ item, onClose, onSaved }: Props) {
             </>
           )}
 
-          {/* Servings section */}
-          <div>
+          {/* Servings section — hidden while USDA configurator is open for new foods */}
+          {!((!isEditing) && (showUSDA || usdaPicked)) && <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium">
                 Servings {!isGlobal && <span className="text-destructive">*</span>}
@@ -444,7 +832,7 @@ export function FoodItemForm({ item, onClose, onSaved }: Props) {
                 </div>
               );
             })}
-          </div>
+          </div>}
         </div>
 
         {/* Footer */}
@@ -453,10 +841,12 @@ export function FoodItemForm({ item, onClose, onSaved }: Props) {
             className="flex-1 h-9 border rounded-lg text-sm hover:bg-accent transition-colors">
             Cancel
           </button>
-          <button type="button" onClick={handleSave} disabled={saving}
-            className="flex-1 h-9 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
-            {saving ? "Saving..." : isEditing ? "Save Changes" : "Add Food"}
-          </button>
+          {!((!isEditing) && (showUSDA || usdaPicked)) && (
+            <button type="button" onClick={handleSave} disabled={saving}
+              className="flex-1 h-9 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50">
+              {saving ? "Saving..." : isEditing ? "Save Changes" : "Add Food"}
+            </button>
+          )}
         </div>
       </div>
     </div>

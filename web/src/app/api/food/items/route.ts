@@ -75,6 +75,7 @@ export async function GET(req: Request) {
     created_at: string;
   }[]).map((item) => ({
     ...item,
+    is_custom: item.owner_id !== null,
     servings: servingsByItem.get(item.id) ?? [],
     is_favorited: favoritedIds.has(item.id),
   }));
@@ -123,6 +124,7 @@ export async function POST(req: Request) {
 
   const servingRows = (servings as Record<string, unknown>[]).map((s, i) => ({
     food_item_id: item.id,
+    owner_id: user.id,
     label: typeof s.label === "string" ? s.label.trim() : "Serving",
     calories: typeof s.calories === "number" ? s.calories : 0,
     fat: typeof s.fat === "number" ? s.fat : 0,

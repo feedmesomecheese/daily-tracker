@@ -173,6 +173,17 @@ export default function FoodLibraryPage() {
     setEditingItem(item);
   };
 
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this food item? This cannot be undone.")) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(`/api/food/items/${id}`, { method: "DELETE", headers });
+      setItems((prev) => prev.filter((item) => item.id !== id));
+    } catch {
+      // ignore
+    }
+  };
+
   const handleFormSaved = () => {
     fetchItems();
   };
@@ -360,6 +371,7 @@ export default function FoodLibraryPage() {
                   item={item}
                   onFavoriteToggle={handleFavoriteToggle}
                   onEdit={() => openEdit(item)}
+                  onDelete={() => handleDelete(item.id)}
                 />
               ))}
             </div>
