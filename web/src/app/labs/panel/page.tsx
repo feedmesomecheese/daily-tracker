@@ -281,6 +281,16 @@ export default function LabPanelPage() {
     );
   };
 
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+
+  const toggleCategoryCollapse = (cat: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      next.has(cat) ? next.delete(cat) : next.add(cat);
+      return next;
+    });
+  };
+
   const abnormalCount = tests.filter((t) => t.latest?.in_range === false).length;
   const hasActiveFilters = !!(search || selectedCategories.length || status !== "all" || trending !== "any" || currentVisitOnly || hideStale);
 
@@ -444,22 +454,40 @@ export default function LabPanelPage() {
         </div>
       ) : (
         /* Grouped by category */
-        <div className="space-y-6">
-          {orderedGroups!.map(([category, categoryTests]) => (
-            <div key={category}>
-              <div className="flex items-center gap-2 mb-2">
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  {category}
-                </h2>
-                <span className="text-xs text-muted-foreground">({categoryTests.length})</span>
+        <div className="space-y-4">
+          {orderedGroups!.map(([category, categoryTests]) => {
+            const isCollapsed = collapsedCategories.has(category);
+            const abnormal = categoryTests.filter((t) => t.latest?.in_range === false).length;
+            return (
+              <div key={category}>
+                <button
+                  onClick={() => toggleCategoryCollapse(category)}
+                  className="flex items-center gap-2 mb-2 w-full text-left group"
+                >
+                  <svg
+                    className={cn("h-3 w-3 text-muted-foreground transition-transform", isCollapsed && "-rotate-90")}
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m19 9-7 7-7-7" />
+                  </svg>
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide group-hover:text-foreground transition-colors">
+                    {category}
+                  </h2>
+                  <span className="text-xs text-muted-foreground">({categoryTests.length})</span>
+                  {abnormal > 0 && (
+                    <span className="text-xs text-red-500 font-medium">{abnormal} abnormal</span>
+                  )}
+                </button>
+                {!isCollapsed && (
+                  <div className="space-y-1.5">
+                    {categoryTests.map((t) => (
+                      <TestCard key={t.canonical_name} test={t} onClick={() => {/* Phase 4: open detail sheet */}} />
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="space-y-1.5">
-                {categoryTests.map((t) => (
-                  <TestCard key={t.canonical_name} test={t} onClick={() => {/* Phase 4: open detail sheet */}} />
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </main>
