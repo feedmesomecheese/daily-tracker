@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceArea, ReferenceLine,
@@ -9,6 +9,9 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { getAuthHeaders } from "@/lib/authHeaders";
+import LabVisitSheet from "../../components/LabVisitSheet";
+import type { LabVisit } from "../../page";
 import type { PanelTest, HistoryEntry } from "../page";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -279,6 +282,23 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
     return [min - pad, max + pad];
   }, [chartData, latestWithRange]);
 
+  const [visitSheet, setVisitSheet] = useState<{ visit: LabVisit; open: boolean } | null>(null);
+  const [loadingVisitId, setLoadingVisitId] = useState<string | null>(null);
+
+  const handleRowClick = useCallback(async (visitId: string) => {
+    setLoadingVisitId(visitId);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/labs/visits/${visitId}`, { headers });
+      if (res.ok) {
+        const data: LabVisit = await res.json();
+        setVisitSheet({ visit: data, open: true });
+      }
+    } finally {
+      setLoadingVisitId(null);
+    }
+  }, []);
+
   if (!test) return null;
 
   const latest = test.latest;
@@ -287,6 +307,7 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
     : "no-range";
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="overflow-hidden flex flex-col" storageKey="lab_test_detail_sheet_width" defaultWidth={720}>
         <SheetHeader className="pb-4 border-b pr-8 flex-shrink-0">
@@ -490,13 +511,24 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                         h.ref_low != null ? `≥ ${h.ref_low}` :
                         h.ref_high != null ? `≤ ${h.ref_high}` : "—"
                       );
+                      const isLoading = loadingVisitId === h.visit_id;
                       return (
-                        <tr key={i} className={cn(
-                          "border-b last:border-0",
-                          dir === "high" && "bg-red-500/5",
-                          dir === "low" && "bg-blue-500/5",
-                        )}>
-                          <td className="px-3 py-2 text-xs text-muted-foreground">{formatDate(h.visit_date)}</td>
+                        <tr
+                          key={i}
+                          onClick={() => handleRowClick(h.visit_id)}
+                          className={cn(
+                            "border-b last:border-0 cursor-pointer transition-colors hover:bg-accent/40",
+                            dir === "high" && "bg-red-500/5",
+                            dir === "low" && "bg-blue-500/5",
+                            isLoading && "opacity-60",
+                          )}
+                        >
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {isLoading
+                              ? <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin align-middle" />
+                              : formatDate(h.visit_date)
+                            }
+                          </td>
                           <td className={cn("px-3 py-2 text-right font-mono font-semibold tabular-nums", DIRECTION_VALUE_COLOR[dir])}>
                             {h.value}{test.unit ? ` ${test.unit}` : ""}
                           </td>
@@ -525,5 +557,17 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
         </div>
       </SheetContent>
     </Sheet>
+
+    {visitSheet && (
+      <LabVisitSheet
+        open={visitSheet.open}
+        onOpenChange={(v) => setVisitSheet((s) => s ? { ...s, open: v } : null)}
+        visit={visitSheet.visit}
+        initialMode="edit"
+        onUpdated={() => setVisitSheet((s) => s ? { ...s, open: false } : null)}
+        onDeleted={() => setVisitSheet((s) => s ? { ...s, open: false } : null)}
+      />
+    )}
+    </>
   );
 }

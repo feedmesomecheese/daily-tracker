@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -120,10 +120,11 @@ interface Props {
   visit: LabVisit;
   onUpdated: () => void;
   onDeleted: () => void;
+  initialMode?: "view" | "edit";
 }
 
-export default function LabVisitSheet({ open, onOpenChange, visit, onUpdated, onDeleted }: Props) {
-  const [mode, setMode] = useState<"view" | "edit">("view");
+export default function LabVisitSheet({ open, onOpenChange, visit, onUpdated, onDeleted, initialMode = "view" }: Props) {
+  const [mode, setMode] = useState<"view" | "edit">(initialMode);
   const [editVisit, setEditVisit] = useState<EditVisit>({ visit_date: "", lab_name: "", provider: "", notes: "" });
   const [editResults, setEditResults] = useState<EditableResult[]>([]);
   const [saving, setSaving] = useState(false);
@@ -142,6 +143,18 @@ export default function LabVisitSheet({ open, onOpenChange, visit, onUpdated, on
     setError(null);
     setMode("edit");
   };
+
+  // Reset mode each time the sheet opens (respects initialMode)
+  useEffect(() => {
+    if (!open) return;
+    if (initialMode === "edit") {
+      enterEditMode();
+    } else {
+      setMode("view");
+      setError(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, visit.id]);
 
   const cancelEdit = () => {
     setMode("view");
