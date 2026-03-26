@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import LabUploadSheet from "./components/LabUploadSheet";
 import LabVisitSheet from "./components/LabVisitSheet";
 
@@ -112,11 +115,34 @@ export default function LabsPage() {
     fetchVisits();
   };
 
+  const pathname = usePathname();
+
   return (
     <main className="max-w-2xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-semibold">Lab Results</h1>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-semibold">Labs</h1>
         <Button onClick={() => setUploadOpen(true)}>+ Upload Report</Button>
+      </div>
+
+      {/* Tab nav */}
+      <div className="flex gap-1 border-b mb-6">
+        {[
+          { label: "Visits", href: "/labs" },
+          { label: "Panel", href: "/labs/panel" },
+        ].map(({ label, href }) => (
+          <Link
+            key={href}
+            href={href}
+            className={cn(
+              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
+              pathname === href
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </Link>
+        ))}
       </div>
 
       {loading && (
