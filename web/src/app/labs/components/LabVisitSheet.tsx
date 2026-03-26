@@ -111,83 +111,6 @@ function computeInRange(value: string, refLow: string, refHigh: string): boolean
 let _keyCounter = 0;
 function newKey() { return `new-${++_keyCounter}`; }
 
-// ── Edit mode result row ────────────────────────────────────────────────────
-
-function EditResultRow({
-  result,
-  onUpdate,
-  onDelete,
-}: {
-  result: EditableResult;
-  onUpdate: (updates: Partial<EditableResult>) => void;
-  onDelete: () => void;
-}) {
-  const inputCls = "h-7 px-2 text-sm border rounded bg-background focus:outline-none focus:ring-1 focus:ring-ring";
-
-  return (
-    <div className="border rounded-lg p-2 space-y-1.5 bg-background">
-      {/* Row 1: test name, category, delete */}
-      <div className="flex gap-1.5 items-center">
-        <input
-          className={cn(inputCls, "flex-1 min-w-0")}
-          placeholder="Test name"
-          value={result.test_name}
-          onChange={(e) => onUpdate({ test_name: e.target.value })}
-        />
-        <select
-          className={cn(inputCls, "w-28 shrink-0")}
-          value={result.category}
-          onChange={(e) => onUpdate({ category: e.target.value })}
-        >
-          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <button
-          onClick={onDelete}
-          className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-destructive rounded shrink-0 text-base"
-          title="Remove result"
-        >
-          ×
-        </button>
-      </div>
-      {/* Row 2: canonical, value, unit, ref_low, ref_high */}
-      <div className="flex gap-1.5 items-center">
-        <input
-          className={cn(inputCls, "flex-1 min-w-0 text-xs text-muted-foreground")}
-          placeholder="Canonical name"
-          value={result.canonical_name}
-          onChange={(e) => onUpdate({ canonical_name: e.target.value })}
-        />
-        <input
-          className={cn(inputCls, "w-16 shrink-0 text-right")}
-          placeholder="Value"
-          type="number"
-          value={result.value}
-          onChange={(e) => onUpdate({ value: e.target.value })}
-        />
-        <input
-          className={cn(inputCls, "w-14 shrink-0")}
-          placeholder="Unit"
-          value={result.unit}
-          onChange={(e) => onUpdate({ unit: e.target.value })}
-        />
-        <input
-          className={cn(inputCls, "w-14 shrink-0 text-right")}
-          placeholder="Low"
-          type="number"
-          value={result.ref_low}
-          onChange={(e) => onUpdate({ ref_low: e.target.value })}
-        />
-        <input
-          className={cn(inputCls, "w-14 shrink-0 text-right")}
-          placeholder="High"
-          type="number"
-          value={result.ref_high}
-          onChange={(e) => onUpdate({ ref_high: e.target.value })}
-        />
-      </div>
-    </div>
-  );
-}
 
 // ── Main component ──────────────────────────────────────────────────────────
 
@@ -465,25 +388,104 @@ export default function LabVisitSheet({ open, onOpenChange, visit, onUpdated, on
           {/* ── EDIT MODE ── */}
           {mode === "edit" && (
             <>
-              {/* Column header hint */}
-              <div className="flex gap-1.5 px-2 text-xs text-muted-foreground">
-                <span className="flex-1">Test name / Canonical</span>
-                <span className="w-16 text-right shrink-0">Value</span>
-                <span className="w-14 shrink-0">Unit</span>
-                <span className="w-14 text-right shrink-0">Low</span>
-                <span className="w-14 text-right shrink-0">High</span>
-                <span className="w-7 shrink-0" />
-              </div>
-
-              <div className="space-y-2">
-                {visibleEditResults.map((r) => (
-                  <EditResultRow
-                    key={r._key}
-                    result={r}
-                    onUpdate={(updates) => updateResult(r._key, updates)}
-                    onDelete={() => deleteResult(r._key)}
-                  />
-                ))}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs border-separate border-spacing-y-0.5" style={{ minWidth: 520 }}>
+                  <colgroup>
+                    <col style={{ minWidth: 140 }} />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 72 }} />
+                    <col style={{ width: 80 }} />
+                    <col style={{ width: 72 }} />
+                    <col style={{ width: 72 }} />
+                    <col style={{ width: 28 }} />
+                  </colgroup>
+                  <thead>
+                    <tr className="text-muted-foreground font-medium">
+                      <th className="text-left px-2 pb-1 font-medium">Test</th>
+                      <th className="text-left px-2 pb-1 font-medium">Category</th>
+                      <th className="text-left px-2 pb-1 font-medium">Value</th>
+                      <th className="text-left px-2 pb-1 font-medium">Unit</th>
+                      <th className="text-left px-2 pb-1 font-medium">Ref Low</th>
+                      <th className="text-left px-2 pb-1 font-medium">Ref High</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleEditResults.map((r) => (
+                      <tr key={r._key} className={cn(r.id && computeInRange(r.value, r.ref_low, r.ref_high) === false ? "bg-red-500/5" : "bg-muted/30")}>
+                        <td className="px-1 py-0.5">
+                          <input
+                            value={r.test_name}
+                            onChange={(e) => updateResult(r._key, { test_name: e.target.value })}
+                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                            placeholder="Test name"
+                          />
+                          <input
+                            value={r.canonical_name}
+                            onChange={(e) => updateResult(r._key, { canonical_name: e.target.value })}
+                            className={cn(
+                              "w-full h-6 px-2 mt-0.5 border border-dashed rounded text-xs bg-background focus:outline-none focus:ring-1 focus:ring-ring",
+                              r.canonical_name ? "text-muted-foreground" : "text-muted-foreground/40"
+                            )}
+                            placeholder="+ link name"
+                            title="Canonical name — links this test across labs for trend tracking"
+                          />
+                        </td>
+                        <td className="px-1 py-0.5">
+                          <select
+                            value={r.category}
+                            onChange={(e) => updateResult(r._key, { category: e.target.value })}
+                            className="w-full h-7 px-1 border rounded text-xs bg-background focus:outline-none"
+                          >
+                            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-1 py-0.5">
+                          <input
+                            type="number"
+                            value={r.value}
+                            onChange={(e) => updateResult(r._key, { value: e.target.value })}
+                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none font-mono"
+                            placeholder="—"
+                          />
+                        </td>
+                        <td className="px-1 py-0.5">
+                          <input
+                            value={r.unit}
+                            onChange={(e) => updateResult(r._key, { unit: e.target.value })}
+                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none"
+                            placeholder="—"
+                          />
+                        </td>
+                        <td className="px-1 py-0.5">
+                          <input
+                            type="number"
+                            value={r.ref_low}
+                            onChange={(e) => updateResult(r._key, { ref_low: e.target.value })}
+                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none"
+                            placeholder="—"
+                          />
+                        </td>
+                        <td className="px-1 py-0.5">
+                          <input
+                            type="number"
+                            value={r.ref_high}
+                            onChange={(e) => updateResult(r._key, { ref_high: e.target.value })}
+                            className="w-full h-7 px-2 border rounded text-xs bg-background focus:outline-none"
+                            placeholder="—"
+                          />
+                        </td>
+                        <td className="px-1 py-0.5 text-center">
+                          <button
+                            onClick={() => deleteResult(r._key)}
+                            className="text-muted-foreground hover:text-destructive px-1"
+                            title="Remove result"
+                          >✕</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
 
               <Button variant="outline" size="sm" className="w-full" onClick={addResult}>
