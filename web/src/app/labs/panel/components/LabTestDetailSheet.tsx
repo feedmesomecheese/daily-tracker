@@ -506,11 +506,11 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                     .sort((a, b) => b.visit_date.localeCompare(a.visit_date))
                     .map((h: HistoryEntry, i) => {
                       const dir = getDirection(h.value, h.ref_low, h.ref_high, h.in_range);
-                      const refDisplay = h.ref_text ?? (
+                      const refDisplay =
                         h.ref_low != null && h.ref_high != null ? `${h.ref_low} – ${h.ref_high}` :
                         h.ref_low != null ? `≥ ${h.ref_low}` :
-                        h.ref_high != null ? `≤ ${h.ref_high}` : "—"
-                      );
+                        h.ref_high != null ? `≤ ${h.ref_high}` :
+                        h.ref_text ?? "—";
                       const isLoading = loadingVisitId === h.visit_id;
                       return (
                         <tr

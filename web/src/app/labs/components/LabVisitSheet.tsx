@@ -22,11 +22,11 @@ function formatDate(iso: string) {
 function ResultRow({ result }: { result: LabResult }) {
   const { test_name, value, unit, ref_low, ref_high, ref_text, in_range } = result;
 
-  const refDisplay = ref_text ?? (
+  const refDisplay =
     ref_low != null && ref_high != null ? `${ref_low} – ${ref_high}` :
     ref_low != null ? `≥ ${ref_low}` :
-    ref_high != null ? `≤ ${ref_high}` : ""
-  );
+    ref_high != null ? `≤ ${ref_high}` :
+    ref_text ?? "";
 
   return (
     <div className={cn(
