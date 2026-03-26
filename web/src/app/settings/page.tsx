@@ -17,6 +17,11 @@ type UserSettings = {
   main_page: MainPageSettings;
 };
 
+type UserProfile = {
+  gender: "male" | "female" | "other" | null;
+  birth_year: number | null;
+};
+
 const DEFAULT_SETTINGS: UserSettings = {
   main_page: {
     show_indicators: true,
@@ -32,6 +37,13 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const { theme, setTheme } = useTheme();
+
+  // Profile state
+  const [profile, setProfile] = useState<UserProfile>({ gender: null, birth_year: null });
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileSaveStatus, setProfileSaveStatus] = useState<string | null>(null);
+  const [birthYearInput, setBirthYearInput] = useState("");
 
   // Backfill state
   const [backfillRunning, setBackfillRunning] = useState(false);
@@ -66,6 +78,43 @@ export default function SettingsPage() {
       }
     })();
   }, []);
+
+  // Load profile on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        setProfileLoading(true);
+        const headers = await getAuthHeaders();
+        const res = await fetch("/api/profile", { headers });
+        const json = await res.json();
+        if (res.ok) {
+          setProfile(json);
+          setBirthYearInput(json.birth_year ? String(json.birth_year) : "");
+        }
+      } catch { /* ignore */ }
+      finally { setProfileLoading(false); }
+    })();
+  }, []);
+
+  const saveProfile = async (updates: Partial<UserProfile>) => {
+    setProfileSaving(true);
+    setProfileSaveStatus(null);
+    try {
+      const headers = await getAuthHeaders();
+      const next = { ...profile, ...updates };
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Failed to save");
+      setProfile(json);
+      setProfileSaveStatus("Saved");
+      setTimeout(() => setProfileSaveStatus(null), 2000);
+    } catch { /* ignore */ }
+    finally { setProfileSaving(false); }
+  };
 
   // Save settings helper
   const saveSettings = async (newSettings: UserSettings) => {
@@ -177,6 +226,73 @@ export default function SettingsPage() {
 
       {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
       {error && <div className="text-sm text-red-600">Error: {error}</div>}
+
+      {/* Profile */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center justify-between">
+            Profile
+            {profileSaveStatus && <span className="text-sm font-normal text-green-600">{profileSaveStatus}</span>}
+            {profileSaving && <span className="text-sm font-normal text-muted-foreground">Saving...</span>}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Used to personalise optimal lab reference ranges by gender and age.
+          </p>
+          {profileLoading ? (
+            <div className="text-sm text-muted-foreground">Loading...</div>
+          ) : (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Biological Sex</label>
+                <div className="flex gap-2">
+                  {(["male", "female", "other"] as const).map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => { setProfile((p) => ({ ...p, gender: g })); saveProfile({ gender: g }); }}
+                      className={`px-3 py-1.5 rounded-md border text-sm capitalize ${
+                        profile.gender === g
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-background hover:bg-muted"
+                      }`}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Birth Year</label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={1900}
+                    max={new Date().getFullYear()}
+                    placeholder="e.g. 1985"
+                    value={birthYearInput}
+                    onChange={(e) => setBirthYearInput(e.target.value)}
+                    onBlur={() => {
+                      const y = parseInt(birthYearInput, 10);
+                      if (!birthYearInput) {
+                        saveProfile({ birth_year: null });
+                      } else if (!isNaN(y) && y >= 1900 && y <= new Date().getFullYear()) {
+                        saveProfile({ birth_year: y });
+                      }
+                    }}
+                    className="w-32"
+                  />
+                  {profile.birth_year && (
+                    <span className="text-sm text-muted-foreground">
+                      Age {new Date().getFullYear() - profile.birth_year}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Theme Settings */}
       <Card>
