@@ -32,6 +32,47 @@ function isoToTs(iso: string) {
   return Date.UTC(y, m - 1, d);
 }
 
+type Direction = "high" | "low" | "normal" | "no-range";
+
+function getDirection(value: number, refLow: number | null, refHigh: number | null, inRange: boolean | null): Direction {
+  if (inRange === true) return "normal";
+  if (inRange === false) {
+    if (refHigh != null && value > refHigh) return "high";
+    if (refLow != null && value < refLow) return "low";
+    return "high"; // fallback when in_range=false but no bounds to compare
+  }
+  return "no-range";
+}
+
+const DIRECTION_LABEL: Record<Direction, string> = {
+  high: "↑ High",
+  low: "↓ Low",
+  normal: "Normal",
+  "no-range": "No range",
+};
+
+// Tailwind classes per direction — matches the workouts module badge pattern
+const DIRECTION_BADGE: Record<Direction, string> = {
+  high: "border border-red-700/40 bg-red-700/10 text-red-700 dark:border-red-400/40 dark:bg-red-400/10 dark:text-red-400",
+  low: "border border-blue-700/40 bg-blue-700/10 text-blue-700 dark:border-blue-400/40 dark:bg-blue-400/10 dark:text-blue-400",
+  normal: "border border-green-700/40 bg-green-700/10 text-green-700 dark:border-green-400/40 dark:bg-green-400/10 dark:text-green-400",
+  "no-range": "border border-border bg-muted/50 text-muted-foreground",
+};
+
+const DIRECTION_VALUE_COLOR: Record<Direction, string> = {
+  high: "text-red-600 dark:text-red-400",
+  low: "text-blue-600 dark:text-blue-400",
+  normal: "text-green-600 dark:text-green-400",
+  "no-range": "text-foreground",
+};
+
+const DIRECTION_DOT_COLOR: Record<Direction, string> = {
+  high: "#dc2626",   // red-600
+  low: "#2563eb",    // blue-600
+  normal: "#16a34a", // green-600
+  "no-range": "#94a3b8",
+};
+
 // ── Reference range bar ───────────────────────────────────────────────────────
 
 function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | null; refHigh: number | null }) {
@@ -65,32 +106,32 @@ function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | 
   const inRange = (refLow == null || value >= refLow) && (refHigh == null || value <= refHigh);
   const dotPct = Math.min(Math.max(((value - viewMin) / viewSpan) * 100, 1), 99);
 
+  const direction = getDirection(value, refLow, refHigh, inRange ? true : inRange === false ? false : null);
+  const dotBg = DIRECTION_DOT_COLOR[direction];
+
   return (
     <div className="relative h-4 my-1">
-      <div className="absolute inset-0 rounded-full overflow-hidden bg-red-200/60 dark:bg-red-900/30">
+      <div className="absolute inset-0 rounded-full overflow-hidden bg-red-200 dark:bg-red-900/60">
         <div
-          className="absolute inset-y-0 bg-green-200/80 dark:bg-green-900/40"
+          className="absolute inset-y-0 bg-green-200 dark:bg-green-900/60"
           style={{ left: `${greenStart * 100}%`, width: `${(greenEnd - greenStart) * 100}%` }}
         />
       </div>
       {refLow != null && (
         <div
-          className="absolute inset-y-0 w-px bg-green-600/40 dark:bg-green-400/40"
+          className="absolute inset-y-0 w-px bg-green-600/70"
           style={{ left: `${((refLow - viewMin) / viewSpan) * 100}%` }}
         />
       )}
       {refHigh != null && (
         <div
-          className="absolute inset-y-0 w-px bg-green-600/40 dark:bg-green-400/40"
+          className="absolute inset-y-0 w-px bg-green-600/70"
           style={{ left: `${((refHigh - viewMin) / viewSpan) * 100}%` }}
         />
       )}
       <div
-        className={cn(
-          "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full border-2 border-background shadow-sm z-10",
-          inRange ? "bg-green-500" : "bg-red-500"
-        )}
-        style={{ left: `${dotPct}%` }}
+        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full border-2 border-background shadow-sm z-10"
+        style={{ left: `${dotPct}%`, backgroundColor: dotBg }}
       />
     </div>
   );
@@ -118,8 +159,8 @@ function RangeBarLabels({ refLow, refHigh, unit }: { refLow: number | null; refH
 function ColoredDot(props: any) {
   const { cx, cy, payload } = props;
   if (cx == null || cy == null) return null;
-  const color = payload.in_range === false ? "#ef4444" : payload.in_range === true ? "#22c55e" : "#94a3b8";
-  return <circle cx={cx} cy={cy} r={4} fill={color} stroke="var(--background)" strokeWidth={1.5} />;
+  const dir = getDirection(payload.value, payload.ref_low, payload.ref_high, payload.in_range);
+  return <circle cx={cx} cy={cy} r={4} fill={DIRECTION_DOT_COLOR[dir]} stroke="var(--background)" strokeWidth={1.5} />;
 }
 
 // ── Stat item ────────────────────────────────────────────────────────────────
@@ -139,11 +180,11 @@ function StatItem({ label, value }: { label: string; value: string | number }) {
 function ChartTooltipContent({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload as { visit_date: string; value: number; unit: string | null; in_range: boolean | null; ref_low: number | null; ref_high: number | null };
-  const statusColor = d.in_range === false ? "text-red-500" : d.in_range === true ? "text-green-500" : "text-muted-foreground";
+  const dir = getDirection(d.value, d.ref_low, d.ref_high, d.in_range);
   return (
     <div className="bg-background border rounded-lg shadow-lg px-3 py-2 text-xs space-y-0.5">
       <div className="font-medium text-foreground">{formatDate(d.visit_date)}</div>
-      <div className={cn("font-mono font-semibold text-sm", statusColor)}>
+      <div className={cn("font-mono font-semibold text-sm", DIRECTION_VALUE_COLOR[dir])}>
         {d.value}{d.unit ? ` ${d.unit}` : ""}
       </div>
       {(d.ref_low != null || d.ref_high != null) && (
@@ -153,9 +194,7 @@ function ChartTooltipContent({ active, payload }: any) {
            d.ref_low != null ? `≥ ${d.ref_low}` : `≤ ${d.ref_high}`}
         </div>
       )}
-      <div className={statusColor}>
-        {d.in_range === false ? "Abnormal" : d.in_range === true ? "Normal" : "No range data"}
-      </div>
+      <div className={DIRECTION_VALUE_COLOR[dir]}>{DIRECTION_LABEL[dir]}</div>
     </div>
   );
 }
@@ -234,8 +273,9 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
   if (!test) return null;
 
   const latest = test.latest;
-  const isAbnormal = latest?.in_range === false;
-  const isNormal = latest?.in_range === true;
+  const latestDir: Direction = latest
+    ? getDirection(latest.value, latestWithRange?.ref_low ?? latest.ref_low, latestWithRange?.ref_high ?? latest.ref_high, latest.in_range)
+    : "no-range";
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -261,20 +301,14 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   Latest Result
-                  <Badge
-                    variant={isAbnormal ? "destructive" : isNormal ? "default" : "secondary"}
-                    className={cn("text-xs", isNormal && "bg-green-600 hover:bg-green-600")}
-                  >
-                    {isAbnormal ? "Abnormal" : isNormal ? "Normal" : "No range"}
-                  </Badge>
+                  <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded", DIRECTION_BADGE[latestDir])}>
+                    {DIRECTION_LABEL[latestDir]}
+                  </span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-baseline gap-2">
-                  <span className={cn(
-                    "text-4xl font-bold font-mono tabular-nums",
-                    isAbnormal ? "text-red-500" : isNormal ? "text-green-500" : "text-foreground"
-                  )}>
+                  <span className={cn("text-4xl font-bold font-mono tabular-nums", DIRECTION_VALUE_COLOR[latestDir])}>
                     {latest.value}
                   </span>
                   {test.unit && <span className="text-base text-muted-foreground">{test.unit}</span>}
@@ -373,8 +407,8 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                         <ReferenceArea
                           y1={latestWithRange.ref_low}
                           y2={latestWithRange.ref_high}
-                          fill="#22c55e"
-                          fillOpacity={0.07}
+                          fill="#16a34a"
+                          fillOpacity={0.12}
                           strokeOpacity={0}
                         />
                       )}
@@ -434,28 +468,32 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                   {[...test.history]
                     .sort((a, b) => b.visit_date.localeCompare(a.visit_date))
                     .map((h: HistoryEntry, i) => {
+                      const dir = getDirection(h.value, h.ref_low, h.ref_high, h.in_range);
                       const refDisplay = h.ref_text ?? (
                         h.ref_low != null && h.ref_high != null ? `${h.ref_low} – ${h.ref_high}` :
                         h.ref_low != null ? `≥ ${h.ref_low}` :
                         h.ref_high != null ? `≤ ${h.ref_high}` : "—"
                       );
                       return (
-                        <tr key={i} className={cn("border-b last:border-0", h.in_range === false && "bg-red-500/5")}>
+                        <tr key={i} className={cn(
+                          "border-b last:border-0",
+                          dir === "high" && "bg-red-500/5",
+                          dir === "low" && "bg-blue-500/5",
+                        )}>
                           <td className="px-3 py-2 text-xs text-muted-foreground">{formatDate(h.visit_date)}</td>
-                          <td className={cn(
-                            "px-3 py-2 text-right font-mono font-semibold tabular-nums",
-                            h.in_range === false ? "text-red-500" : ""
-                          )}>
+                          <td className={cn("px-3 py-2 text-right font-mono font-semibold tabular-nums", DIRECTION_VALUE_COLOR[dir])}>
                             {h.value}{test.unit ? ` ${test.unit}` : ""}
                           </td>
                           <td className="px-3 py-2 text-right text-xs text-muted-foreground hidden sm:table-cell">
                             {refDisplay}
                           </td>
                           <td className="px-3 py-2 text-center">
-                            {h.in_range === false ? (
-                              <Badge variant="destructive" className="text-xs px-1.5 py-0">Abnormal</Badge>
-                            ) : h.in_range === true ? (
-                              <span className="text-xs text-green-500">✓</span>
+                            {dir !== "normal" && dir !== "no-range" ? (
+                              <span className={cn("text-xs font-medium px-1.5 py-0.5 rounded", DIRECTION_BADGE[dir])}>
+                                {DIRECTION_LABEL[dir]}
+                              </span>
+                            ) : dir === "normal" ? (
+                              <span className="text-xs text-green-600 dark:text-green-400 font-medium">✓</span>
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>
                             )}

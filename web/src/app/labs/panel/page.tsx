@@ -46,16 +46,30 @@ function formatDate(iso: string) {
   });
 }
 
-function statusColor(inRange: boolean | null | undefined): string {
-  if (inRange === false) return "bg-red-500";
-  if (inRange === true) return "bg-green-500";
-  return "bg-gray-400";
+function statusDotColor(test: PanelTest): string {
+  const l = test.latest;
+  if (!l || l.in_range == null) return "bg-gray-400";
+  if (l.in_range === true) return "bg-green-500";
+  if (l.ref_high != null && l.value > l.ref_high) return "bg-red-500";
+  if (l.ref_low != null && l.value < l.ref_low) return "bg-blue-500";
+  return "bg-red-500";
 }
 
-function statusLabel(inRange: boolean | null | undefined): string {
-  if (inRange === false) return "Abnormal";
-  if (inRange === true) return "Normal";
-  return "No range";
+function abnormalLabel(test: PanelTest): string | null {
+  const l = test.latest;
+  if (!l || l.in_range !== false) return null;
+  if (l.ref_high != null && l.value > l.ref_high) return "High";
+  if (l.ref_low != null && l.value < l.ref_low) return "Low";
+  return "Abnormal";
+}
+
+function abnormalLabelClass(test: PanelTest): string {
+  const l = test.latest;
+  if (!l || l.in_range !== false) return "";
+  if (l.ref_low != null && l.value < l.ref_low) {
+    return "bg-blue-700/10 text-blue-700 dark:bg-blue-400/10 dark:text-blue-400";
+  }
+  return "bg-red-700/10 text-red-700 dark:bg-red-400/10 dark:text-red-400";
 }
 
 const TREND_ICON: Record<string, string> = {
@@ -106,6 +120,14 @@ function exportToCsv(tests: PanelTest[]) {
 
 function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
   const latest = test.latest;
+  const label = abnormalLabel(test);
+  const labelClass = abnormalLabelClass(test);
+  const latestValueColor = latest?.in_range === false
+    ? (latest.ref_low != null && latest.value < latest.ref_low
+        ? "text-blue-600 dark:text-blue-400"
+        : "text-red-600 dark:text-red-400")
+    : "text-foreground";
+
   return (
     <button
       onClick={onClick}
@@ -113,7 +135,7 @@ function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
     >
       <div className="flex items-start gap-3">
         {/* Status dot */}
-        <div className={cn("mt-1.5 h-2 w-2 rounded-full shrink-0", statusColor(latest?.in_range))} />
+        <div className={cn("mt-1.5 h-2 w-2 rounded-full shrink-0", statusDotColor(test))} />
 
         {/* Main content */}
         <div className="flex-1 min-w-0">
@@ -122,15 +144,17 @@ function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
             <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
               {test.category}
             </span>
-            {latest?.in_range === false && (
-              <span className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded font-medium">
-                Abnormal
+            {label && (
+              <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium border", labelClass,
+                label === "Low" ? "border-blue-700/30 dark:border-blue-400/30" : "border-red-700/30 dark:border-red-400/30"
+              )}>
+                {label}
               </span>
             )}
           </div>
           <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground flex-wrap">
             {latest != null ? (
-              <span className={cn("font-mono font-semibold tabular-nums", latest.in_range === false ? "text-red-600" : "text-foreground")}>
+              <span className={cn("font-mono font-semibold tabular-nums", latestValueColor)}>
                 {latest.value}{test.unit ? ` ${test.unit}` : ""}
               </span>
             ) : (
@@ -145,7 +169,7 @@ function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
               <span className="text-xs text-muted-foreground">{test.visit_count} results</span>
             )}
             {test.times_out_of_range > 0 && (
-              <span className="text-xs text-red-500">{test.times_out_of_range}× abnormal</span>
+              <span className="text-xs text-muted-foreground">{test.times_out_of_range}× out of range</span>
             )}
           </div>
         </div>
