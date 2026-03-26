@@ -112,22 +112,22 @@ function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | 
   return (
     <div className="relative h-4 my-1">
       {/* Use inline styles so colours are consistent in both light and dark mode */}
-      <div className="absolute inset-0 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(239,68,68,0.35)" }}>
+      <div className="absolute inset-0 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(220,38,38,0.75)" }}>
         <div
           className="absolute inset-y-0"
-          style={{ left: `${greenStart * 100}%`, width: `${(greenEnd - greenStart) * 100}%`, backgroundColor: "rgba(34,197,94,0.45)" }}
+          style={{ left: `${greenStart * 100}%`, width: `${(greenEnd - greenStart) * 100}%`, backgroundColor: "rgba(22,163,74,0.8)" }}
         />
       </div>
       {refLow != null && (
         <div
           className="absolute inset-y-0 w-px"
-          style={{ left: `${((refLow - viewMin) / viewSpan) * 100}%`, backgroundColor: "rgba(22,163,74,0.8)" }}
+          style={{ left: `${((refLow - viewMin) / viewSpan) * 100}%`, backgroundColor: "rgba(255,255,255,0.6)" }}
         />
       )}
       {refHigh != null && (
         <div
           className="absolute inset-y-0 w-px"
-          style={{ left: `${((refHigh - viewMin) / viewSpan) * 100}%`, backgroundColor: "rgba(22,163,74,0.8)" }}
+          style={{ left: `${((refHigh - viewMin) / viewSpan) * 100}%`, backgroundColor: "rgba(255,255,255,0.6)" }}
         />
       )}
       <div
@@ -412,15 +412,22 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                       />
                       <Tooltip content={<ChartTooltipContent />} />
 
-                      {latestWithRange?.ref_low != null && latestWithRange?.ref_high != null && (
-                        <ReferenceArea
-                          y1={latestWithRange.ref_low}
-                          y2={latestWithRange.ref_high}
-                          fill="#16a34a"
-                          fillOpacity={0.12}
-                          strokeOpacity={0}
-                        />
-                      )}
+                      {latestWithRange?.ref_low != null && latestWithRange?.ref_high != null && (() => {
+                        // Clip to the visible domain so the band shows even when ref_low is far below data
+                        const [dMin, dMax] = yDomain as [number, number];
+                        const y1 = Math.max(latestWithRange.ref_low, dMin);
+                        const y2 = Math.min(latestWithRange.ref_high, dMax);
+                        if (y2 <= y1) return null;
+                        return (
+                          <ReferenceArea
+                            y1={y1}
+                            y2={y2}
+                            fill="#16a34a"
+                            fillOpacity={0.25}
+                            strokeOpacity={0}
+                          />
+                        );
+                      })()}
                       {latestWithRange?.ref_low != null && latestWithRange?.ref_high == null && (
                         <ReferenceLine y={latestWithRange.ref_low} stroke="#22c55e" strokeDasharray="4 2" strokeOpacity={0.6}
                           label={{ value: `≥ ${latestWithRange.ref_low}`, position: "insideTopLeft", fontSize: 10, fill: "#22c55e" }} />
