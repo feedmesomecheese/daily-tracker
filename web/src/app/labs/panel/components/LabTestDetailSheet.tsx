@@ -111,22 +111,23 @@ function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | 
 
   return (
     <div className="relative h-4 my-1">
-      <div className="absolute inset-0 rounded-full overflow-hidden bg-red-200 dark:bg-red-900/60">
+      {/* Use inline styles so colours are consistent in both light and dark mode */}
+      <div className="absolute inset-0 rounded-full overflow-hidden" style={{ backgroundColor: "rgba(239,68,68,0.35)" }}>
         <div
-          className="absolute inset-y-0 bg-green-200 dark:bg-green-900/60"
-          style={{ left: `${greenStart * 100}%`, width: `${(greenEnd - greenStart) * 100}%` }}
+          className="absolute inset-y-0"
+          style={{ left: `${greenStart * 100}%`, width: `${(greenEnd - greenStart) * 100}%`, backgroundColor: "rgba(34,197,94,0.45)" }}
         />
       </div>
       {refLow != null && (
         <div
-          className="absolute inset-y-0 w-px bg-green-600/70"
-          style={{ left: `${((refLow - viewMin) / viewSpan) * 100}%` }}
+          className="absolute inset-y-0 w-px"
+          style={{ left: `${((refLow - viewMin) / viewSpan) * 100}%`, backgroundColor: "rgba(22,163,74,0.8)" }}
         />
       )}
       {refHigh != null && (
         <div
-          className="absolute inset-y-0 w-px bg-green-600/70"
-          style={{ left: `${((refHigh - viewMin) / viewSpan) * 100}%` }}
+          className="absolute inset-y-0 w-px"
+          style={{ left: `${((refHigh - viewMin) / viewSpan) * 100}%`, backgroundColor: "rgba(22,163,74,0.8)" }}
         />
       )}
       <div
@@ -263,11 +264,19 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
     const values = chartData.map((d) => d.value);
     const rLow = latestWithRange?.ref_low;
     const rHigh = latestWithRange?.ref_high;
-    const allVals = [...values, ...(rLow != null ? [rLow] : []), ...(rHigh != null ? [rHigh] : [])];
+    // Include ref bounds in the domain only if they're within 2× the data range of the data —
+    // prevents a ref_low of 0 from collapsing the chart when all values are, e.g., 46–52.
+    const dataMin = Math.min(...values);
+    const dataMax = Math.max(...values);
+    const dataRange = dataMax - dataMin || 1;
+    const extraVals: number[] = [];
+    if (rLow != null && rLow >= dataMin - dataRange * 2) extraVals.push(rLow);
+    if (rHigh != null && rHigh <= dataMax + dataRange * 2) extraVals.push(rHigh);
+    const allVals = [...values, ...extraVals];
     const min = Math.min(...allVals);
     const max = Math.max(...allVals);
     const pad = (max - min) * 0.15 || 1;
-    return [Math.max(0, min - pad), max + pad];
+    return [min - pad, max + pad];
   }, [chartData, latestWithRange]);
 
   if (!test) return null;
