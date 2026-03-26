@@ -9,6 +9,7 @@ import LabVisitSheet from "./components/LabVisitSheet";
 export interface LabResult {
   id: string;
   test_name: string;
+  canonical_name: string | null;
   category: string | null;
   value: number | null;
   unit: string | null;

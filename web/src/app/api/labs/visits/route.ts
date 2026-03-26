@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabase
     .from("lab_visits")
     .select(`id, visit_date, lab_name, provider, notes, created_at,
-      lab_results(id, test_name, category, value, unit, ref_low, ref_high, ref_text, in_range)`)
+      lab_results(id, test_name, canonical_name, category, value, unit, ref_low, ref_high, ref_text, in_range, notes)`)
     .eq("owner_id", userId)
     .order("visit_date", { ascending: false });
 
