@@ -47,7 +47,19 @@ const sheetVariants = {
 const SheetContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, storageKey, defaultWidth = 720, minWidth = 400, style, ...props }, ref) => {
+>((allProps, ref) => {
+  // Strip all custom props before they can reach DialogPrimitive.Content → Radix Primitive.div → DOM.
+  // Radix's Primitive spreads all received props onto the DOM element, so we must remove ours first.
+  const {
+    storageKey,
+    defaultWidth = 720,
+    minWidth = 400,
+    side = "right",
+    className,
+    children,
+    style,
+    ...radixProps
+  } = allProps;
   const isResizable = !!storageKey && side !== "bottom" && side !== "top";
 
   const [sheetWidth, setSheetWidth] = React.useState<number>(() => {
@@ -94,7 +106,7 @@ const SheetContent = React.forwardRef<
           className
         )}
         style={widthStyle}
-        {...props}
+        {...radixProps}
       >
         {isResizable && (
           <div

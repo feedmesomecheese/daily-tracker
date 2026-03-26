@@ -5,7 +5,9 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceArea, ReferenceLine,
 } from "recharts";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { PanelTest, HistoryEntry } from "../page";
 
@@ -45,14 +47,12 @@ function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | 
     greenStart = (refLow - viewMin) / (viewMax - viewMin);
     greenEnd = (refHigh - viewMin) / (viewMax - viewMin);
   } else if (refLow != null) {
-    // >= refLow — green on right
     const buffer = Math.max(Math.abs(refLow) * 0.4, refLow * 0.1 + 5);
     viewMin = refLow - buffer;
     viewMax = refLow + buffer * 2.5;
     greenStart = (refLow - viewMin) / (viewMax - viewMin);
     greenEnd = 1;
   } else {
-    // <= refHigh — green on left
     const refH = refHigh!;
     const buffer = Math.max(Math.abs(refH) * 0.4, refH * 0.1 + 5);
     viewMin = refH - buffer * 2.5;
@@ -67,14 +67,12 @@ function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | 
 
   return (
     <div className="relative h-4 my-1">
-      {/* Bar with zones */}
       <div className="absolute inset-0 rounded-full overflow-hidden bg-red-200/60 dark:bg-red-900/30">
         <div
           className="absolute inset-y-0 bg-green-200/80 dark:bg-green-900/40"
           style={{ left: `${greenStart * 100}%`, width: `${(greenEnd - greenStart) * 100}%` }}
         />
       </div>
-      {/* Threshold lines */}
       {refLow != null && (
         <div
           className="absolute inset-y-0 w-px bg-green-600/40 dark:bg-green-400/40"
@@ -87,7 +85,6 @@ function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | 
           style={{ left: `${((refHigh - viewMin) / viewSpan) * 100}%` }}
         />
       )}
-      {/* Value dot */}
       <div
         className={cn(
           "absolute top-1/2 -translate-y-1/2 -translate-x-1/2 h-5 w-5 rounded-full border-2 border-background shadow-sm z-10",
@@ -98,8 +95,6 @@ function RangeBar({ value, refLow, refHigh }: { value: number; refLow: number | 
     </div>
   );
 }
-
-// ── Range bar labels ─────────────────────────────────────────────────────────
 
 function RangeBarLabels({ refLow, refHigh, unit }: { refLow: number | null; refHigh: number | null; unit: string | null }) {
   const refDisplay =
@@ -131,9 +126,9 @@ function ColoredDot(props: any) {
 
 function StatItem({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="text-center">
-      <div className="text-sm font-semibold tabular-nums">{value}</div>
-      <div className="text-xs text-muted-foreground">{label}</div>
+    <div className="flex flex-col">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-lg font-semibold tabular-nums">{value}</span>
     </div>
   );
 }
@@ -144,7 +139,7 @@ function StatItem({ label, value }: { label: string; value: string | number }) {
 function ChartTooltipContent({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload as { visit_date: string; value: number; unit: string | null; in_range: boolean | null; ref_low: number | null; ref_high: number | null };
-  const statusColor = d.in_range === false ? "text-red-600" : d.in_range === true ? "text-green-600" : "text-muted-foreground";
+  const statusColor = d.in_range === false ? "text-red-500" : d.in_range === true ? "text-green-500" : "text-muted-foreground";
   return (
     <div className="bg-background border rounded-lg shadow-lg px-3 py-2 text-xs space-y-0.5">
       <div className="font-medium text-foreground">{formatDate(d.visit_date)}</div>
@@ -194,7 +189,6 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
     filteredHistory.map((h) => ({ ...h, ts: isoToTs(h.visit_date), unit: test?.unit ?? null })),
   [filteredHistory, test]);
 
-  // Reference range from latest entry that has one
   const latestWithRange = useMemo(() => {
     if (!test) return null;
     return [...test.history]
@@ -202,7 +196,6 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
       .find((h) => h.ref_low != null || h.ref_high != null) ?? null;
   }, [test]);
 
-  // Stats
   const stats = useMemo(() => {
     if (!test || test.history.length === 0) return null;
     const values = test.history.map((h) => h.value);
@@ -212,7 +205,6 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
     return { min, max, avg };
   }, [test]);
 
-  // Year markers for chart
   const yearMarkers = useMemo(() => {
     if (chartData.length < 2) return [];
     const minTs = chartData[0].ts;
@@ -227,7 +219,6 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
     return markers;
   }, [chartData]);
 
-  // Y-axis domain with padding
   const yDomain = useMemo((): [number, number] | ["auto", "auto"] => {
     if (chartData.length === 0) return ["auto", "auto"];
     const values = chartData.map((d) => d.value);
@@ -243,164 +234,193 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
   if (!test) return null;
 
   const latest = test.latest;
-  const trendLabel: Record<string, string> = { up: "↑ Trending up", down: "↓ Trending down", stable: "→ Stable", insufficient_data: "—" };
+  const isAbnormal = latest?.in_range === false;
+  const isNormal = latest?.in_range === true;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="overflow-hidden flex flex-col" storageKey="lab_test_detail_sheet_width" defaultWidth={720}>
-        <SheetHeader className="flex-shrink-0 pr-8">
-          <div className="flex items-start gap-2 flex-wrap">
-            <SheetTitle className="leading-tight">{test.display_name}</SheetTitle>
-            <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded mt-1">{test.category}</span>
-          </div>
-          {test.canonical_name !== test.display_name && (
-            <div className="text-xs text-muted-foreground">Canonical: {test.canonical_name}</div>
-          )}
+        <SheetHeader className="pb-4 border-b pr-8 flex-shrink-0">
+          <SheetTitle className="flex items-center gap-2 flex-wrap leading-tight">
+            {test.display_name}
+            <Badge variant="secondary" className="text-xs font-normal">{test.category}</Badge>
+          </SheetTitle>
+          <SheetDescription>
+            {test.canonical_name !== test.display_name
+              ? `Canonical: ${test.canonical_name}`
+              : `${test.visit_count} draw${test.visit_count !== 1 ? "s" : ""}${test.last_tested ? ` · last tested ${formatDate(test.last_tested)}` : ""}`
+            }
+          </SheetDescription>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto mt-4 space-y-5 pr-1">
+        <div className="flex-1 overflow-y-auto space-y-4 py-4 pr-1">
 
           {/* ── Current value + range bar ─────────────────────────── */}
           {latest && (
-            <div className="rounded-lg border bg-card px-4 py-3 space-y-2">
-              <div className="flex items-baseline gap-2">
-                <span className={cn(
-                  "text-3xl font-bold font-mono tabular-nums",
-                  latest.in_range === false ? "text-red-600" : latest.in_range === true ? "text-green-600" : "text-foreground"
-                )}>
-                  {latest.value}
-                </span>
-                {test.unit && <span className="text-base text-muted-foreground">{test.unit}</span>}
-                <span className={cn(
-                  "ml-auto text-sm font-medium",
-                  latest.in_range === false ? "text-red-600" : latest.in_range === true ? "text-green-600" : "text-muted-foreground"
-                )}>
-                  {latest.in_range === false ? "Abnormal" : latest.in_range === true ? "Normal" : "No range"}
-                </span>
-              </div>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  Latest Result
+                  <Badge
+                    variant={isAbnormal ? "destructive" : isNormal ? "default" : "secondary"}
+                    className={cn("text-xs", isNormal && "bg-green-600 hover:bg-green-600")}
+                  >
+                    {isAbnormal ? "Abnormal" : isNormal ? "Normal" : "No range"}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-baseline gap-2">
+                  <span className={cn(
+                    "text-4xl font-bold font-mono tabular-nums",
+                    isAbnormal ? "text-red-500" : isNormal ? "text-green-500" : "text-foreground"
+                  )}>
+                    {latest.value}
+                  </span>
+                  {test.unit && <span className="text-base text-muted-foreground">{test.unit}</span>}
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {formatDate(test.last_tested!)}
+                  </span>
+                </div>
 
-              {(latestWithRange?.ref_low != null || latestWithRange?.ref_high != null) && (
-                <>
-                  <RangeBar value={latest.value} refLow={latestWithRange?.ref_low ?? null} refHigh={latestWithRange?.ref_high ?? null} />
-                  <RangeBarLabels refLow={latestWithRange?.ref_low ?? null} refHigh={latestWithRange?.ref_high ?? null} unit={test.unit} />
-                </>
-              )}
-              {latestWithRange?.ref_text && !latestWithRange.ref_low && !latestWithRange.ref_high && (
-                <div className="text-xs text-muted-foreground">Reference: {latestWithRange.ref_text}</div>
-              )}
-
-              <div className="text-xs text-muted-foreground pt-0.5">
-                Last tested {formatDate(test.last_tested!)}
-              </div>
-            </div>
+                {(latestWithRange?.ref_low != null || latestWithRange?.ref_high != null) && (
+                  <>
+                    <RangeBar value={latest.value} refLow={latestWithRange?.ref_low ?? null} refHigh={latestWithRange?.ref_high ?? null} />
+                    <RangeBarLabels refLow={latestWithRange?.ref_low ?? null} refHigh={latestWithRange?.ref_high ?? null} unit={test.unit} />
+                  </>
+                )}
+                {latestWithRange?.ref_text && !latestWithRange.ref_low && !latestWithRange.ref_high && (
+                  <div className="text-xs text-muted-foreground">Reference: {latestWithRange.ref_text}</div>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           {/* ── Stats strip ──────────────────────────────────────────── */}
           {stats && (
-            <div className="grid grid-cols-5 gap-2 rounded-lg border bg-card px-4 py-3">
-              <StatItem label="Min" value={`${stats.min}${test.unit ? ` ${test.unit}` : ""}`} />
-              <StatItem label="Max" value={`${stats.max}${test.unit ? ` ${test.unit}` : ""}`} />
-              <StatItem label="Avg" value={`${stats.avg.toFixed(1)}${test.unit ? ` ${test.unit}` : ""}`} />
-              <StatItem label="Draws" value={test.visit_count} />
-              <StatItem
-                label="Abnormal"
-                value={test.times_out_of_range === 0 ? "0" : `${test.times_out_of_range}/${test.visit_count}`}
-              />
-            </div>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Statistics
+                  {test.times_out_of_range > 0 && (
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      {test.times_out_of_range} of {test.visit_count} abnormal
+                    </span>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-4 gap-4">
+                  <StatItem label="Min" value={`${stats.min}${test.unit ? ` ${test.unit}` : ""}`} />
+                  <StatItem label="Max" value={`${stats.max}${test.unit ? ` ${test.unit}` : ""}`} />
+                  <StatItem label="Avg" value={`${stats.avg.toFixed(1)}${test.unit ? ` ${test.unit}` : ""}`} />
+                  <StatItem label="Draws" value={test.visit_count} />
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* ── History chart ─────────────────────────────────────────── */}
           {test.visit_count >= 2 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">History</span>
-                <div className="flex gap-1">
-                  {(["1y", "2y", "5y", "all"] as DateRange[]).map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setDateRange(r)}
-                      className={cn(
-                        "px-2 py-0.5 text-xs rounded font-medium transition-colors",
-                        dateRange === r
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {r === "all" ? "All" : r.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {chartData.length < 2 ? (
-                <p className="text-xs text-muted-foreground text-center py-4">Not enough data in this date range.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
-                    <XAxis
-                      dataKey="ts"
-                      type="number"
-                      scale="time"
-                      domain={["dataMin", "dataMax"]}
-                      tickFormatter={(ts) => formatDateShort(new Date(ts).toISOString().slice(0, 10))}
-                      tick={{ fontSize: 10 }}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      domain={yDomain}
-                      tick={{ fontSize: 10 }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={40}
-                    />
-                    <Tooltip content={<ChartTooltipContent />} />
-
-                    {/* Reference range band */}
-                    {latestWithRange?.ref_low != null && latestWithRange?.ref_high != null && (
-                      <ReferenceArea
-                        y1={latestWithRange.ref_low}
-                        y2={latestWithRange.ref_high}
-                        fill="#22c55e"
-                        fillOpacity={0.07}
-                        strokeOpacity={0}
-                      />
-                    )}
-                    {/* One-sided reference lines */}
-                    {latestWithRange?.ref_low != null && latestWithRange?.ref_high == null && (
-                      <ReferenceLine y={latestWithRange.ref_low} stroke="#22c55e" strokeDasharray="4 2" strokeOpacity={0.6}
-                        label={{ value: `≥ ${latestWithRange.ref_low}`, position: "insideTopLeft", fontSize: 10, fill: "#22c55e" }} />
-                    )}
-                    {latestWithRange?.ref_high != null && latestWithRange?.ref_low == null && (
-                      <ReferenceLine y={latestWithRange.ref_high} stroke="#22c55e" strokeDasharray="4 2" strokeOpacity={0.6}
-                        label={{ value: `≤ ${latestWithRange.ref_high}`, position: "insideTopLeft", fontSize: 10, fill: "#22c55e" }} />
-                    )}
-
-                    {/* Year markers */}
-                    {yearMarkers.map((ts) => (
-                      <ReferenceLine key={ts} x={ts} stroke="var(--border)" strokeDasharray="2 2"
-                        label={{ value: new Date(ts).getUTCFullYear(), position: "insideTopRight", fontSize: 9, fill: "var(--muted-foreground)" }} />
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center justify-between">
+                  <span>History</span>
+                  <div className="flex gap-1">
+                    {(["1y", "2y", "5y", "all"] as DateRange[]).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => setDateRange(r)}
+                        className={cn(
+                          "px-2 py-0.5 text-xs rounded font-medium transition-colors",
+                          dateRange === r
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        {r === "all" ? "All" : r.toUpperCase()}
+                      </button>
                     ))}
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {chartData.length < 2 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">Not enough data in this date range.</p>
+                ) : (
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+                      <XAxis
+                        dataKey="ts"
+                        type="number"
+                        scale="time"
+                        domain={["dataMin", "dataMax"]}
+                        tickFormatter={(ts) => formatDateShort(new Date(ts).toISOString().slice(0, 10))}
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        domain={yDomain}
+                        tick={{ fontSize: 10 }}
+                        tickLine={false}
+                        axisLine={false}
+                        width={40}
+                      />
+                      <Tooltip content={<ChartTooltipContent />} />
 
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#6366f1"
-                      strokeWidth={2}
-                      dot={<ColoredDot />}
-                      activeDot={{ r: 5 }}
-                      isAnimationActive={false}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
+                      {latestWithRange?.ref_low != null && latestWithRange?.ref_high != null && (
+                        <ReferenceArea
+                          y1={latestWithRange.ref_low}
+                          y2={latestWithRange.ref_high}
+                          fill="#22c55e"
+                          fillOpacity={0.07}
+                          strokeOpacity={0}
+                        />
+                      )}
+                      {latestWithRange?.ref_low != null && latestWithRange?.ref_high == null && (
+                        <ReferenceLine y={latestWithRange.ref_low} stroke="#22c55e" strokeDasharray="4 2" strokeOpacity={0.6}
+                          label={{ value: `≥ ${latestWithRange.ref_low}`, position: "insideTopLeft", fontSize: 10, fill: "#22c55e" }} />
+                      )}
+                      {latestWithRange?.ref_high != null && latestWithRange?.ref_low == null && (
+                        <ReferenceLine y={latestWithRange.ref_high} stroke="#22c55e" strokeDasharray="4 2" strokeOpacity={0.6}
+                          label={{ value: `≤ ${latestWithRange.ref_high}`, position: "insideTopLeft", fontSize: 10, fill: "#22c55e" }} />
+                      )}
+
+                      {yearMarkers.map((ts) => (
+                        <ReferenceLine key={ts} x={ts} stroke="var(--border)" strokeDasharray="2 2"
+                          label={{ value: new Date(ts).getUTCFullYear(), position: "insideTopRight", fontSize: 9, fill: "var(--muted-foreground)" }} />
+                      ))}
+
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#6366f1"
+                        strokeWidth={2}
+                        dot={<ColoredDot />}
+                        activeDot={{ r: 5 }}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+
+                {test.trend !== "insufficient_data" && (
+                  <div className="mt-2 text-xs text-muted-foreground text-center">
+                    {{up: "↑ Trending up", down: "↓ Trending down", stable: "→ Stable", insufficient_data: ""}[test.trend]}{" "}
+                    (comparing last two results)
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
 
           {/* ── Visit history table ────────────────────────────────────── */}
-          <div className="space-y-2">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">All Results</span>
-            <div className="rounded-lg border overflow-hidden">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">All Results</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/30">
@@ -424,7 +444,7 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                           <td className="px-3 py-2 text-xs text-muted-foreground">{formatDate(h.visit_date)}</td>
                           <td className={cn(
                             "px-3 py-2 text-right font-mono font-semibold tabular-nums",
-                            h.in_range === false ? "text-red-600" : ""
+                            h.in_range === false ? "text-red-500" : ""
                           )}>
                             {h.value}{test.unit ? ` ${test.unit}` : ""}
                           </td>
@@ -433,9 +453,9 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                           </td>
                           <td className="px-3 py-2 text-center">
                             {h.in_range === false ? (
-                              <span className="text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded">Abnormal</span>
+                              <Badge variant="destructive" className="text-xs px-1.5 py-0">Abnormal</Badge>
                             ) : h.in_range === true ? (
-                              <span className="text-xs text-green-600 dark:text-green-400">✓</span>
+                              <span className="text-xs text-green-500">✓</span>
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>
                             )}
@@ -445,15 +465,9 @@ export default function LabTestDetailSheet({ test, open, onOpenChange }: Props) 
                     })}
                 </tbody>
               </table>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          {/* Trend summary */}
-          {test.trend !== "insufficient_data" && (
-            <div className="text-xs text-muted-foreground text-center pb-2">
-              {trendLabel[test.trend]} (comparing last two results)
-            </div>
-          )}
         </div>
       </SheetContent>
     </Sheet>

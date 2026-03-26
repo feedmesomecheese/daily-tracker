@@ -7,6 +7,7 @@ import { getAuthHeaders } from "@/lib/authHeaders";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import LabTestDetailSheet from "./components/LabTestDetailSheet";
+import ManageTestsSheet from "./components/ManageTestsSheet";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -178,18 +179,18 @@ export default function LabPanelPage() {
   const [hideStale, setHideStale] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("name");
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const headers = await getAuthHeaders();
-        const res = await fetch("/api/labs/panel", { headers });
-        const data = await res.json();
-        if (res.ok) setTests(data);
-      } catch { /* ignore */ }
-      finally { setLoading(false); }
-    })();
-  }, []);
+  const fetchTests = async () => {
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/labs/panel", { headers });
+      const data = await res.json();
+      if (res.ok) setTests(data);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchTests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Most recent visit date (for "current visit only" filter)
   const mostRecentVisitDate = useMemo(() => {
@@ -285,6 +286,7 @@ export default function LabPanelPage() {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [selectedTest, setSelectedTest] = useState<PanelTest | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
 
   const toggleCategoryCollapse = (cat: string) => {
     setCollapsedCategories((prev) => {
@@ -312,14 +314,24 @@ export default function LabPanelPage() {
             </p>
           )}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => exportToCsv(filteredTests)}
-          disabled={filteredTests.length === 0}
-        >
-          Export CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setManageOpen(true)}
+            disabled={tests.length === 0}
+          >
+            Manage Tests
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportToCsv(filteredTests)}
+            disabled={filteredTests.length === 0}
+          >
+            Export CSV
+          </Button>
+        </div>
       </div>
 
       {/* Tab nav */}
@@ -497,6 +509,12 @@ export default function LabPanelPage() {
         test={selectedTest}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+      />
+      <ManageTestsSheet
+        open={manageOpen}
+        onOpenChange={setManageOpen}
+        tests={tests}
+        onChanged={fetchTests}
       />
     </main>
   );
