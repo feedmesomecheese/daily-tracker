@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import LabTestDetailSheet from "./components/LabTestDetailSheet";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -282,6 +283,8 @@ export default function LabPanelPage() {
   };
 
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [selectedTest, setSelectedTest] = useState<PanelTest | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const toggleCategoryCollapse = (cat: string) => {
     setCollapsedCategories((prev) => {
@@ -449,7 +452,7 @@ export default function LabPanelPage() {
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">{filteredTests.length} result{filteredTests.length !== 1 ? "s" : ""}</p>
           {filteredTests.map((t) => (
-            <TestCard key={t.canonical_name} test={t} onClick={() => {/* Phase 4: open detail sheet */}} />
+            <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} />
           ))}
         </div>
       ) : (
@@ -481,7 +484,7 @@ export default function LabPanelPage() {
                 {!isCollapsed && (
                   <div className="space-y-1.5">
                     {categoryTests.map((t) => (
-                      <TestCard key={t.canonical_name} test={t} onClick={() => {/* Phase 4: open detail sheet */}} />
+                      <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} />
                     ))}
                   </div>
                 )}
@@ -490,6 +493,11 @@ export default function LabPanelPage() {
           })}
         </div>
       )}
+      <LabTestDetailSheet
+        test={selectedTest}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
     </main>
   );
 }
