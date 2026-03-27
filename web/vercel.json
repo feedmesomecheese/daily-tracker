@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/oura-sync",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/email-backup",
+      "schedule": "0 8 * * *"
     }
   ]
 }

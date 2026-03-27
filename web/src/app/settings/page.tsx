@@ -13,8 +13,16 @@ type MainPageSettings = {
   show_streaks: boolean;
 };
 
+type EmailBackupSettings = {
+  enabled: boolean;
+  frequency: "daily" | "weekly" | "monthly";
+  modules: string[];
+  last_sent_at: string | null;
+};
+
 type UserSettings = {
   main_page: MainPageSettings;
+  email_backup?: EmailBackupSettings;
 };
 
 type UserProfile = {
@@ -28,6 +36,21 @@ const DEFAULT_SETTINGS: UserSettings = {
     show_trends: true,
     show_streaks: true,
   },
+};
+
+const ALL_BACKUP_MODULES = ["tracker", "food", "workouts", "labs", "books"] as const;
+const MODULE_LABELS: Record<string, string> = {
+  tracker: "Daily Tracker",
+  food: "Food",
+  workouts: "Workouts",
+  labs: "Labs",
+  books: "Books",
+};
+const DEFAULT_BACKUP: EmailBackupSettings = {
+  enabled: false,
+  frequency: "weekly",
+  modules: [...ALL_BACKUP_MODULES],
+  last_sent_at: null,
 };
 
 export default function SettingsPage() {
@@ -59,6 +82,11 @@ export default function SettingsPage() {
     message: string;
   } | null>(null);
 
+  // Email backup state
+  const [backup, setBackup] = useState<EmailBackupSettings>(DEFAULT_BACKUP);
+  const [backupSending, setBackupSending] = useState(false);
+  const [backupSendStatus, setBackupSendStatus] = useState<string | null>(null);
+
   // Load settings on mount
   useEffect(() => {
     (async () => {
@@ -70,6 +98,7 @@ export default function SettingsPage() {
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load settings");
         setSettings(json);
+        if (json.email_backup) setBackup({ ...DEFAULT_BACKUP, ...json.email_backup });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);
@@ -140,6 +169,36 @@ export default function SettingsPage() {
       setError(msg);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveBackup = async (next: EmailBackupSettings) => {
+    setBackup(next);
+    const headers = await getAuthHeaders();
+    await fetch("/api/settings", {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ email_backup: next }),
+    });
+  };
+
+  const sendNow = async () => {
+    setBackupSending(true);
+    setBackupSendStatus(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch("/api/exports/email", { method: "POST", headers });
+      if (res.ok) {
+        setBackupSendStatus("Sent!");
+        setBackup((b) => ({ ...b, last_sent_at: new Date().toISOString() }));
+      } else {
+        const json = await res.json();
+        setBackupSendStatus(json.error ?? "Failed to send");
+      }
+    } catch { setBackupSendStatus("Request failed"); }
+    finally {
+      setBackupSending(false);
+      setTimeout(() => setBackupSendStatus(null), 4000);
     }
   };
 
@@ -483,6 +542,92 @@ export default function SettingsPage() {
             >
               {backfillResult.message}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Email Backups */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center justify-between">
+            <span>Email Backups</span>
+            <div className="flex items-center gap-2">
+              {backupSendStatus && (
+                <span className={`text-sm font-normal ${backupSendStatus === "Sent!" ? "text-green-600" : "text-red-600"}`}>
+                  {backupSendStatus}
+                </span>
+              )}
+              <Button variant="outline" size="sm" onClick={sendNow} disabled={backupSending || !backup.enabled}>
+                {backupSending ? "Sending…" : "Send Now"}
+              </Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Sends a ZIP of CSV files to your account email. Data is stored in your inbox — completely independent of the app database.
+          </p>
+
+          {/* Enable toggle */}
+          <label className="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300"
+              checked={backup.enabled}
+              onChange={() => saveBackup({ ...backup, enabled: !backup.enabled })}
+            />
+            <span className="font-medium text-sm">Enable automatic backups</span>
+          </label>
+
+          {backup.enabled && (
+            <>
+              {/* Frequency */}
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">Frequency</p>
+                <div className="flex gap-2">
+                  {(["daily", "weekly", "monthly"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => saveBackup({ ...backup, frequency: f })}
+                      className={`px-3 py-1.5 rounded-md border text-sm capitalize transition-colors ${
+                        backup.frequency === f ? "bg-primary text-primary-foreground border-primary" : "bg-background hover:bg-muted"
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Modules */}
+              <div className="space-y-1.5">
+                <p className="text-sm font-medium">Modules</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_BACKUP_MODULES.map((mod) => (
+                    <label key={mod} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-gray-300"
+                        checked={backup.modules.includes(mod)}
+                        onChange={() => {
+                          const next = backup.modules.includes(mod)
+                            ? backup.modules.filter((m) => m !== mod)
+                            : [...backup.modules, mod];
+                          saveBackup({ ...backup, modules: next });
+                        }}
+                      />
+                      <span className="text-sm">{MODULE_LABELS[mod]}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {backup.last_sent_at && (
+            <p className="text-xs text-muted-foreground">
+              Last sent: {new Date(backup.last_sent_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+            </p>
           )}
         </CardContent>
       </Card>
