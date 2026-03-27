@@ -33,7 +33,7 @@ export async function GET(req: Request) {
                   // Intentionally open — GPT reads whatever JSON the endpoint returns.
                   // additionalProperties: true satisfies validators while keeping the
                   // schema vague so it never needs updating when data shapes evolve.
-                  schema: { type: "object", additionalProperties: true },
+                  schema: { type: "object", properties: {}, additionalProperties: true },
                 },
               },
             },
