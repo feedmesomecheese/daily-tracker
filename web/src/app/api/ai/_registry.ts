@@ -65,7 +65,7 @@ export const AI_PATHS: AiPathDef[] = [
     operationId: "getLabResults",
     summary: "Get medical lab results panel",
     description:
-      "Returns a full lab panel with one entry per canonical test name. Each entry includes the latest value, reference range, optimal range, trend, status, and last 10 historical readings. Use ?test= to find a specific test, ?abnormal=true for out-of-range tests, ?category= to filter by panel type, ?since= to limit by latest draw date.",
+      "Full lab panel, one entry per test. Includes latest value, reference/optimal ranges, trend, status, and last 10 readings. Filter with ?test=, ?category=, ?abnormal=true, or ?since=.",
     parameters: [
       { name: "test", in: "query", description: "Filter by test name (partial match, e.g. 'cholesterol', 'TSH', 'HbA1c')", schema: { type: "string" } },
       { name: "category", in: "query", description: "Filter by category: CBC, Metabolic, Lipid, Thyroid, Hormone, Vitamin, Urinalysis, Other", schema: { type: "string" } },
