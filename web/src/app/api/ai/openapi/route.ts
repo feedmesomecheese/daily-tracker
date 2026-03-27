@@ -306,8 +306,8 @@ export async function GET(req: Request) {
       "/api/ai/labs": {
         get: {
           operationId: "getLabResults",
-          summary: "Get medical lab results",
-          description: "Returns lab visit history and test results. Use ?test= to trend a specific test, ?abnormal=true for out-of-range results, ?category= to filter by panel type.",
+          summary: "Get medical lab results panel",
+          description: "Returns a full lab panel with one entry per canonical test name. Each entry includes the latest value, reference range, optimal range, trend, status, and last 10 historical readings. Use ?test= to find a specific test, ?abnormal=true for out-of-range tests, ?category= to filter by panel type, ?since= to limit by latest draw date.",
           parameters: [
             {
               name: "test",
@@ -324,19 +324,82 @@ export async function GET(req: Request) {
             {
               name: "since",
               in: "query",
-              description: "Only return results on or after this date (YYYY-MM-DD)",
+              description: "Only include tests with a draw on or after this date (YYYY-MM-DD)",
               schema: { type: "string", format: "date" },
             },
             {
               name: "abnormal",
               in: "query",
-              description: "Set to true to return only out-of-range results",
+              description: "Set to true to return only out-of-range tests",
               schema: { type: "boolean" },
             },
           ],
           responses: {
             "200": {
-              description: "Lab visits, latest values per test, and full results list",
+              description: "Lab visit summaries and full panel with trends, optimal ranges, and status",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      visits: {
+                        type: "array",
+                        description: "Summary of each lab visit",
+                        items: {
+                          type: "object",
+                          properties: {
+                            visit_date: { type: "string" },
+                            lab_name: { type: "string", nullable: true },
+                            result_count: { type: "integer" },
+                            abnormal_count: { type: "integer" },
+                          },
+                        },
+                      },
+                      panel: {
+                        type: "array",
+                        description: "One entry per canonical test — the primary data to use for analysis",
+                        items: {
+                          type: "object",
+                          properties: {
+                            canonical_name: { type: "string" },
+                            display_name: { type: "string" },
+                            category: { type: "string" },
+                            unit: { type: "string", nullable: true },
+                            latest_value: { type: "number", nullable: true },
+                            latest_date: { type: "string", nullable: true },
+                            ref_low: { type: "number", nullable: true, description: "Standard reference range lower bound" },
+                            ref_high: { type: "number", nullable: true, description: "Standard reference range upper bound" },
+                            opt_low: { type: "number", nullable: true, description: "Optimal/functional medicine lower bound" },
+                            opt_high: { type: "number", nullable: true, description: "Optimal/functional medicine upper bound" },
+                            status: {
+                              type: "string",
+                              enum: ["optimal", "good", "suboptimal", "out_of_range", "no_range_data"],
+                              description: "optimal=within optimal range; good=within ref range, no optimal data; suboptimal=within ref range but outside optimal; out_of_range=outside ref range; no_range_data=no bounds available",
+                            },
+                            trend: {
+                              type: "string",
+                              enum: ["up", "down", "stable", "insufficient_data"],
+                            },
+                            times_out_of_range: { type: "integer" },
+                            visit_count: { type: "integer" },
+                            history: {
+                              type: "array",
+                              description: "Last 10 readings (newest first)",
+                              items: {
+                                type: "object",
+                                properties: {
+                                  date: { type: "string" },
+                                  value: { type: "number" },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           },
         },

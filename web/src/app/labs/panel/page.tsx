@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import LabTestDetailSheet from "./components/LabTestDetailSheet";
 import ManageTestsSheet from "./components/ManageTestsSheet";
+import LabSystemsRadar from "./components/LabSystemsRadar";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,8 @@ export type PanelTest = {
   times_out_of_range: number;
   last_tested: string | null;
   visit_count: number;
+  opt_low: number | null;
+  opt_high: number | null;
 };
 
 const CATEGORY_ORDER = ["CBC", "Metabolic", "Lipid", "Thyroid", "Hormone", "Vitamin", "Urinalysis", "Other"];
@@ -46,30 +49,39 @@ function formatDate(iso: string) {
   });
 }
 
-function statusDotColor(test: PanelTest): string {
+function isSuboptimal(test: PanelTest): boolean {
+  const l = test.latest;
+  if (!l || l.in_range !== true) return false;
+  if (test.opt_low == null && test.opt_high == null) return false;
+  return (test.opt_low != null && l.value < test.opt_low) ||
+         (test.opt_high != null && l.value > test.opt_high);
+}
+
+function statusDotColor(test: PanelTest, showOptimal: boolean): string {
   const l = test.latest;
   if (!l || l.in_range == null) return "bg-gray-400";
-  if (l.in_range === true) return "bg-green-500";
-  if (l.ref_high != null && l.value > l.ref_high) return "bg-red-500";
-  if (l.ref_low != null && l.value < l.ref_low) return "bg-blue-500";
-  return "bg-red-500";
-}
-
-function abnormalLabel(test: PanelTest): string | null {
-  const l = test.latest;
-  if (!l || l.in_range !== false) return null;
-  if (l.ref_high != null && l.value > l.ref_high) return "High";
-  if (l.ref_low != null && l.value < l.ref_low) return "Low";
-  return "Abnormal";
-}
-
-function abnormalLabelClass(test: PanelTest): string {
-  const l = test.latest;
-  if (!l || l.in_range !== false) return "";
-  if (l.ref_low != null && l.value < l.ref_low) {
-    return "bg-blue-700/10 text-blue-700 dark:bg-blue-400/10 dark:text-blue-400";
+  if (l.in_range === false) {
+    if (l.ref_high != null && l.value > l.ref_high) return "bg-red-500";
+    if (l.ref_low != null && l.value < l.ref_low) return "bg-blue-500";
+    return "bg-red-500";
   }
-  return "bg-red-700/10 text-red-700 dark:bg-red-400/10 dark:text-red-400";
+  if (showOptimal && isSuboptimal(test)) return "bg-amber-400";
+  return "bg-green-500";
+}
+
+function abnormalLabel(test: PanelTest, showOptimal: boolean): { text: string; cls: string; border: string } | null {
+  const l = test.latest;
+  if (!l) return null;
+  if (l.in_range === false) {
+    if (l.ref_high != null && l.value > l.ref_high)
+      return { text: "↑ High", cls: "bg-red-700/10 text-red-700 dark:bg-red-400/10 dark:text-red-400", border: "border-red-700/30 dark:border-red-400/30" };
+    if (l.ref_low != null && l.value < l.ref_low)
+      return { text: "↓ Low", cls: "bg-blue-700/10 text-blue-700 dark:bg-blue-400/10 dark:text-blue-400", border: "border-blue-700/30 dark:border-blue-400/30" };
+    return { text: "Abnormal", cls: "bg-red-700/10 text-red-700 dark:bg-red-400/10 dark:text-red-400", border: "border-red-700/30 dark:border-red-400/30" };
+  }
+  if (showOptimal && isSuboptimal(test))
+    return { text: "Suboptimal", cls: "bg-amber-600/10 text-amber-700 dark:bg-amber-400/10 dark:text-amber-400", border: "border-amber-600/30 dark:border-amber-400/30" };
+  return null;
 }
 
 const TREND_ICON: Record<string, string> = {
@@ -118,15 +130,17 @@ function exportToCsv(tests: PanelTest[]) {
 
 // ── Test card ────────────────────────────────────────────────────────────────
 
-function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
+function TestCard({ test, onClick, showOptimal }: { test: PanelTest; onClick: () => void; showOptimal: boolean }) {
   const latest = test.latest;
-  const label = abnormalLabel(test);
-  const labelClass = abnormalLabelClass(test);
+  const label = abnormalLabel(test, showOptimal);
+  const dotColor = statusDotColor(test, showOptimal);
   const latestValueColor = latest?.in_range === false
     ? (latest.ref_low != null && latest.value < latest.ref_low
         ? "text-blue-600 dark:text-blue-400"
         : "text-red-600 dark:text-red-400")
-    : "text-foreground";
+    : showOptimal && isSuboptimal(test)
+      ? "text-amber-600 dark:text-amber-400"
+      : "text-foreground";
 
   return (
     <button
@@ -135,7 +149,7 @@ function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
     >
       <div className="flex items-start gap-3">
         {/* Status dot */}
-        <div className={cn("mt-1.5 h-2 w-2 rounded-full shrink-0", statusDotColor(test))} />
+        <div className={cn("mt-1.5 h-2 w-2 rounded-full shrink-0", dotColor)} />
 
         {/* Main content */}
         <div className="flex-1 min-w-0">
@@ -145,10 +159,8 @@ function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
               {test.category}
             </span>
             {label && (
-              <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium border", labelClass,
-                label === "Low" ? "border-blue-700/30 dark:border-blue-400/30" : "border-red-700/30 dark:border-red-400/30"
-              )}>
-                {label}
+              <span className={cn("text-xs px-1.5 py-0.5 rounded font-medium border", label.cls, label.border)}>
+                {label.text}
               </span>
             )}
           </div>
@@ -185,7 +197,7 @@ function TestCard({ test, onClick }: { test: PanelTest; onClick: () => void }) {
 
 // ── Main page ────────────────────────────────────────────────────────────────
 
-type StatusFilter = "all" | "out_of_range" | "in_range";
+type StatusFilter = "all" | "out_of_range" | "suboptimal" | "in_range";
 type TrendFilter = "any" | "up" | "down" | "stable";
 type SortBy = "name" | "last_tested" | "out_of_range_first";
 
@@ -201,6 +213,7 @@ export default function LabPanelPage() {
   const [trending, setTrending] = useState<TrendFilter>("any");
   const [currentVisitOnly, setCurrentVisitOnly] = useState(false);
   const [hideStale, setHideStale] = useState(false);
+  const [showOptimal, setShowOptimal] = useState(true);
   const [sortBy, setSortBy] = useState<SortBy>("name");
 
   const fetchTests = async () => {
@@ -247,6 +260,8 @@ export default function LabPanelPage() {
 
     if (status === "out_of_range") {
       result = result.filter((t) => t.latest?.in_range === false);
+    } else if (status === "suboptimal") {
+      result = result.filter((t) => isSuboptimal(t));
     } else if (status === "in_range") {
       result = result.filter((t) => t.latest?.in_range === true);
     }
@@ -278,10 +293,10 @@ export default function LabPanelPage() {
     });
 
     return result;
-  }, [tests, search, selectedCategories, status, trending, currentVisitOnly, hideStale, sortBy, mostRecentVisitDate, staleCutoff]);
+  }, [tests, search, selectedCategories, status, trending, currentVisitOnly, hideStale, showOptimal, sortBy, mostRecentVisitDate, staleCutoff]);
 
   // Group by category for display
-  const isFiltering = search.trim() || selectedCategories.length > 0 || status !== "all" || trending !== "any" || currentVisitOnly || hideStale;
+  const isFiltering = !!(search.trim() || selectedCategories.length > 0 || status !== "all" || trending !== "any" || currentVisitOnly || hideStale);
 
   const grouped = useMemo(() => {
     if (isFiltering) return null; // flat list when filtering
@@ -321,6 +336,7 @@ export default function LabPanelPage() {
   };
 
   const abnormalCount = tests.filter((t) => t.latest?.in_range === false).length;
+  const suboptimalCount = showOptimal ? tests.filter((t) => isSuboptimal(t)).length : 0;
   const hasActiveFilters = !!(search || selectedCategories.length || status !== "all" || trending !== "any" || currentVisitOnly || hideStale);
 
   return (
@@ -333,7 +349,10 @@ export default function LabPanelPage() {
             <p className="text-sm text-muted-foreground mt-0.5">
               {tests.length} unique tests
               {abnormalCount > 0 && (
-                <span className="text-red-600 ml-2">· {abnormalCount} currently abnormal</span>
+                <span className="text-red-600 ml-2">· {abnormalCount} abnormal</span>
+              )}
+              {suboptimalCount > 0 && (
+                <span className="text-amber-600 ml-2">· {suboptimalCount} suboptimal</span>
               )}
             </p>
           )}
@@ -379,6 +398,16 @@ export default function LabPanelPage() {
         ))}
       </div>
 
+      {/* Health systems radar */}
+      {!loading && tests.length > 0 && (
+        <LabSystemsRadar
+          tests={tests}
+          showOptimal={showOptimal}
+          selectedCategories={selectedCategories}
+          onCategoryToggle={toggleCategory}
+        />
+      )}
+
       {/* Filter bar */}
       <div className="space-y-2">
         <div className="flex flex-wrap gap-2 items-center">
@@ -399,6 +428,7 @@ export default function LabPanelPage() {
           >
             <option value="all">All statuses</option>
             <option value="out_of_range">Abnormal only</option>
+            {showOptimal && <option value="suboptimal">Suboptimal only</option>}
             <option value="in_range">Normal only</option>
           </select>
 
@@ -461,6 +491,18 @@ export default function LabPanelPage() {
               />
               Hide stale (&gt;1yr)
             </label>
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showOptimal}
+                onChange={(e) => {
+                  setShowOptimal(e.target.checked);
+                  if (!e.target.checked && status === "suboptimal") setStatus("all");
+                }}
+                className="rounded"
+              />
+              Show optimal ranges
+            </label>
           </div>
           {hasActiveFilters && (
             <button
@@ -488,7 +530,7 @@ export default function LabPanelPage() {
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">{filteredTests.length} result{filteredTests.length !== 1 ? "s" : ""}</p>
           {filteredTests.map((t) => (
-            <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} />
+            <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} showOptimal={showOptimal} />
           ))}
         </div>
       ) : (
@@ -520,7 +562,7 @@ export default function LabPanelPage() {
                 {!isCollapsed && (
                   <div className="space-y-1.5">
                     {categoryTests.map((t) => (
-                      <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} />
+                      <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} showOptimal={showOptimal} />
                     ))}
                   </div>
                 )}
@@ -533,6 +575,8 @@ export default function LabPanelPage() {
         test={selectedTest}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+        showOptimal={showOptimal}
+        allTests={tests}
       />
       <ManageTestsSheet
         open={manageOpen}
