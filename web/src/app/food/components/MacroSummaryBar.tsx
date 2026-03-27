@@ -42,7 +42,8 @@ function goalStatus(value: number, goal: GoalTarget): "met" | "warn" | "over" | 
     return pct <= 1 ? "met" : pct <= 1.10 ? "warn" : "over";
   }
   if (goal.direction === "min") {
-    return pct >= 1 ? "met" : pct >= 0.90 ? "warn" : "over";
+    // Within 2% under counts as met
+    return pct >= 0.98 ? "met" : pct >= 0.90 ? "warn" : "over";
   }
   return null;
 }

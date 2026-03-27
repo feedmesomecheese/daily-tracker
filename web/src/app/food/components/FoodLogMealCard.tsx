@@ -33,6 +33,7 @@ interface Props {
   onDeleteMeal: (mealId: string) => void;
   onSaveAsTemplate: (mealId: string, name: string) => Promise<void>;
   onApplyTemplate: (mealId: string) => void;
+  hasTemplates?: boolean;
   /** Rendered drag handle (passed from parent DnD context) */
   dragHandle?: React.ReactNode;
 }
@@ -161,6 +162,7 @@ export default function FoodLogMealCard({
   onDeleteMeal,
   onSaveAsTemplate,
   onApplyTemplate,
+  hasTemplates = false,
   dragHandle,
 }: Props) {
   const [editingName, setEditingName] = useState(false);
@@ -377,7 +379,7 @@ export default function FoodLogMealCard({
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2">
+      <div className="px-4 py-2 flex items-center gap-4">
         <button
           onClick={onAddFood}
           className="text-sm text-primary hover:text-primary/80 font-medium transition-colors flex items-center gap-1"
@@ -387,6 +389,18 @@ export default function FoodLogMealCard({
           </svg>
           Add Food
         </button>
+        {hasTemplates && (
+          <button
+            onClick={() => onApplyTemplate(meal.id)}
+            className="text-sm text-muted-foreground hover:text-foreground font-medium transition-colors flex items-center gap-1"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h11A2.5 2.5 0 0 1 18 4.5v.25a.75.75 0 0 1-1.5 0V4.5A1 1 0 0 0 15.5 3.5h-11A1 1 0 0 0 3.5 4.5v11a1 1 0 0 0 1 1H5a.75.75 0 0 1 0 1.5h-.5A2.5 2.5 0 0 1 2 15.5v-11Z" />
+              <path d="M8 8a1 1 0 0 1 1-1h7.5a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V8Z" />
+            </svg>
+            Use Template
+          </button>
+        )}
       </div>
     </div>
   );

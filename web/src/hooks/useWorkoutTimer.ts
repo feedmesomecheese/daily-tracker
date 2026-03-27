@@ -592,6 +592,11 @@ export function useWorkoutTimer(): WorkoutTimerState {
     const split = tabSplitRef.current;
     if (!split) return;
     const result = computeNextPhase(tabPhaseRef.current, tabCycleRef.current, split);
+    // Count skipped "on" phases as completed so the fill animation stays correct
+    if (tabPhaseRef.current === "on") {
+      tabCompletedWorkCyclesRef.current += 1;
+      setTabCompletedWorkCycles(tabCompletedWorkCyclesRef.current);
+    }
     applyPhase(result);
   }, [applyPhase]);
 

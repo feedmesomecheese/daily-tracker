@@ -153,13 +153,16 @@ function scoreLabel(score: number): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function ScoreDot(props: any) {
-  const { cx, cy, payload } = props;
+  const { cx, cy, payload, onHover } = props;
   if (cx == null || cy == null || payload?.score == null) return null;
   return (
     <circle
-      cx={cx} cy={cy} r={5}
+      cx={cx} cy={cy} r={6}
       fill={scoreColor(payload.score)}
       stroke="white" strokeOpacity={0.6} strokeWidth={1.5}
+      style={{ cursor: "pointer" }}
+      onMouseEnter={() => onHover?.(payload.system)}
+      onMouseLeave={() => onHover?.(null)}
     />
   );
 }
@@ -183,7 +186,8 @@ function SystemTick(props: any) {
       dominantBaseline="central"
       fontSize={11}
       fontWeight={isActive ? 700 : 400}
-      fill={isActive ? (labelActiveColor ?? "#6366f1") : (labelColor ?? "#374151")}
+      fill={isActive ? (labelActiveColor ?? "#6366f1") : "currentColor"}
+      opacity={isActive ? 1 : 0.7}
       style={{ cursor: "pointer", userSelect: "none", outline: "none" }}
       onClick={() => onCategoryToggle(sys.category)}
     >
@@ -316,21 +320,7 @@ export default function LabSystemsRadar({ tests, showOptimal, selectedCategories
                 data={chartData}
                 cx="50%" cy="50%"
                 outerRadius="75%"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                onMouseMove={(data: any) => {
-                  const point = data?.activePayload?.[0]?.payload;
-                  setHoveredSystem(point?.system ?? null);
-                }}
                 onMouseLeave={() => setHoveredSystem(null)}
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                onClick={(data: any) => {
-                  const point = data?.activePayload?.[0]?.payload;
-                  if (point?.system) {
-                    const sys = systemMap[point.system as string];
-                    if (sys) onCategoryToggle(sys.category);
-                  }
-                }}
-                style={{ cursor: "pointer" }}
               >
                 <PolarGrid stroke={gridColor} />
                 <PolarRadiusAxis
@@ -342,15 +332,16 @@ export default function LabSystemsRadar({ tests, showOptimal, selectedCategories
                 />
                 <PolarAngleAxis
                   dataKey="system"
-                  tick={
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  tick={(props: any) => (
                     <SystemTick
+                      {...props}
                       selectedCategories={selectedCategories}
                       onCategoryToggle={onCategoryToggle}
                       systemMap={systemMap}
-                      labelColor={labelColor}
                       labelActiveColor={labelActiveColor}
                     />
-                  }
+                  )}
                 />
                 <Radar
                   dataKey="score"
@@ -358,7 +349,8 @@ export default function LabSystemsRadar({ tests, showOptimal, selectedCategories
                   strokeWidth={2}
                   fill="#6366f1"
                   fillOpacity={0.25}
-                  dot={<ScoreDot />}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  dot={(props: any) => <ScoreDot {...props} onHover={setHoveredSystem} />}
                   activeDot={false}
                   isAnimationActive={false}
                 />
@@ -381,7 +373,7 @@ export default function LabSystemsRadar({ tests, showOptimal, selectedCategories
               );
             })() : (
               <p className="text-xs text-muted-foreground/60 text-center">
-                Click a node or label to filter · hover for details
+                Click a label to filter · hover a node for details
               </p>
             )}
           </div>

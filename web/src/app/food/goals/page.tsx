@@ -156,7 +156,9 @@ export default function FoodGoalsPage() {
   // ── Form helpers ──────────────────────────────────────────────
 
   const openAdd = () => {
-    setForm(defaultForm());
+    const takenNutrients = new Set(goals.map((g) => g.nutrient));
+    const firstAvailable = NUTRIENT_OPTIONS.find((n) => !takenNutrients.has(n)) ?? "calories";
+    setForm({ ...defaultForm(), nutrient: firstAvailable as Nutrient });
     setFormError(null);
     setEditingGoal(null);
     setShowAddForm(true);
@@ -194,6 +196,11 @@ export default function FoodGoalsPage() {
   const validateForm = (): string | null => {
     if (!form.value || isNaN(Number(form.value)) || Number(form.value) <= 0)
       return "Value must be a positive number.";
+    // One goal per nutrient — block adding a duplicate
+    if (!editingGoal) {
+      const existing = goals.find((g) => g.nutrient === form.nutrient);
+      if (existing) return `A goal for ${NUTRIENT_LABELS[form.nutrient as Nutrient]} already exists. Edit the existing one.`;
+    }
     return null;
   };
 
@@ -273,12 +280,14 @@ export default function FoodGoalsPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-semibold">Food Goals</h1>
-        <button
-          onClick={openAdd}
-          className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
-        >
-          + Add Goal
-        </button>
+        {goals.length < NUTRIENT_OPTIONS.length && (
+          <button
+            onClick={openAdd}
+            className="px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors"
+          >
+            + Add Goal
+          </button>
+        )}
       </div>
 
       {/* Body weight info */}
@@ -411,7 +420,11 @@ export default function FoodGoalsPage() {
                   }
                   className="w-full h-9 px-3 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-ring bg-background"
                 >
-                  {NUTRIENT_OPTIONS.map((n) => (
+                  {NUTRIENT_OPTIONS.filter((n) => {
+                    // When adding, only show nutrients without an existing goal
+                    if (editingGoal) return true;
+                    return !goals.some((g) => g.nutrient === n);
+                  }).map((n) => (
                     <option key={n} value={n}>
                       {NUTRIENT_LABELS[n]}
                     </option>

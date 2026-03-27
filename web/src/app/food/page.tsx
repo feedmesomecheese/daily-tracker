@@ -107,6 +107,7 @@ interface SortableMealCardProps {
   onDeleteMeal: (mealId: string) => void;
   onSaveAsTemplate: (mealId: string, name: string) => Promise<void>;
   onApplyTemplate: (mealId: string) => void;
+  hasTemplates?: boolean;
 }
 
 function SortableMealCard({ meal, ...props }: SortableMealCardProps) {
@@ -594,14 +595,40 @@ export default function FoodPage() {
 
   const handleApplyTemplateToMeal = async (template: MealTemplate) => {
     if (!logIdRef.current || !templateTargetMealId) return;
+    const targetMealId = templateTargetMealId;
     try {
       const headers = await getAuthHeaders();
-      await fetch(`/api/food/logs/${logIdRef.current}/meals/${templateTargetMealId}/from-template`, {
+      const res = await fetch(`/api/food/logs/${logIdRef.current}/meals/${targetMealId}/from-template`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ template_id: template.id }),
       });
-      await refreshLog();
+      if (!res.ok) throw new Error("Failed to apply template");
+      const data = await res.json();
+      // Patch the specific meal in state directly — no full log re-fetch needed
+      const newItems: FoodLogItem[] = (data.items ?? []).map((item: {
+        id: string; food_name_snapshot: string; serving_label_snapshot: string;
+        qty: number; calories: number; fat: number; carbs: number; protein: number; fiber: number;
+      }) => ({
+        id: item.id,
+        food_name_snapshot: item.food_name_snapshot,
+        serving_label_snapshot: item.serving_label_snapshot,
+        qty: item.qty,
+        calories: item.calories,
+        fat: item.fat,
+        carbs: item.carbs,
+        protein: item.protein,
+        fiber: item.fiber,
+      }));
+      setFoodLog((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          meals: prev.meals.map((m) =>
+            m.id === targetMealId ? { ...m, items: [...m.items, ...newItems] } : m
+          ),
+        };
+      });
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to apply template");
     }
@@ -631,10 +658,15 @@ export default function FoodPage() {
             </svg>
           </button>
 
-          <div className="text-center">
+          <div className="text-center flex flex-col items-center gap-0.5">
             <span className="font-semibold text-lg">{formatDisplayDate(currentDate)}</span>
-            {isToday && (
-              <span className="ml-2 text-xs text-muted-foreground">(Today)</span>
+            {!isToday && (
+              <button
+                onClick={() => setCurrentDate(getLocalDateString())}
+                className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                Go to Today
+              </button>
             )}
           </div>
 
@@ -677,6 +709,7 @@ export default function FoodPage() {
                     onDeleteMeal={handleDeleteMeal}
                     onSaveAsTemplate={handleSaveAsTemplate}
                     onApplyTemplate={handleApplyTemplate}
+                    hasTemplates={templates.length > 0}
                   />
                 ))}
               </SortableContext>

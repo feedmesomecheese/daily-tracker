@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import LabTestDetailSheet from "./components/LabTestDetailSheet";
 import ManageTestsSheet from "./components/ManageTestsSheet";
 import LabSystemsRadar from "./components/LabSystemsRadar";
+import LabUploadSheet from "../components/LabUploadSheet";
+import { LabsLoader } from "@/components/loading/LabsLoader";
+import { LoadingScreen } from "@/components/loading/LoadingScreen";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -202,9 +203,10 @@ type TrendFilter = "any" | "up" | "down" | "stable";
 type SortBy = "name" | "last_tested" | "out_of_range_first";
 
 export default function LabPanelPage() {
-  const pathname = usePathname();
   const [tests, setTests] = useState<PanelTest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLoader, setShowLoader] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -227,7 +229,11 @@ export default function LabPanelPage() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchTests(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchTests();
+    const t = setTimeout(() => setShowLoader(true), 400);
+    return () => clearTimeout(t);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Most recent visit date (for "current visit only" filter)
   const mostRecentVisitDate = useMemo(() => {
@@ -344,7 +350,7 @@ export default function LabPanelPage() {
       {/* Page header */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Labs</h1>
+          <h1 className="text-2xl font-semibold">Lab Panel</h1>
           {!loading && (
             <p className="text-sm text-muted-foreground mt-0.5">
               {tests.length} unique tests
@@ -374,28 +380,10 @@ export default function LabPanelPage() {
           >
             Export CSV
           </Button>
+          <Button size="sm" onClick={() => setUploadOpen(true)}>
+            + Upload Report
+          </Button>
         </div>
-      </div>
-
-      {/* Tab nav */}
-      <div className="flex gap-1 border-b">
-        {[
-          { label: "Visits", href: "/labs" },
-          { label: "Panel", href: "/labs/panel" },
-        ].map(({ label, href }) => (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-              pathname === href
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {label}
-          </Link>
-        ))}
       </div>
 
       {/* Health systems radar */}
@@ -519,9 +507,11 @@ export default function LabPanelPage() {
       </div>
 
       {/* Content */}
-      {loading ? (
-        <div className="text-sm text-muted-foreground py-8 text-center">Loading...</div>
-      ) : filteredTests.length === 0 ? (
+      {loading && showLoader ? (
+        <LoadingScreen>
+          <LabsLoader />
+        </LoadingScreen>
+      ) : filteredTests.length === 0 && !loading ? (
         <div className="text-sm text-muted-foreground py-8 text-center">
           {hasActiveFilters ? "No tests match the current filters." : "No lab results found."}
         </div>
@@ -583,6 +573,11 @@ export default function LabPanelPage() {
         onOpenChange={setManageOpen}
         tests={tests}
         onChanged={fetchTests}
+      />
+      <LabUploadSheet
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        onSaved={() => { setUploadOpen(false); fetchTests(); }}
       />
     </main>
   );

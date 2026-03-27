@@ -17,14 +17,10 @@ const modules: NavModule[] = [
       { href: "/", label: "Today" },
       { href: "/metrics", label: "Metrics" },
       { href: "/log", label: "Log" },
-      { href: "/ma", label: "Moving Avg" },
-      { href: "/stats", label: "Stats" },
       { href: "/insights", label: "Insights" },
       { href: "/heatmap", label: "Heatmap" },
       { href: "/radar", label: "Radar" },
       { href: "/summary", label: "Summary" },
-      { href: "/search", label: "Search" },
-      { href: "/dashboard", label: "Dashboard" },
       { href: "/achievements", label: "Achievements" },
       { href: "/integrations", label: "Integrations" },
     ],
@@ -57,12 +53,18 @@ const modules: NavModule[] = [
   {
     name: "Labs",
     links: [
+      { href: "/labs/panel", label: "Panel" },
       { href: "/labs", label: "Results" },
     ],
   },
+  {
+    name: "Settings",
+    links: [
+      { href: "/settings", label: "General" },
+      { href: "/settings/ai-assistant", label: "AI Assistant" },
+    ],
+  },
 ];
-
-const settingsLink = { href: "/settings", label: "Settings" };
 
 export function NavMenu() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -159,17 +161,6 @@ export function NavMenu() {
 
         <div className="mx-2 h-4 w-px bg-border" />
 
-        <Link
-          href={settingsLink.href}
-          className={`px-3 py-1.5 rounded-md transition-colors ${
-            pathname === settingsLink.href ? "bg-accent font-medium" : "hover:bg-accent"
-          }`}
-        >
-          {settingsLink.label}
-        </Link>
-
-        <div className="mx-2 h-4 w-px bg-border" />
-
         <button
           onClick={handleLogout}
           className="px-3 py-1.5 rounded-md transition-colors hover:bg-accent text-muted-foreground"
@@ -181,7 +172,7 @@ export function NavMenu() {
       {/* Mobile: hamburger menu */}
       <div className="flex sm:hidden items-center justify-between text-sm">
         <span className="font-semibold">
-          {activeModule?.name === "Books" ? "Books" : activeModule?.name === "Workouts" ? "Workouts" : activeModule?.name === "Food" ? "Food" : "Daily Tracker"}
+          {activeModule?.name === "Books" ? "Books" : activeModule?.name === "Workouts" ? "Workouts" : activeModule?.name === "Food" ? "Food" : activeModule?.name === "Labs" ? "Labs" : activeModule?.name === "Settings" ? "Settings" : "Daily Tracker"}
         </span>
         <button
           onClick={() => setMobileOpen((v) => !v)}
@@ -214,16 +205,6 @@ export function NavMenu() {
               ))}
             </div>
           ))}
-          <div className="border-t my-1" />
-          <Link
-            href={settingsLink.href}
-            className={`py-1.5 px-3 hover:bg-accent rounded block ${
-              pathname === settingsLink.href ? "bg-accent font-medium" : ""
-            }`}
-            onClick={() => setMobileOpen(false)}
-          >
-            {settingsLink.label}
-          </Link>
           <div className="border-t my-1" />
           <button
             onClick={handleLogout}

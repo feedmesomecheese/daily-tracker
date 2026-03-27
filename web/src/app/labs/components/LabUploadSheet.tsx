@@ -313,6 +313,10 @@ export default function LabUploadSheet({ open, onClose, onSaved }: Props) {
               </div>
               <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={handleFileInput} disabled={parsing} />
 
+              <p className="text-xs text-muted-foreground/70 text-center px-2">
+                This app is not HIPAA-compliant. Do not upload reports containing protected health information shared with others. Always verify imported values for accuracy before use.
+              </p>
+
               <div className="border-t pt-4">
                 <p className="text-xs text-muted-foreground font-medium mb-3">Or enter manually</p>
                 <Button variant="outline" className="w-full" onClick={() => {

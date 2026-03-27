@@ -110,11 +110,12 @@ export async function POST(
     sort_order: baseSort + i,
   }));
 
-  const { error: insertErr } = await supabase
+  const { data: insertedItems, error: insertErr } = await supabase
     .from("food_log_items")
-    .insert(newLogItems);
+    .insert(newLogItems)
+    .select("id, food_name_snapshot, serving_label_snapshot, qty, calories, fat, carbs, protein, fiber, sort_order");
 
   if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
 
-  return NextResponse.json({ success: true, items_added: newLogItems.length });
+  return NextResponse.json({ success: true, items_added: newLogItems.length, items: insertedItems ?? [] });
 }

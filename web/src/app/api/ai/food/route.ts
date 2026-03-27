@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { validateAiKey, getAiSupabase, getAiOwnerId, AI_CORS_HEADERS, handleAiOptions } from "@/lib/aiAuth";
+import { validateAiRequest, getAiSupabase, AI_CORS_HEADERS, handleAiOptions } from "@/lib/aiAuth";
 
 export async function OPTIONS() { return handleAiOptions(); }
 
 export async function GET(req: Request) {
-  const authError = validateAiKey(req);
-  if (authError) return authError;
+  const auth = await validateAiRequest(req);
+  if (auth instanceof NextResponse) return auth;
+  const { ownerId } = auth;
 
   const supabase = getAiSupabase();
-  const ownerId = getAiOwnerId();
 
   const url = new URL(req.url);
   const today = new Date().toISOString().slice(0, 10);
