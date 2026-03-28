@@ -21,7 +21,7 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from("food_items")
-    .select("id, name, category, sub_category, note, owner_id, created_at")
+    .select("id, name, category, sub_category, note, owner_id, created_at, glycemic_index")
     .eq("is_archived", false)
     .or(`owner_id.is.null,owner_id.eq.${user.id}`)
     .order("name", { ascending: true })
@@ -73,6 +73,7 @@ export async function GET(req: Request) {
     note: string | null;
     owner_id: string | null;
     created_at: string;
+    glycemic_index: number | null;
   }[]).map((item) => ({
     ...item,
     is_custom: item.owner_id !== null,

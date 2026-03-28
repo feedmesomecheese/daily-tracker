@@ -376,8 +376,15 @@ export default function FoodLogPage() {
               <div className="flex items-center justify-between">
                 <span className="font-medium">{formatDate(log.date)}</span>
                 <div className="flex items-center gap-2">
-                  {/* Goal dots */}
-                  {goals.length > 0 && (() => {
+                  {log.is_fasted ? (
+                    <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                      Fasted
+                    </span>
+                  ) : log.total_calories === 0 ? (
+                    <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+                      No log
+                    </span>
+                  ) : goals.length > 0 ? (() => {
                     const vals: Record<string, number> = {
                       calories: log.total_calories,
                       protein: log.total_protein,
@@ -391,15 +398,10 @@ export default function FoodLogPage() {
                     const anyOver = relevant.some((g) => g.direction === "max" && vals[g.nutrient] > g.value);
                     return (
                       <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${allMet ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : anyOver ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200" : "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"}`}>
-                        {allMet ? "✓ Goals" : anyOver ? "Over" : "In progress"}
+                        {allMet ? "✓ Goals" : anyOver ? "Over" : "Partial"}
                       </span>
                     );
-                  })()}
-                  {log.is_fasted && (
-                    <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
-                      Fasted
-                    </span>
-                  )}
+                  })() : null}
                   {log.is_submitted && (
                     <span className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-2 py-0.5 rounded-full">
                       Submitted

@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { FoodMacroDonut } from "./FoodMacroDonut";
+import { GIPill } from "./GIPill";
 
 interface FoodServing {
   id: string;
@@ -20,6 +22,7 @@ interface FoodItem {
   name: string;
   category: string | null;
   is_favorited: boolean;
+  glycemic_index?: number | null;
   servings: FoodServing[];
 }
 
@@ -125,11 +128,49 @@ function buildSelectableServings(food: FoodItem): SelectableServing[] {
   return result;
 }
 
+// ── Food row (used in both search results and starred section) ─────────────
+
+function FoodSearchRow({ food, onSelect }: { food: FoodItem; onSelect: (food: FoodItem) => void }) {
+  const defaultServing = food.servings.find((s) => s.is_default) ?? food.servings[0];
+  return (
+    <button
+      onClick={() => onSelect(food)}
+      className="w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/40 transition-colors flex items-center gap-2.5"
+    >
+      {defaultServing && (
+        <FoodMacroDonut
+          protein={defaultServing.protein}
+          carbs={defaultServing.carbs}
+          fat={defaultServing.fat}
+          size={26}
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-sm font-medium truncate">{food.name}</span>
+          {food.glycemic_index != null && <GIPill gi={food.glycemic_index} />}
+          {food.is_favorited && <span className="text-amber-400 text-xs leading-none">★</span>}
+        </div>
+        {food.category && (
+          <div className="text-xs text-muted-foreground">{food.category}</div>
+        )}
+        {defaultServing && (
+          <div className="text-xs text-muted-foreground mt-0.5">
+            {defaultServing.label} &middot; {Math.round(defaultServing.calories)} cal &middot; P{Math.round(defaultServing.protein)}g C{Math.round(defaultServing.carbs)}g F{Math.round(defaultServing.fat)}g
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded, onAdd, title = "Add Food" }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<FoodItem[]>([]);
+  const [favorites, setFavorites] = useState<FoodItem[]>([]);
+  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
   const [searching, setSearching] = useState(false);
   const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
   const [allServings, setAllServings] = useState<SelectableServing[]>([]);
@@ -145,6 +186,23 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded,
   useEffect(() => {
     if (open) setTimeout(() => searchInputRef.current?.focus(), 100);
   }, [open]);
+
+  // Load favorited items once when the sheet first opens
+  useEffect(() => {
+    if (!open || favoritesLoaded) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch("/api/food/items?limit=100", { headers });
+        if (res.ok) {
+          const data = await res.json();
+          const all: FoodItem[] = Array.isArray(data) ? data : data.items ?? [];
+          setFavorites(all.filter((f) => f.is_favorited).sort((a, b) => a.name.localeCompare(b.name)));
+        }
+      } catch { /* best-effort */ }
+      setFavoritesLoaded(true);
+    })();
+  }, [open, favoritesLoaded]);
 
   useEffect(() => {
     setSelectedFood(null);
@@ -400,39 +458,43 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded,
             </div>
           )}
 
-          {/* Search results */}
+          {/* Search results / starred items */}
           {!selectedFood && (
             <div>
-              {results.length === 0 && query.trim() && !searching && (
-                <p className="text-sm text-muted-foreground text-center py-8">No results found.</p>
+              {/* Search results */}
+              {query.trim() && (
+                <>
+                  {results.length === 0 && !searching && (
+                    <p className="text-sm text-muted-foreground text-center py-8">No results found.</p>
+                  )}
+                  {results.map((food) => (
+                    <FoodSearchRow key={food.id} food={food} onSelect={handleSelectFood} />
+                  ))}
+                </>
               )}
-              {results.length === 0 && !query.trim() && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  Type to search for a food item.
-                </p>
-              )}
-              {results.map((food) => {
-                const defaultServing = food.servings.find((s) => s.is_default) ?? food.servings[0];
-                return (
-                  <button key={food.id} onClick={() => handleSelectFood(food)}
-                    className="w-full text-left px-4 py-3 border-b border-border/50 hover:bg-muted/40 transition-colors flex items-start gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-medium truncate">{food.name}</span>
-                        {food.is_favorited && <span className="text-amber-400 text-xs">★</span>}
+
+              {/* Starred section (shown when no query) */}
+              {!query.trim() && (
+                <>
+                  {favorites.length > 0 && (
+                    <>
+                      <div className="px-4 pt-3 pb-1">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          ★ Starred
+                        </span>
                       </div>
-                      {food.category && (
-                        <div className="text-xs text-muted-foreground">{food.category}</div>
-                      )}
-                      {defaultServing && (
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {defaultServing.label} &middot; {Math.round(defaultServing.calories)} cal &middot; P{Math.round(defaultServing.protein)}g C{Math.round(defaultServing.carbs)}g F{Math.round(defaultServing.fat)}g
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+                      {favorites.map((food) => (
+                        <FoodSearchRow key={food.id} food={food} onSelect={handleSelectFood} />
+                      ))}
+                    </>
+                  )}
+                  {favoritesLoaded && favorites.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      Type to search for a food item.
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           )}
         </div>

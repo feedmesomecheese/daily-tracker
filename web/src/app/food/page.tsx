@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { delay } from "@/lib/delay";
 import { LoadingScreen } from "@/components/loading/LoadingScreen";
@@ -152,8 +153,13 @@ function DragPreviewCard({ meal }: { meal: Meal }) {
   );
 }
 
-export default function FoodPage() {
-  const [currentDate, setCurrentDate] = useState<string>(getLocalDateString());
+function FoodPage() {
+  const searchParams = useSearchParams();
+  const [currentDate, setCurrentDate] = useState<string>(() => {
+    const d = searchParams.get("date");
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+    return getLocalDateString();
+  });
   const [foodLog, setFoodLog] = useState<FoodLog | null>(null);
   const [goals, setGoals] = useState<FoodGoal[]>([]);
   const [bodyWeight, setBodyWeight] = useState<number | null>(null);
@@ -845,4 +851,8 @@ export default function FoodPage() {
       />
     </>
   );
+}
+
+export default function FoodPageWrapper() {
+  return <Suspense><FoodPage /></Suspense>;
 }

@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { PieChart, Pie, Cell, Tooltip } from "recharts";
+import { FoodMacroDonut } from "./FoodMacroDonut";
 
 export interface FoodLogItem {
   id: string;
@@ -109,6 +110,11 @@ function ItemRow({ item, mealId, onUpdateItem, onDeleteItem }: ItemRowProps) {
 
   return (
     <div className="flex items-start gap-2 py-2 border-b border-border/50 last:border-0">
+      {/* Macro donut */}
+      <div className="pt-0.5 shrink-0">
+        <FoodMacroDonut protein={item.protein} carbs={item.carbs} fat={item.fat} size={22} />
+      </div>
+
       {/* Name + serving */}
       <div className="flex-1 min-w-0">
         <div className="text-sm font-medium truncate">{item.food_name_snapshot}</div>

@@ -1,5 +1,8 @@
 "use client";
 
+import { FoodMacroDonut } from "./FoodMacroDonut";
+import { GIPill } from "./GIPill";
+
 export interface FoodItem {
   id: string;
   name: string;
@@ -8,6 +11,7 @@ export interface FoodItem {
   is_favorited: boolean;
   is_custom?: boolean;
   owner_id?: string | null;
+  glycemic_index?: number | null;
   servings: Array<{
     id: string;
     label: string;
@@ -34,10 +38,21 @@ export function FoodLibraryRow({ item, onFavoriteToggle, onEdit, onDelete }: Pro
 
   return (
     <div className="flex items-center gap-3 bg-card border rounded-lg p-3 mb-2">
+      {/* Macro donut */}
+      {defaultServing && (
+        <FoodMacroDonut
+          protein={defaultServing.protein}
+          carbs={defaultServing.carbs}
+          fat={defaultServing.fat}
+          size={22}
+        />
+      )}
+
       {/* Main content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <p className="font-medium truncate">{item.name}</p>
+          {item.glycemic_index != null && <GIPill gi={item.glycemic_index} />}
           {item.is_custom && (
             <span
               title="Your custom food"
