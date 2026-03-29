@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import type { Photo } from "@/components/photo-gallery";
+import { useToast } from "@/components/ui/Toast";
 
 export type PhotoViewerProps = {
   photo: Photo | null;
@@ -21,6 +22,7 @@ export function PhotoViewer({
   onDelete,
   onCaptionUpdate,
 }: PhotoViewerProps) {
+  const { toast, confirm } = useToast();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [caption, setCaption] = useState("");
   const [saving, setSaving] = useState(false);
@@ -87,7 +89,7 @@ export function PhotoViewer({
       onCaptionUpdate?.(currentPhoto.id, caption);
     } catch (e) {
       console.error("Failed to save caption:", e);
-      alert(e instanceof Error ? e.message : "Failed to save caption");
+      toast(e instanceof Error ? e.message : "Failed to save caption", "error");
     } finally {
       setSaving(false);
     }
@@ -95,7 +97,7 @@ export function PhotoViewer({
 
   const handleDelete = useCallback(async () => {
     if (!currentPhoto) return;
-    if (!confirm("Delete this photo?")) return;
+    if (!await confirm({ message: "Delete this photo?", destructive: true, confirmLabel: "Delete" })) return;
 
     setDeleting(true);
     try {
@@ -120,7 +122,7 @@ export function PhotoViewer({
       }
     } catch (e) {
       console.error("Failed to delete photo:", e);
-      alert(e instanceof Error ? e.message : "Failed to delete photo");
+      toast(e instanceof Error ? e.message : "Failed to delete photo", "error");
     } finally {
       setDeleting(false);
     }

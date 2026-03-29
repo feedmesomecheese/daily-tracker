@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { getAuthHeaders } from "@/lib/authHeaders";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 export type Photo = {
   id: string;
@@ -36,12 +37,13 @@ export function PhotoGallery({
   showDelete = true,
 }: PhotoGalleryProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { toast, confirm } = useToast();
 
   const handleDelete = useCallback(
     async (photoId: string, e: React.MouseEvent) => {
       e.stopPropagation();
 
-      if (!confirm("Delete this photo?")) return;
+      if (!await confirm({ message: "Delete this photo?", destructive: true, confirmLabel: "Delete" })) return;
 
       setDeletingId(photoId);
       try {
@@ -59,7 +61,7 @@ export function PhotoGallery({
         onDelete?.(photoId);
       } catch (e) {
         console.error("Failed to delete photo:", e);
-        alert(e instanceof Error ? e.message : "Failed to delete photo");
+        toast(e instanceof Error ? e.message : "Failed to delete photo", "error");
       } finally {
         setDeletingId(null);
       }

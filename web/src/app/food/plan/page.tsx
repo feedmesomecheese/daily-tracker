@@ -27,6 +27,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 interface FoodGoal {
   id: string;
@@ -176,6 +177,7 @@ function LogAsTodayModal({ open, onClose, onConfirm, loading }: LogAsTodayModalP
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export default function FoodPlanPage() {
+  const { toast, confirm, prompt } = useToast();
   const [plans, setPlans] = useState<PlanSummary[]>([]);
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
   const [currentPlanId, setCurrentPlanId] = useState<string | null>(null);
@@ -310,7 +312,7 @@ export default function FoodPlanPage() {
   };
 
   const handleSavePlan = async () => {
-    const name = window.prompt("Save plan as:", activePlan?.name === "Untitled" ? "" : activePlan?.name ?? "");
+    const name = await prompt("Save plan as:", activePlan?.name === "Untitled" ? "" : activePlan?.name ?? "");
     if (!name?.trim()) return;
     if (!currentPlanId) return;
     try {
@@ -326,7 +328,7 @@ export default function FoodPlanPage() {
       setRenameValue(name.trim());
       setIsDraft(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save plan");
+      toast(e instanceof Error ? e.message : "Failed to save plan", "error");
     }
   };
 
@@ -350,7 +352,7 @@ export default function FoodPlanPage() {
 
   const handleDeletePlan = async () => {
     if (!currentPlanId) return;
-    if (!isDraft && !confirm("Delete this plan? This cannot be undone.")) return;
+    if (!isDraft && !await confirm({ message: "Delete this plan? This cannot be undone.", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/food/plans/${currentPlanId}`, { method: "DELETE", headers });
@@ -368,7 +370,7 @@ export default function FoodPlanPage() {
         await createDraftPlan();
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete plan");
+      toast(e instanceof Error ? e.message : "Failed to delete plan", "error");
     }
   };
 
@@ -390,9 +392,9 @@ export default function FoodPlanPage() {
       }
       setLogAsTodayOpen(false);
       // Notify success with brief message
-      alert("Plan logged to today's food log.");
+      toast("Plan logged to today's food log.", "success");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to log as today");
+      toast(e instanceof Error ? e.message : "Failed to log as today", "error");
     } finally {
       setLoggingAsToday(false);
     }
@@ -416,7 +418,7 @@ export default function FoodPlanPage() {
       setSearchTargetMealId(newMeal.id);
       setSearchSheetOpen(true);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add meal");
+      toast(e instanceof Error ? e.message : "Failed to add meal", "error");
     }
   };
 
@@ -431,7 +433,7 @@ export default function FoodPlanPage() {
       });
       await refreshPlan();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to rename meal");
+      toast(e instanceof Error ? e.message : "Failed to rename meal", "error");
     }
   };
 
@@ -442,7 +444,7 @@ export default function FoodPlanPage() {
       await fetch(`/api/food/logs/${currentPlanId}/meals/${mealId}`, { method: "DELETE", headers });
       await refreshPlan();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete meal");
+      toast(e instanceof Error ? e.message : "Failed to delete meal", "error");
     }
   };
 
@@ -457,7 +459,7 @@ export default function FoodPlanPage() {
       });
       await refreshPlan();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update item");
+      toast(e instanceof Error ? e.message : "Failed to update item", "error");
     }
   };
 
@@ -470,7 +472,7 @@ export default function FoodPlanPage() {
       });
       await refreshPlan();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete item");
+      toast(e instanceof Error ? e.message : "Failed to delete item", "error");
     }
   };
 
@@ -486,7 +488,7 @@ export default function FoodPlanPage() {
       const refreshRes = await fetch("/api/food/templates", { headers });
       if (refreshRes.ok) setTemplates(await refreshRes.json());
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save template");
+      toast(e instanceof Error ? e.message : "Failed to save template", "error");
       throw e;
     }
   };
@@ -515,7 +517,7 @@ export default function FoodPlanPage() {
       });
       await refreshPlan();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add meal from template");
+      toast(e instanceof Error ? e.message : "Failed to add meal from template", "error");
     }
   };
 
@@ -530,7 +532,7 @@ export default function FoodPlanPage() {
       });
       await refreshPlan();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to apply template");
+      toast(e instanceof Error ? e.message : "Failed to apply template", "error");
     }
   };
 

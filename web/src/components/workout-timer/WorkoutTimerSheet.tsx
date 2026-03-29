@@ -21,6 +21,7 @@ import {
   type SoundType,
   playTone,
 } from "@/hooks/useWorkoutTimer";
+import { useToast } from "@/components/ui/Toast";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -337,6 +338,7 @@ function SplitsView({
   onExport: () => void;
   onReorder: (from: number, to: number) => void;
 }) {
+  const { confirm } = useToast();
   const importRef = useRef<HTMLInputElement>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -400,7 +402,7 @@ function SplitsView({
                 <button type="button" onClick={() => onEdit(split)} className="text-xs px-2 py-1 rounded border hover:bg-muted">Edit</button>
                 <button
                   type="button"
-                  onClick={() => { if (confirm(`Delete "${split.name}"?`)) onDelete(split.id); }}
+                  onClick={async () => { if (await confirm({ message: `Delete "${split.name}"?`, destructive: true, confirmLabel: "Delete" })) onDelete(split.id); }}
                   className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
                 >
                   Delete

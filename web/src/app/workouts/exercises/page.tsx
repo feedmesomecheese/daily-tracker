@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWorkoutTour } from "@/hooks/useWorkoutTour";
 import { usePageTour } from "@/hooks/usePageTour";
 import "driver.js/dist/driver.css";
+import { useToast } from "@/components/ui/Toast";
 
 type WorkoutType = {
   id: string;
@@ -63,6 +64,7 @@ type Exercise = {
 };
 
 export default function ExerciseLibraryPage() {
+  const { confirm } = useToast();
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [modifiers, setModifiers] = useState<Modifier[]>([]);
@@ -293,7 +295,7 @@ export default function ExerciseLibraryPage() {
   };
 
   const deleteType = async (id: string) => {
-    if (!confirm("Delete this workout type?")) return;
+    if (!await confirm({ message: "Delete this workout type?", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/workouts/types/${id}`, { method: "DELETE", headers });
@@ -356,7 +358,7 @@ export default function ExerciseLibraryPage() {
   };
 
   const deleteGroup = async (id: string) => {
-    if (!confirm("Delete this group?")) return;
+    if (!await confirm({ message: "Delete this group?", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/workouts/groups/${id}`, { method: "DELETE", headers });
@@ -407,7 +409,7 @@ export default function ExerciseLibraryPage() {
   };
 
   const deleteModifier = async (id: string) => {
-    if (!confirm("Delete this modifier?")) return;
+    if (!await confirm({ message: "Delete this modifier?", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/workouts/modifiers/${id}`, { method: "DELETE", headers });
@@ -490,7 +492,7 @@ export default function ExerciseLibraryPage() {
   };
 
   const deleteExercise = async (id: string) => {
-    if (!confirm("Delete this exercise permanently?")) return;
+    if (!await confirm({ message: "Delete this exercise permanently?", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/workouts/exercises/${id}`, { method: "DELETE", headers });
@@ -557,7 +559,7 @@ export default function ExerciseLibraryPage() {
   };
 
   const deleteTag = async (id: string) => {
-    if (!confirm("Delete this tag? It will be removed from all workouts.")) return;
+    if (!await confirm({ message: "Delete this tag? It will be removed from all workouts.", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/workouts/tags/${id}`, { method: "DELETE", headers });

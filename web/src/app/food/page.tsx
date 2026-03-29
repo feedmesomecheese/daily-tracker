@@ -7,6 +7,7 @@ import { delay } from "@/lib/delay";
 import { LoadingScreen } from "@/components/loading/LoadingScreen";
 import { FoodLoader } from "@/components/loading/FoodLoader";
 import { getLocalDateString, addDays } from "@/lib/dateUtils";
+import { useToast } from "@/components/ui/Toast";
 import MacroSummaryBar, { type Totals, type GoalTarget } from "./components/MacroSummaryBar";
 import FoodLogMealCard, { type Meal, type FoodLogItem } from "./components/FoodLogMealCard";
 import FoodSearchSheet from "./components/FoodSearchSheet";
@@ -154,6 +155,7 @@ function DragPreviewCard({ meal }: { meal: Meal }) {
 }
 
 function FoodPage() {
+  const { toast, confirm, prompt } = useToast();
   const searchParams = useSearchParams();
   const [currentDate, setCurrentDate] = useState<string>(() => {
     const d = searchParams.get("date");
@@ -300,7 +302,7 @@ function FoodPage() {
       await refreshLog();
       openFoodSearch(newMeal.id);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add meal");
+      toast(e instanceof Error ? e.message : "Failed to add meal", "error");
     }
   };
 
@@ -355,7 +357,7 @@ function FoodPage() {
       if (!res.ok) throw new Error("Failed to rename meal");
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to rename meal");
+      toast(e instanceof Error ? e.message : "Failed to rename meal", "error");
     }
   };
 
@@ -370,7 +372,7 @@ function FoodPage() {
       if (!res.ok) throw new Error("Failed to delete meal");
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete meal");
+      toast(e instanceof Error ? e.message : "Failed to delete meal", "error");
     }
   };
 
@@ -389,7 +391,7 @@ function FoodPage() {
       if (!res.ok) throw new Error("Failed to update item");
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update item");
+      toast(e instanceof Error ? e.message : "Failed to update item", "error");
     }
   };
 
@@ -404,7 +406,7 @@ function FoodPage() {
       if (!res.ok) throw new Error("Failed to delete item");
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete item");
+      toast(e instanceof Error ? e.message : "Failed to delete item", "error");
     }
   };
 
@@ -436,7 +438,7 @@ function FoodPage() {
       if (!res.ok) throw new Error("Failed to submit");
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to submit");
+      toast(e instanceof Error ? e.message : "Failed to submit", "error");
     } finally {
       setSubmitting(false);
     }
@@ -455,13 +457,13 @@ function FoodPage() {
       if (!res.ok) throw new Error("Failed to update");
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to update");
+      toast(e instanceof Error ? e.message : "Failed to update", "error");
     }
   };
 
   const handleUnsubmit = async () => {
     if (!logIdRef.current) return;
-    if (!confirm("Remove this day's food data from Daily Tracker?")) return;
+    if (!await confirm({ message: "Remove this day's food data from Daily Tracker?", destructive: true, confirmLabel: "Remove" })) return;
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`/api/food/logs/${logIdRef.current}/submit`, {
@@ -471,7 +473,7 @@ function FoodPage() {
       if (!res.ok) throw new Error("Failed to unsubmit");
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to unsubmit");
+      toast(e instanceof Error ? e.message : "Failed to unsubmit", "error");
     }
   };
 
@@ -497,7 +499,7 @@ function FoodPage() {
       }
       await loadTemplates();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save template");
+      toast(e instanceof Error ? e.message : "Failed to save template", "error");
       throw e;
     }
   };
@@ -508,7 +510,7 @@ function FoodPage() {
       await fetch(`/api/food/templates/${templateId}`, { method: "DELETE", headers });
       setTemplates((prev) => prev.filter((t) => t.id !== templateId));
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete template");
+      toast(e instanceof Error ? e.message : "Failed to delete template", "error");
     }
   };
 
@@ -522,7 +524,7 @@ function FoodPage() {
 
   const handleSaveDayTemplate = async () => {
     if (!logIdRef.current) return;
-    const name = window.prompt("Name this day template:");
+    const name = await prompt("Name this day template:");
     if (!name?.trim()) return;
     setSavingDayTemplate(true);
     try {
@@ -538,7 +540,7 @@ function FoodPage() {
       }
       await loadDayTemplates();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to save day template");
+      toast(e instanceof Error ? e.message : "Failed to save day template", "error");
     } finally {
       setSavingDayTemplate(false);
     }
@@ -565,7 +567,7 @@ function FoodPage() {
       await fetch(`/api/food/day-templates/${templateId}`, { method: "DELETE", headers });
       setDayTemplates((prev) => prev.filter((t) => t.id !== templateId));
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete template");
+      toast(e instanceof Error ? e.message : "Failed to delete template", "error");
     }
   };
 
@@ -595,7 +597,7 @@ function FoodPage() {
       });
       await refreshLog();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to add meal from template");
+      toast(e instanceof Error ? e.message : "Failed to add meal from template", "error");
     }
   };
 
@@ -636,7 +638,7 @@ function FoodPage() {
         };
       });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to apply template");
+      toast(e instanceof Error ? e.message : "Failed to apply template", "error");
     }
   };
 

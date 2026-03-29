@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useToast } from "@/components/ui/Toast";
 import { FoodLibraryRow, type FoodItem } from "@/app/food/components/FoodLibraryRow";
 import { FoodItemForm } from "@/app/food/components/FoodItemForm";
 import TemplateEditorSheet from "@/app/food/components/TemplateEditorSheet";
@@ -55,6 +56,7 @@ interface DayTemplateSummary {
 const API_CATEGORIES = new Set(["Meat", "Dairy", "Grains", "Plants", "Misc"]);
 
 export default function FoodLibraryPage() {
+  const { confirm } = useToast();
   const [tab, setTab] = useState<LibraryTab>("foods");
 
   // --- Foods tab state ---
@@ -174,7 +176,7 @@ export default function FoodLibraryPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this food item? This cannot be undone.")) return;
+    if (!await confirm({ message: "Delete this food item? This cannot be undone.", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/food/items/${id}`, { method: "DELETE", headers });

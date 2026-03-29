@@ -35,6 +35,7 @@ import { SpeechTextarea } from "@/components/ui/speech-textarea";
 import TemplateSheet, { type WorkoutTemplate } from "./components/TemplateSheet";
 import SaveTemplateDialog from "./components/SaveTemplateDialog";
 import "driver.js/dist/driver.css";
+import { useToast } from "@/components/ui/Toast";
 
 type BodyEntry = { date: string; value: number };
 type BodyData = { weight: BodyEntry[]; bodyfat: BodyEntry[] };
@@ -138,6 +139,7 @@ export default function WorkoutsPage() {
   const isMobile = useMediaQuery("(max-width: 639px)");
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { toast, confirm } = useToast();
 
   // Data
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
@@ -377,11 +379,11 @@ export default function WorkoutsPage() {
     return () => setFabOffset("bottom-6");
   }, [selectedExerciseCount, setFabOffset]);
 
-  const loadWorkoutForEdit = (workout: WorkoutHistory) => {
+  const loadWorkoutForEdit = async (workout: WorkoutHistory) => {
     // Confirm if there's unsaved data in the bucket
     if (
       bucketExercises.length > 0 &&
-      !confirm("Loading a workout for editing will discard your current entry. Continue?")
+      !await confirm({ message: "Loading a workout for editing will discard your current entry. Continue?", confirmLabel: "Continue" })
     ) {
       return;
     }
@@ -457,10 +459,10 @@ export default function WorkoutsPage() {
     });
   };
 
-  const copyWorkoutForNew = (workout: WorkoutHistory) => {
+  const copyWorkoutForNew = async (workout: WorkoutHistory) => {
     if (
       bucketExercises.length > 0 &&
-      !confirm("Copying this workout will discard your current entry. Continue?")
+      !await confirm({ message: "Copying this workout will discard your current entry. Continue?", confirmLabel: "Continue" })
     ) {
       return;
     }
@@ -531,10 +533,10 @@ export default function WorkoutsPage() {
     }, 150);
   };
 
-  const loadFromTemplate = (template: WorkoutTemplate) => {
+  const loadFromTemplate = async (template: WorkoutTemplate) => {
     if (
       bucketExercises.length > 0 &&
-      !confirm("Loading a template will replace your current exercises. Continue?")
+      !await confirm({ message: "Loading a template will replace your current exercises. Continue?", confirmLabel: "Continue" })
     ) {
       return;
     }
@@ -911,18 +913,18 @@ export default function WorkoutsPage() {
     setSelectedExerciseCount(0);
   };
 
-  const handleCancel = () => {
+  const handleCancel = async () => {
     const msg = editingWorkoutId
       ? "Discard changes to this workout?"
       : "Discard current workout entry?";
-    if (bucketExercises.length > 0 && !confirm(msg)) {
+    if (bucketExercises.length > 0 && !await confirm({ message: msg, confirmLabel: "Discard" })) {
       return;
     }
     resetForm();
   };
 
   const deleteWorkout = async (id: string) => {
-    if (!confirm("Delete this workout?")) return;
+    if (!await confirm({ message: "Delete this workout?", destructive: true, confirmLabel: "Delete" })) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/workouts/${id}`, { method: "DELETE", headers });
@@ -933,8 +935,8 @@ export default function WorkoutsPage() {
   };
 
   const clearAllData = async () => {
-    if (!confirm("This will DELETE ALL workout data. Are you sure?")) return;
-    if (!confirm("FINAL WARNING: This cannot be undone.")) return;
+    if (!await confirm({ message: "This will DELETE ALL workout data. Are you sure?", destructive: true, confirmLabel: "Delete All" })) return;
+    if (!await confirm({ message: "FINAL WARNING: This cannot be undone.", destructive: true, confirmLabel: "Delete All" })) return;
 
     try {
       const headers = await getAuthHeaders();
@@ -947,7 +949,7 @@ export default function WorkoutsPage() {
         }),
       });
       const json = await res.json();
-      alert(json.message || "Data cleared");
+      toast(json.message || "Data cleared", "success");
       fetchData();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to clear data");

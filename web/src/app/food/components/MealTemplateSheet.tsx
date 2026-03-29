@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useToast } from "@/components/ui/Toast";
 
 export interface MealTemplate {
   id: string;
@@ -146,6 +147,7 @@ export default function MealTemplateSheet({
   onTemplateChanged,
   onAddBlank,
 }: Props) {
+  const { confirm } = useToast();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editItems, setEditItems] = useState<TemplateItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -339,8 +341,8 @@ export default function MealTemplateSheet({
                     </button>
                     {/* Delete */}
                     <button
-                      onClick={() => {
-                        if (confirm(`Delete template "${t.name}"?`)) onDelete(t.id);
+                      onClick={async () => {
+                        if (await confirm({ message: `Delete template "${t.name}"?`, destructive: true, confirmLabel: "Delete" })) onDelete(t.id);
                       }}
                       className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-destructive transition-colors"
                       title="Delete template"

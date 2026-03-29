@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 import { PieChart, Pie, Cell, Tooltip } from "recharts";
 import { FoodMacroDonut } from "./FoodMacroDonut";
 
@@ -171,6 +172,7 @@ export default function FoodLogMealCard({
   hasTemplates = false,
   dragHandle,
 }: Props) {
+  const { confirm } = useToast();
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(meal.meal_name);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -353,9 +355,9 @@ export default function FoodLogMealCard({
                 <div className="border-t border-border/50 my-1" />
                 <button
                   className="w-full text-left px-3 py-1.5 hover:bg-muted text-destructive transition-colors"
-                  onClick={() => {
+                  onClick={async () => {
                     setMenuOpen(false);
-                    if (confirm(`Delete meal "${meal.meal_name}"?`)) {
+                    if (await confirm({ message: `Delete meal "${meal.meal_name}"?`, destructive: true, confirmLabel: "Delete" })) {
                       onDeleteMeal(meal.id);
                     }
                   }}

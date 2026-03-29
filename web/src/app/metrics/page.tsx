@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useToast } from "@/components/ui/Toast";
 import {
   DndContext,
   closestCenter,
@@ -866,6 +867,7 @@ function Target({ className }: { className?: string }) {
 
 // Main page component
 export default function MetricsPage() {
+  const { confirm } = useToast();
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1384,9 +1386,11 @@ export default function MetricsPage() {
       const metric = metrics.find((m) => m.metric_id === metricId);
       if (!metric) return;
 
-      const confirmed = window.confirm(
-        `Delete "${metric.metric_name}" (${metricId})?\n\nThis will permanently delete:\n- The metric configuration\n- ALL historical log data for this metric\n\nThis cannot be undone.`
-      );
+      const confirmed = await confirm({
+        message: `Delete "${metric.metric_name}" (${metricId})?\n\nThis will permanently delete:\n- The metric configuration\n- ALL historical log data for this metric\n\nThis cannot be undone.`,
+        destructive: true,
+        confirmLabel: "Delete",
+      });
       if (!confirmed) return;
 
       try {

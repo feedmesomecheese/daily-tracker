@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useToast } from "@/components/ui/Toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ export default function OuraIntegrationPage() {
   const router = useRouter();
   const justConnected = searchParams.get("connected") === "1";
 
+  const { toast, confirm } = useToast();
   const [config, setConfig] = useState<OuraConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -86,13 +88,13 @@ export default function OuraIntegrationPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        alert(data.error || "Sync failed");
+        toast(data.error || "Sync failed", "error");
       } else {
-        alert(`Synced ${data.synced} records`);
+        toast(`Synced ${data.synced} records`, "success");
         fetchConfig();
       }
     } catch (e) {
-      alert("Sync failed");
+      toast("Sync failed", "error");
     } finally {
       setSyncing(false);
     }
@@ -115,12 +117,12 @@ export default function OuraIntegrationPage() {
 
       if (!res.ok) {
         const data = await res.json();
-        alert(data.error || "Failed to save");
+        toast(data.error || "Failed to save", "error");
       } else {
         fetchConfig();
       }
     } catch (e) {
-      alert("Failed to save");
+      toast("Failed to save", "error");
     } finally {
       setSavingConfig(false);
     }
@@ -151,7 +153,7 @@ export default function OuraIntegrationPage() {
   };
 
   const handleDisconnect = async () => {
-    if (!confirm("Disconnect from Oura? This will not delete any synced data.")) {
+    if (!await confirm({ message: "Disconnect from Oura? This will not delete any synced data.", destructive: true, confirmLabel: "Disconnect" })) {
       return;
     }
 
@@ -164,7 +166,7 @@ export default function OuraIntegrationPage() {
       });
       router.push("/integrations");
     } catch (e) {
-      alert("Failed to disconnect");
+      toast("Failed to disconnect", "error");
     } finally {
       setDisconnecting(false);
     }

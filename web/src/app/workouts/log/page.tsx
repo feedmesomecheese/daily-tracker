@@ -18,11 +18,13 @@ import type {
   WorkoutHistory,
   WorkoutTag,
 } from "../types";
+import { useToast } from "@/components/ui/Toast";
 
 type BodyEntry = { date: string; value: number };
 type BodyData = { weight: BodyEntry[]; bodyfat: BodyEntry[] };
 
 export default function WorkoutLogPage() {
+  const { toast } = useToast();
   const [workoutTypes, setWorkoutTypes] = useState<WorkoutType[]>([]);
   const [groups, setGroups] = useState<ExerciseGroup[]>([]);
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -257,7 +259,7 @@ export default function WorkoutLogPage() {
                 a.remove();
                 window.URL.revokeObjectURL(url);
               } catch (e: unknown) {
-                alert(e instanceof Error ? e.message : String(e));
+                toast(e instanceof Error ? e.message : String(e), "error");
               } finally {
                 setExporting(false);
               }

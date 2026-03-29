@@ -26,6 +26,7 @@ import { useMediaQuery } from "@/hooks/use-media-query";
 import { TimeOfDayPicker, DurationPicker, NumberWheelPicker } from "@/components/ui/mobile-pickers";
 import { useTour } from "@/hooks/useTour";
 import { buttonVariants } from "@/components/ui/button";
+import { useToast } from "@/components/ui/Toast";
 import "driver.js/dist/driver.css";
 
 type GoalIndicator = {
@@ -156,6 +157,7 @@ function sortMetricsForForm(list: ConfigRow[]): ConfigRow[] {
 }
 
 export default function Home() {
+  const { toast, confirm } = useToast();
   const [authChecked, setAuthChecked] = useState(false);
   const todayISO = getLocalDateString();
   const [date, setDate] = useState<string>(() => getLocalDateString());
@@ -1614,7 +1616,7 @@ export default function Home() {
       if (!res.ok) {
         const text = await res.text();
         console.error("save-log failed:", res.status, text);
-        alert(`Save failed (${res.status}). Check console/network for details.`);
+        toast(`Save failed (${res.status}).`, "error");
         return;
       }
 
@@ -1726,13 +1728,13 @@ export default function Home() {
 
 
   // Handle date change from custom date picker
-  const handleDateChange = useCallback((newDate: string) => {
+  const handleDateChange = useCallback(async (newDate: string) => {
     if (dirty) {
-      const ok = window.confirm("You have unsaved changes.\nDiscard them and switch date?");
+      const ok = await confirm({ message: "You have unsaved changes.\nDiscard them and switch date?", confirmLabel: "Discard", destructive: true });
       if (!ok) return;
     }
     setDate(newDate);
-  }, [dirty]);  
+  }, [dirty, confirm]);  
 
   if (!authChecked || !metricsLoaded) {
     return (

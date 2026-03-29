@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useToast } from "@/components/ui/Toast";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -152,6 +153,7 @@ export default function IntegrationsPage() {
 
 function ConnectButton({ provider }: { provider: string }) {
   const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
   const handleConnect = async () => {
     setLoading(true);
@@ -163,10 +165,10 @@ function ConnectButton({ provider }: { provider: string }) {
       if (data.auth_url) {
         window.location.href = data.auth_url;
       } else {
-        alert(data.error || "Failed to start authorization");
+        toast(data.error || "Failed to start authorization", "error");
       }
     } catch (e) {
-      alert("Failed to connect");
+      toast("Failed to connect", "error");
     } finally {
       setLoading(false);
     }

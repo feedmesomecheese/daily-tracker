@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useToast } from "@/components/ui/Toast";
 import { addDays } from "@/lib/dateUtils";
 
 interface FoodGoal {
@@ -183,6 +184,7 @@ function goalMet(value: number, goal: FoodGoal): boolean {
 
 export default function FoodLogPage() {
   const router = useRouter();
+  const { toast, confirm } = useToast();
   const [logs, setLogs] = useState<FoodLog[]>([]);
   const [goals, setGoals] = useState<FoodGoal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -252,7 +254,7 @@ export default function FoodLogPage() {
   const chartData = buildChartData(logs, 30);
 
   const handleDeleteAllHistory = async () => {
-    if (!confirm("DEV: Delete ALL food history? This cannot be undone.")) return;
+    if (!await confirm({ message: "DEV: Delete ALL food history? This cannot be undone.", destructive: true, confirmLabel: "Delete All" })) return;
     setDeletingAll(true);
     try {
       const headers = await getAuthHeaders();
@@ -262,7 +264,7 @@ export default function FoodLogPage() {
       setOffset(0);
       setHasMore(false);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Delete failed");
+      toast(e instanceof Error ? e.message : "Delete failed", "error");
     } finally {
       setDeletingAll(false);
     }

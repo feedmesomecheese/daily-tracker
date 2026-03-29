@@ -4,6 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { NavMenu } from "@/components/nav-menu";
 import { WorkoutTimerProvider } from "@/components/WorkoutTimerContext";
+import { ToastProvider } from "@/components/ui/Toast";
 import { ServiceWorkerRegistration } from "@/components/ServiceWorkerRegistration";
 
 export const viewport: Viewport = {
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body style={{ fontFamily: "system-ui, sans-serif" }} className="overflow-x-hidden">
         <ServiceWorkerRegistration />
         <ThemeProvider>
+          <ToastProvider>
           <AuthProvider>
             <WorkoutTimerProvider>
               <header className="sticky top-0 z-50 border-b bg-background">
@@ -45,6 +47,7 @@ export default function RootLayout({
               <main className="max-w-5xl mx-auto px-4 py-4">{children}</main>
             </WorkoutTimerProvider>
           </AuthProvider>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

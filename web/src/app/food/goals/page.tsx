@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/authHeaders";
+import { useToast } from "@/components/ui/Toast";
 
 type Nutrient = "calories" | "protein" | "fat" | "carbs" | "fiber";
 type Direction = "min" | "max" | "target";
@@ -75,6 +76,7 @@ function goalToFormState(goal: FoodGoal): GoalFormState {
 }
 
 export default function FoodGoalsPage() {
+  const { confirm } = useToast();
   const [goals, setGoals] = useState<FoodGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -253,7 +255,7 @@ export default function FoodGoalsPage() {
   // ── Delete goal ───────────────────────────────────────────────
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this goal?")) return;
+    if (!await confirm({ message: "Delete this goal?", destructive: true, confirmLabel: "Delete" })) return;
     setDeletingId(id);
     try {
       const headers = await getAuthHeaders();

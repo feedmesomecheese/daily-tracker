@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { useTour } from "@/hooks/useTour";
 import { getLocalDateString } from "@/lib/dateUtils";
+import { useToast } from "@/components/ui/Toast";
 import "driver.js/dist/driver.css";
 
 type LogRow = { date: string; metric_id: string; value: number | null; value_text?: string | null };
@@ -770,6 +771,7 @@ function ColumnFilterPopover({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DailyLogPage() {
+  const { toast } = useToast();
   const [allConfig, setAllConfig] = useState<ConfigRow[]>([]);
   const [logRows, setLogRows] = useState<LogRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1266,7 +1268,7 @@ export default function DailyLogPage() {
                 a.click();
                 URL.revokeObjectURL(url);
               } catch (e: unknown) {
-                alert(e instanceof Error ? e.message : String(e));
+                toast(e instanceof Error ? e.message : String(e), "error");
               } finally {
                 setExporting(false);
               }
