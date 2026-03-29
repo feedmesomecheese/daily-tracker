@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import LabTestDetailSheet from "./components/LabTestDetailSheet";
 import ManageTestsSheet from "./components/ManageTestsSheet";
 import LabSystemsRadar from "./components/LabSystemsRadar";
+import LabCompareSheet from "./components/LabCompareSheet";
 import LabUploadSheet from "../components/LabUploadSheet";
 import { LabsLoader } from "@/components/loading/LabsLoader";
 import { LoadingScreen } from "@/components/loading/LoadingScreen";
@@ -196,6 +197,46 @@ function TestCard({ test, onClick, showOptimal }: { test: PanelTest; onClick: ()
   );
 }
 
+// ── Compareable wrapper ───────────────────────────────────────────────────────
+
+function CompareableTestCard({
+  test, showOptimal, compareMode, selected, onToggle, onClick,
+}: {
+  test: PanelTest;
+  showOptimal: boolean;
+  compareMode: boolean;
+  selected: boolean;
+  onToggle: () => void;
+  onClick: () => void;
+}) {
+  if (!compareMode) return <TestCard test={test} showOptimal={showOptimal} onClick={onClick} />;
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-2 rounded-xl border transition-colors cursor-pointer",
+        selected ? "border-primary bg-primary/5" : "hover:bg-accent/30"
+      )}
+      onClick={onToggle}
+    >
+      <div className="pl-3 py-1 shrink-0">
+        <div className={cn(
+          "w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+          selected ? "border-primary bg-primary" : "border-muted-foreground/40"
+        )}>
+          {selected && (
+            <svg viewBox="0 0 12 12" fill="none" className="w-2.5 h-2.5 text-primary-foreground">
+              <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+      </div>
+      <div className="flex-1 pointer-events-none">
+        <TestCard test={test} showOptimal={showOptimal} onClick={() => {}} />
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ────────────────────────────────────────────────────────────────
 
 type StatusFilter = "all" | "out_of_range" | "suboptimal" | "in_range";
@@ -333,6 +374,27 @@ export default function LabPanelPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
 
+  // Compare mode
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelected, setCompareSelected] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  const toggleCompareSelect = (canonical: string) => {
+    setCompareSelected((prev) =>
+      prev.includes(canonical) ? prev.filter((c) => c !== canonical) : [...prev, canonical]
+    );
+  };
+
+  const openCompare = () => {
+    if (compareSelected.length >= 2) setCompareOpen(true);
+  };
+
+  const exitCompareMode = () => {
+    setCompareMode(false);
+    setCompareSelected([]);
+    setCompareOpen(false);
+  };
+
   const toggleCategoryCollapse = (cat: string) => {
     setCollapsedCategories((prev) => {
       const next = new Set(prev);
@@ -363,26 +425,51 @@ export default function LabPanelPage() {
             </p>
           )}
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setManageOpen(true)}
-            disabled={tests.length === 0}
-          >
-            Manage Tests
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => exportToCsv(filteredTests)}
-            disabled={filteredTests.length === 0}
-          >
-            Export CSV
-          </Button>
-          <Button size="sm" onClick={() => setUploadOpen(true)}>
-            + Upload Report
-          </Button>
+        <div className="flex gap-2 flex-wrap">
+          {compareMode ? (
+            <>
+              <Button
+                size="sm"
+                onClick={openCompare}
+                disabled={compareSelected.length < 2}
+              >
+                Compare ({compareSelected.length})
+              </Button>
+              <Button variant="outline" size="sm" onClick={exitCompareMode}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCompareMode(true)}
+                disabled={tests.length < 2}
+              >
+                Compare
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setManageOpen(true)}
+                disabled={tests.length === 0}
+              >
+                Manage Tests
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToCsv(filteredTests)}
+                disabled={filteredTests.length === 0}
+              >
+                Export CSV
+              </Button>
+              <Button size="sm" onClick={() => setUploadOpen(true)}>
+                + Upload Report
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -520,7 +607,15 @@ export default function LabPanelPage() {
         <div className="space-y-1.5">
           <p className="text-xs text-muted-foreground">{filteredTests.length} result{filteredTests.length !== 1 ? "s" : ""}</p>
           {filteredTests.map((t) => (
-            <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} showOptimal={showOptimal} />
+            <CompareableTestCard
+              key={t.canonical_name}
+              test={t}
+              showOptimal={showOptimal}
+              compareMode={compareMode}
+              selected={compareSelected.includes(t.canonical_name)}
+              onToggle={() => toggleCompareSelect(t.canonical_name)}
+              onClick={() => { if (!compareMode) { setSelectedTest(t); setDetailOpen(true); } }}
+            />
           ))}
         </div>
       ) : (
@@ -552,7 +647,15 @@ export default function LabPanelPage() {
                 {!isCollapsed && (
                   <div className="space-y-1.5">
                     {categoryTests.map((t) => (
-                      <TestCard key={t.canonical_name} test={t} onClick={() => { setSelectedTest(t); setDetailOpen(true); }} showOptimal={showOptimal} />
+                      <CompareableTestCard
+                        key={t.canonical_name}
+                        test={t}
+                        showOptimal={showOptimal}
+                        compareMode={compareMode}
+                        selected={compareSelected.includes(t.canonical_name)}
+                        onToggle={() => toggleCompareSelect(t.canonical_name)}
+                        onClick={() => { if (!compareMode) { setSelectedTest(t); setDetailOpen(true); } }}
+                      />
                     ))}
                   </div>
                 )}
@@ -567,6 +670,14 @@ export default function LabPanelPage() {
         onOpenChange={setDetailOpen}
         showOptimal={showOptimal}
         allTests={tests}
+      />
+      <LabCompareSheet
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        selectedTests={tests.filter((t) => compareSelected.includes(t.canonical_name))}
+        allTests={tests}
+        onAddTest={(c) => setCompareSelected((prev) => [...prev, c])}
+        onRemoveTest={(c) => setCompareSelected((prev) => prev.filter((x) => x !== c))}
       />
       <ManageTestsSheet
         open={manageOpen}
