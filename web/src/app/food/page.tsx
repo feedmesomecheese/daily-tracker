@@ -651,7 +651,9 @@ function FoodPage() {
 
   return (
     <>
-      <main className="max-w-2xl mx-auto px-4 py-6 pb-24">
+      <main className="max-w-2xl mx-auto px-4 pb-24">
+        {/* Sticky header: date nav + macro bar */}
+        <div className="sticky top-0 z-10 bg-background pt-6">
         {/* Date navigation */}
         <div className="flex items-center justify-between mb-4">
           <button
@@ -694,13 +696,14 @@ function FoodPage() {
           </div>
         )}
 
+          {/* Macro summary bar — shown inside sticky header once loaded */}
+          {!loading && <MacroSummaryBar totals={dayTotals} goals={goalTargets} />}
+        </div>{/* end sticky header */}
+
         {loading && <LoadingScreen><FoodLoader /></LoadingScreen>}
 
         {!loading && (
           <>
-            {/* Macro summary bar */}
-            <MacroSummaryBar totals={dayTotals} goals={goalTargets} />
-
             {/* Meal cards — sortable */}
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMealDragStart} onDragEnd={handleMealDragEnd}>
               <SortableContext items={(foodLog?.meals ?? []).map((m) => m.id)} strategy={verticalListSortingStrategy}>
@@ -838,6 +841,7 @@ function FoodPage() {
         actionLabel={templateSheetMode === "add_meal" ? "Add as Meal" : "Apply"}
         onAction={templateSheetMode === "add_meal" ? handleAddMealFromTemplate : handleApplyTemplateToMeal}
         onDelete={handleDeleteTemplate}
+        onTemplateChanged={loadTemplates}
         onAddBlank={templateSheetMode === "add_meal" ? handleAddMeal : undefined}
       />
 

@@ -30,6 +30,76 @@ interface Props {
   onChanged: () => void;
 }
 
+function TemplateItemRow({
+  item,
+  deleting,
+  savingQty,
+  onDelete,
+  onQtyChange,
+}: {
+  item: TemplateItem;
+  deleting: boolean;
+  savingQty: boolean;
+  onDelete: () => void;
+  onQtyChange: (newQty: number) => Promise<boolean>;
+}) {
+  const fmt = (q: number) => (q % 1 === 0 ? String(q) : q.toFixed(2).replace(/\.?0+$/, ""));
+  const [draft, setDraft] = useState(fmt(item.qty));
+
+  useEffect(() => { setDraft(fmt(item.qty)); }, [item.qty]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const commit = async (value: string) => {
+    const num = parseFloat(value.trim());
+    if (isNaN(num) || num <= 0 || num === item.qty) { setDraft(fmt(item.qty)); return; }
+    const ok = await onQtyChange(num);
+    if (!ok) setDraft(fmt(item.qty));
+  };
+
+  const busy = deleting || savingQty;
+
+  return (
+    <div className="flex items-start gap-2 px-4 py-3 border-b border-border/50">
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium truncate">{item.food_name_snapshot}</div>
+        <div className="text-xs text-muted-foreground">
+          {item.serving_label_snapshot}
+          {" · "}{Math.round(item.calories)} cal
+          {" · "}P{Math.round(item.protein)}g C{Math.round(item.carbs)}g F{Math.round(item.fat)}g
+        </div>
+      </div>
+      {/* Qty input */}
+      <input
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        disabled={busy}
+        onFocus={(e) => { setDraft(""); e.target.select(); }}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { commit(draft); e.currentTarget.blur(); }
+          if (e.key === "Escape") { setDraft(fmt(item.qty)); e.currentTarget.blur(); }
+        }}
+        className="w-14 text-xs text-center rounded border border-border/60 bg-muted/30 px-1 py-1 focus:outline-none focus:ring-1 focus:ring-ring focus:bg-background disabled:opacity-50 shrink-0 self-center"
+        title="Edit quantity"
+      />
+      <button
+        onClick={onDelete}
+        disabled={busy}
+        className={cn(
+          "shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors self-center",
+          busy && "opacity-40 cursor-not-allowed"
+        )}
+        title="Remove item"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+          <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export default function TemplateEditorSheet({ templateId, onClose, onChanged }: Props) {
   const [template, setTemplate] = useState<Template | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,6 +108,7 @@ export default function TemplateEditorSheet({ templateId, onClose, onChanged }: 
   const [nameValue, setNameValue] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [savingQtyId, setSavingQtyId] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
 
   const fetchTemplate = useCallback(async () => {
@@ -103,6 +174,31 @@ export default function TemplateEditorSheet({ templateId, onClose, onChanged }: 
       // ignore
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const patchItemQty = async (iid: string, newQty: number) => {
+    setSavingQtyId(iid);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/food/templates/${templateId}/items/${iid}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ qty: newQty }),
+      });
+      if (!res.ok) return false;
+      const updated = await res.json() as TemplateItem;
+      setTemplate((prev) =>
+        prev
+          ? { ...prev, items: prev.items.map((i) => (i.id === iid ? updated : i)) }
+          : prev
+      );
+      onChanged();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setSavingQtyId(null);
     }
   };
 
@@ -239,32 +335,14 @@ export default function TemplateEditorSheet({ templateId, onClose, onChanged }: 
               )}
 
               {template.items.map((item) => (
-                <div
+                <TemplateItemRow
                   key={item.id}
-                  className="flex items-start gap-2 px-4 py-3 border-b border-border/50"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{item.food_name_snapshot}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.qty !== 1 ? `${item.qty} × ` : ""}{item.serving_label_snapshot}
-                      {" · "}{Math.round(item.calories)} cal
-                      {" · "}P{Math.round(item.protein)}g C{Math.round(item.carbs)}g F{Math.round(item.fat)}g
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => deleteItem(item.id)}
-                    disabled={deletingId === item.id}
-                    className={cn(
-                      "shrink-0 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors",
-                      deletingId === item.id && "opacity-40 cursor-not-allowed"
-                    )}
-                    title="Remove item"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                      <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                </div>
+                  item={item}
+                  deleting={deletingId === item.id}
+                  savingQty={savingQtyId === item.id}
+                  onDelete={() => deleteItem(item.id)}
+                  onQtyChange={(newQty) => patchItemQty(item.id, newQty)}
+                />
               ))}
             </>
           )}

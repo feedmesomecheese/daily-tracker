@@ -92,9 +92,10 @@ interface SortableMealCardProps {
   onDeleteMeal: (mealId: string) => void;
   onSaveAsTemplate: (mealId: string, name: string) => Promise<void>;
   onApplyTemplate: (mealId: string) => void;
+  hasTemplates?: boolean;
 }
 
-function SortableMealCard({ meal, ...props }: SortableMealCardProps) {
+function SortableMealCard({ meal, hasTemplates, ...props }: SortableMealCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: meal.id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -107,6 +108,7 @@ function SortableMealCard({ meal, ...props }: SortableMealCardProps) {
       <FoodLogMealCard
         meal={meal}
         {...props}
+        hasTemplates={hasTemplates}
         dragHandle={
           <button
             {...attributes}
@@ -183,6 +185,7 @@ export default function FoodPlanPage() {
   const [creatingPlan, setCreatingPlan] = useState(false);
   const [renamingPlan, setRenamingPlan] = useState(false);
   const [renameValue, setRenameValue] = useState("");
+  const [isDraft, setIsDraft] = useState(false);
   const [logAsTodayOpen, setLogAsTodayOpen] = useState(false);
   const [loggingAsToday, setLoggingAsToday] = useState(false);
 
@@ -255,8 +258,15 @@ export default function FoodPlanPage() {
       setLoading(true);
       const data = await fetchPlans();
       if (data.length > 0) {
-        setCurrentPlanId(data[0].id);
-        await fetchPlan(data[0].id);
+        // Select most recent non-draft first; fall back to first plan
+        const nonDraft = data.find((p) => p.name !== "Untitled");
+        const selected = nonDraft ?? data[0];
+        setCurrentPlanId(selected.id);
+        setIsDraft(selected.name === "Untitled");
+        await fetchPlan(selected.id);
+      } else {
+        // Auto-create a draft plan so the page is immediately usable
+        await createDraftPlan();
       }
       setLoading(false);
     })();
@@ -273,27 +283,50 @@ export default function FoodPlanPage() {
 
   // ── Plan management ───────────────────────────────────────────────────
 
-  const handleCreatePlan = async () => {
-    const name = window.prompt("Plan name:");
-    if (!name?.trim()) return;
-    setCreatingPlan(true);
+  const createDraftPlan = useCallback(async () => {
     try {
       const headers = await getAuthHeaders();
       const res = await fetch("/api/food/plans", {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name: "Untitled" }),
       });
-      if (!res.ok) throw new Error("Failed to create plan");
+      if (!res.ok) return;
       const newPlan = await res.json();
-      const updated = await fetchPlans();
-      if (updated) {
-        setCurrentPlanId(newPlan.id);
-      }
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to create plan");
+      await fetchPlans();
+      setCurrentPlanId(newPlan.id);
+      setIsDraft(true);
+      setRenameValue("");
+    } catch { /* best effort */ }
+  }, [fetchPlans]);
+
+  const handleCreatePlan = async () => {
+    setCreatingPlan(true);
+    try {
+      await createDraftPlan();
     } finally {
       setCreatingPlan(false);
+    }
+  };
+
+  const handleSavePlan = async () => {
+    const name = window.prompt("Save plan as:", activePlan?.name === "Untitled" ? "" : activePlan?.name ?? "");
+    if (!name?.trim()) return;
+    if (!currentPlanId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/food/plans/${currentPlanId}`, {
+        method: "PATCH",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!res.ok) throw new Error("Failed to save plan");
+      setActivePlan((prev) => prev ? { ...prev, name: name.trim() } : prev);
+      setPlans((prev) => prev.map((p) => p.id === currentPlanId ? { ...p, name: name.trim() } : p));
+      setRenameValue(name.trim());
+      setIsDraft(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to save plan");
     }
   };
 
@@ -317,16 +350,22 @@ export default function FoodPlanPage() {
 
   const handleDeletePlan = async () => {
     if (!currentPlanId) return;
-    if (!confirm("Delete this plan? This cannot be undone.")) return;
+    if (!isDraft && !confirm("Delete this plan? This cannot be undone.")) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(`/api/food/plans/${currentPlanId}`, { method: "DELETE", headers });
       const updated = await fetchPlans();
-      if (updated && updated.length > 0) {
-        setCurrentPlanId(updated[0].id);
+      const saved = (updated ?? []).filter((p) => p.name !== "Untitled");
+      if (saved.length > 0) {
+        setCurrentPlanId(saved[0].id);
+        setIsDraft(false);
+        await fetchPlan(saved[0].id);
       } else {
+        // No saved plans left — start a fresh draft
         setCurrentPlanId(null);
         setActivePlan(null);
+        setIsDraft(false);
+        await createDraftPlan();
       }
     } catch (e) {
       alert(e instanceof Error ? e.message : "Failed to delete plan");
@@ -548,10 +587,29 @@ export default function FoodPlanPage() {
 
   return (
     <>
-      <main className="max-w-2xl mx-auto px-4 py-6 pb-24">
+      <main className="max-w-2xl mx-auto px-4 pb-24">
+        {/* Sticky header: plan selector + macro bar */}
+        <div className="sticky top-0 z-10 bg-background pt-6">
         {/* Plan selector row */}
         <div className="flex items-center gap-2 mb-4">
-          {plans.length > 0 ? (
+          {isDraft ? (
+            /* Draft / unsaved state */
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="flex-1 min-w-0 text-sm text-muted-foreground italic truncate">Unsaved Plan</span>
+              <button
+                onClick={handleSavePlan}
+                className="shrink-0 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors"
+              >
+                Save Plan
+              </button>
+              <button
+                onClick={handleDeletePlan}
+                className="shrink-0 px-3 py-1.5 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 text-sm font-medium transition-colors"
+              >
+                Discard
+              </button>
+            </div>
+          ) : plans.filter((p) => p.name !== "Untitled").length > 0 ? (
             renamingPlan ? (
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <input
@@ -571,10 +629,14 @@ export default function FoodPlanPage() {
               <div className="flex items-center gap-1 flex-1 min-w-0">
                 <select
                   value={currentPlanId ?? ""}
-                  onChange={(e) => setCurrentPlanId(e.target.value)}
+                  onChange={(e) => {
+                    const p = plans.find((x) => x.id === e.target.value);
+                    setIsDraft(p?.name === "Untitled");
+                    setCurrentPlanId(e.target.value);
+                  }}
                   className="flex-1 min-w-0 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-ring"
                 >
-                  {plans.map((p) => (
+                  {plans.filter((p) => p.name !== "Untitled").map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
@@ -598,17 +660,23 @@ export default function FoodPlanPage() {
                 </button>
               </div>
             )
-          ) : (
-            <span className="text-muted-foreground text-sm flex-1">No plans yet</span>
+          ) : null}
+          {!isDraft && (
+            <button
+              onClick={handleCreatePlan}
+              disabled={creatingPlan}
+              className="shrink-0 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              + New Plan
+            </button>
           )}
-          <button
-            onClick={handleCreatePlan}
-            disabled={creatingPlan}
-            className="shrink-0 px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
-          >
-            + New Plan
-          </button>
         </div>
+
+          {/* Macro bar — shown in sticky header when a plan is loaded */}
+          {currentPlanId && !loadingPlan && (
+            <MacroSummaryBar totals={totals} goals={computeGoalTargets(goals, totals, bodyWeight)} />
+          )}
+        </div>{/* end sticky header */}
 
         {error && (
           <div className="rounded-lg border border-destructive/50 bg-destructive/10 text-destructive text-sm px-4 py-3 mb-4">
@@ -616,7 +684,7 @@ export default function FoodPlanPage() {
           </div>
         )}
 
-        {!currentPlanId && !loading && (
+        {!currentPlanId && !loading && !isDraft && (
           <div className="text-center py-16">
             <p className="text-muted-foreground text-sm">Create a plan to start building meals.</p>
           </div>
@@ -630,7 +698,6 @@ export default function FoodPlanPage() {
               </div>
             ) : (
               <>
-                <MacroSummaryBar totals={totals} goals={computeGoalTargets(goals, totals, bodyWeight)} />
 
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleMealDragStart} onDragEnd={handleMealDragEnd}>
                   <SortableContext items={(activePlan?.meals ?? []).map((m) => m.id)} strategy={verticalListSortingStrategy}>
@@ -645,6 +712,7 @@ export default function FoodPlanPage() {
                         onDeleteMeal={handleDeleteMeal}
                         onSaveAsTemplate={handleSaveAsTemplate}
                         onApplyTemplate={handleApplyTemplate}
+                        hasTemplates={templates.length > 0}
                       />
                     ))}
                   </SortableContext>
@@ -721,6 +789,11 @@ export default function FoodPlanPage() {
           const headers = await getAuthHeaders();
           await fetch(`/api/food/templates/${id}`, { method: "DELETE", headers });
           setTemplates((prev) => prev.filter((t) => t.id !== id));
+        }}
+        onTemplateChanged={async () => {
+          const headers = await getAuthHeaders();
+          const res = await fetch("/api/food/templates", { headers });
+          if (res.ok) setTemplates(await res.json());
         }}
         onAddBlank={templateSheetMode === "add_meal" ? handleAddMeal : undefined}
       />
