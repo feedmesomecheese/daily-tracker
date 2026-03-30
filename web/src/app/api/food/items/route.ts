@@ -16,8 +16,20 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") ?? "";
   const category = searchParams.get("category") ?? "";
+  const favoritesOnly = searchParams.get("favorites") === "true";
   const rawLimit = parseInt(searchParams.get("limit") ?? "40", 10);
   const limit = Math.min(isNaN(rawLimit) || rawLimit < 1 ? 40 : rawLimit, 100);
+
+  // When filtering by favorites, first resolve the user's favorited IDs
+  let favoritedIdFilter: string[] | null = null;
+  if (favoritesOnly) {
+    const { data: favData } = await supabase
+      .from("food_favorites")
+      .select("food_item_id")
+      .eq("owner_id", user.id);
+    favoritedIdFilter = (favData ?? []).map((f: { food_item_id: string }) => f.food_item_id);
+    if (favoritedIdFilter.length === 0) return NextResponse.json([]);
+  }
 
   let query = supabase
     .from("food_items")
@@ -32,6 +44,9 @@ export async function GET(req: Request) {
   }
   if (category) {
     query = query.eq("category", category);
+  }
+  if (favoritedIdFilter !== null) {
+    query = query.in("id", favoritedIdFilter);
   }
 
   const { data: items, error: itemsErr } = await query;
@@ -80,19 +95,6 @@ export async function GET(req: Request) {
     servings: servingsByItem.get(item.id) ?? [],
     is_favorited: favoritedIds.has(item.id),
   }));
-
-  // Sort: favorites first, then custom user foods, then global — all alphabetically within each group
-  merged.sort((a, b) => {
-    const aFav = a.is_favorited ? 0 : 1;
-    const bFav = b.is_favorited ? 0 : 1;
-    if (aFav !== bFav) return aFav - bFav;
-
-    const aCustom = a.owner_id !== null ? 0 : 1;
-    const bCustom = b.owner_id !== null ? 0 : 1;
-    if (aCustom !== bCustom) return aCustom - bCustom;
-
-    return a.name.localeCompare(b.name);
-  });
 
   return NextResponse.json(merged);
 }

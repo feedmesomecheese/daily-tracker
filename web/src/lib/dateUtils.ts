@@ -54,6 +54,7 @@ export function getLocalDateString(date: Date = new Date(), tz?: string): string
  * @returns New date as YYYY-MM-DD string
  */
 export function addDays(isoDate: string, deltaDays: number): string {
+  if (!isoDate) return isoDate;
   const [year, month, day] = isoDate.split("-").map(Number);
   const d = new Date(Date.UTC(year, month - 1, day + deltaDays));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;

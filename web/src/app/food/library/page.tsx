@@ -104,8 +104,9 @@ export default function FoodLibraryPage() {
 
       if (debouncedQuery) params.set("q", debouncedQuery);
 
-      // Only pass category param for real API categories
-      if (API_CATEGORIES.has(category)) {
+      if (category === "Favorites") {
+        params.set("favorites", "true");
+      } else if (API_CATEGORIES.has(category)) {
         params.set("category", category);
       }
 

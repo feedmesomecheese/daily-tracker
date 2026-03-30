@@ -313,6 +313,7 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded,
     setSelectedServingId("");
     setQtyStr("1");
     setAddError(null);
+    setFavoritesLoaded(false);
     onClose();
   };
 
