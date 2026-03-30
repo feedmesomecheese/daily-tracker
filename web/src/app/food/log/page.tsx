@@ -193,6 +193,7 @@ export default function FoodLogPage() {
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [chartDays, setChartDays] = useState<7 | 30 | 90>(30);
 
   const fetchLogs = useCallback(async (currentOffset: number, append: boolean = false) => {
     try {
@@ -251,7 +252,7 @@ export default function FoodLogPage() {
   const avg = computeRollingAverages(logs, 7);
   const hasMeaningfulAvg = logs.length > 0;
 
-  const chartData = buildChartData(logs, 30);
+  const chartData = buildChartData(logs, chartDays);
 
   const handleDeleteAllHistory = async () => {
     if (!await confirm({ message: "DEV: Delete ALL food history? This cannot be undone.", destructive: true, confirmLabel: "Delete All" })) return;
@@ -302,7 +303,24 @@ export default function FoodLogPage() {
       {/* Macro trend chart */}
       {chartData.length >= 2 && (
         <div className="bg-card border rounded-lg p-4 mb-6">
-          <h2 className="text-sm font-medium mb-3 text-muted-foreground">Macro Trend (last {chartData.length} days)</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-muted-foreground">Macro Trend</h2>
+            <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 gap-0.5">
+              {([7, 30, 90] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => setChartDays(d)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    chartDays === d
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="h-[220px]">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
