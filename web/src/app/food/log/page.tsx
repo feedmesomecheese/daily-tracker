@@ -158,6 +158,7 @@ function buildChartData(logs: FoodLog[], days: number = 30): ChartDay[] {
 }
 
 const PAGE_SIZE = 30;
+const CHART_MAX_DAYS = 90; // max selectable chart range — initial fetch loads this many logs
 
 // Tooltip for the stacked macro chart
 function MacroTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
@@ -202,8 +203,11 @@ export default function FoodLogPage() {
       else setLoadingMore(true);
 
       const headers = await getAuthHeaders();
+      // On initial load (offset=0) fetch CHART_MAX_DAYS to cover the 90d chart.
+      // Subsequent "load more" fetches use PAGE_SIZE.
+      const fetchLimit = currentOffset === 0 ? CHART_MAX_DAYS : PAGE_SIZE;
       const params = new URLSearchParams({
-        limit: String(PAGE_SIZE),
+        limit: String(fetchLimit),
         offset: String(currentOffset),
       });
       const res = await fetch(`/api/food/logs?${params}`, { headers });
@@ -214,7 +218,7 @@ export default function FoodLogPage() {
       }
 
       const fetched: FoodLog[] = json.logs ?? json ?? [];
-      setHasMore(fetched.length >= PAGE_SIZE);
+      setHasMore(fetched.length >= fetchLimit);
 
       if (append) {
         setLogs((prev) => [...prev, ...fetched]);
