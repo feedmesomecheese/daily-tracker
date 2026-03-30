@@ -41,6 +41,8 @@ export type WorkoutTimerState = {
   // Stopwatch
   swRunning: boolean;
   swDisplay: number; // total elapsed seconds
+  swStartTime: Date | null; // wall-clock time when timer was first started
+  swPauseTime: Date | null; // wall-clock time of most recent pause
   swStart: () => void;
   swPause: () => void;
   swReset: () => void;
@@ -440,6 +442,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const swAccumulated = useRef(0);
   const swStartedAt = useRef<number | null>(null);
   const [swDisplay, setSwDisplay] = useState(0);
+  const [swStartTime, setSwStartTime] = useState<Date | null>(null);
+  const [swPauseTime, setSwPauseTime] = useState<Date | null>(null);
 
   // Restore persisted stopwatch time on mount (survives tab close / page refresh)
   useEffect(() => {
@@ -481,8 +485,13 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
   const swStart = useCallback(() => {
     preloadSounds(); // warm up AudioContext on first user gesture
+    const isFirstStart = swAccumulated.current === 0 && swStartedAt.current == null;
     swStartedAt.current = Date.now();
     setSwRunning(true);
+    if (isFirstStart) {
+      setSwStartTime(new Date());
+    }
+    setSwPauseTime(null);
   }, []);
 
   const swPause = useCallback(() => {
@@ -491,6 +500,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
       swStartedAt.current = null;
     }
     setSwRunning(false);
+    setSwPauseTime(new Date());
     try {
       localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: swAccumulated.current }));
     } catch {}
@@ -501,6 +511,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
     swStartedAt.current = null;
     setSwRunning(false);
     setSwDisplay(0);
+    setSwStartTime(null);
+    setSwPauseTime(null);
     try { localStorage.removeItem(SW_STORAGE_KEY); } catch {}
   }, []);
 
@@ -811,6 +823,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
   return {
     swRunning,
     swDisplay,
+    swStartTime,
+    swPauseTime,
     swStart,
     swPause,
     swReset,

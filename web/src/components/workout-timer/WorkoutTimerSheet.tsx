@@ -513,6 +513,16 @@ function StopwatchBox({
           {swHint}
         </div>
       </div>
+      {(timer.swStartTime || timer.swPauseTime) && (
+        <div className="flex flex-col items-center gap-0.5 text-xs text-muted-foreground">
+          {timer.swStartTime && (
+            <span>Started: {timer.swStartTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
+          )}
+          {timer.swPauseTime && (
+            <span>Paused: {timer.swPauseTime.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}</span>
+          )}
+        </div>
+      )}
       {timer.swDisplay > 0 && (
         <div className="flex justify-center gap-2">
           <Button variant="ghost" size="sm" onClick={timer.swReset} className="text-xs text-muted-foreground">
