@@ -254,6 +254,22 @@ export default function FoodLogPage() {
 
   const chartData = buildChartData(logs, chartDays);
 
+  // Goal adherence: count logged (non-fasted, >0 cal) days where all absolute goals are met
+  const absGoals = goals.filter((g) => g.value_type === "absolute");
+  const loggedDays = logs.filter((l) => !l.is_fasted && l.total_calories > 0);
+  const goalAdherence = absGoals.length > 0
+    ? {
+        met: loggedDays.filter((l) => {
+          const vals: Record<string, number> = {
+            calories: l.total_calories, protein: l.total_protein,
+            carbs: l.total_carbs, fat: l.total_fat, fiber: l.total_fiber,
+          };
+          return absGoals.every((g) => goalMet(vals[g.nutrient] ?? 0, g));
+        }).length,
+        total: loggedDays.length,
+      }
+    : null;
+
   const handleDeleteAllHistory = async () => {
     if (!await confirm({ message: "DEV: Delete ALL food history? This cannot be undone.", destructive: true, confirmLabel: "Delete All" })) return;
     setDeletingAll(true);
@@ -288,14 +304,30 @@ export default function FoodLogPage() {
       {/* Rolling averages card */}
       {hasMeaningfulAvg && (
         <div className="bg-card border rounded-lg p-4 mb-4">
-          <h2 className="text-sm font-medium mb-2 text-muted-foreground">
-            7-Day Average (carry-forward)
-          </h2>
-          <div className="flex flex-wrap gap-4 text-sm">
-            <span className="font-medium">{avg.calories} kcal</span>
-            <span className="text-green-500">{avg.protein}g protein</span>
-            <span className="text-amber-400">{avg.carbs}g carbs</span>
-            <span className="text-blue-400">{avg.fat}g fat</span>
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-sm font-medium mb-2 text-muted-foreground">
+                7-Day Average (carry-forward)
+              </h2>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <span className="font-medium">{avg.calories} kcal</span>
+                <span className="text-green-500">{avg.protein}g protein</span>
+                <span className="text-amber-400">{avg.carbs}g carbs</span>
+                <span className="text-blue-400">{avg.fat}g fat</span>
+              </div>
+            </div>
+            {goalAdherence && goalAdherence.total > 0 && (
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground mb-1">Goals met</p>
+                <p className="text-sm font-semibold">
+                  <span className={goalAdherence.met === goalAdherence.total ? "text-green-500" : goalAdherence.met / goalAdherence.total >= 0.7 ? "text-amber-500" : "text-red-500"}>
+                    {goalAdherence.met}
+                  </span>
+                  <span className="text-muted-foreground">/{goalAdherence.total}</span>
+                  <span className="text-xs text-muted-foreground ml-1">days</span>
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
