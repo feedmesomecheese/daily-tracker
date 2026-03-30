@@ -56,6 +56,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "value is required and must be a number" }, { status: 400 });
   }
 
+  // Enforce one active goal per nutrient
+  const { count } = await supabase
+    .from("food_goals")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_id", user.id)
+    .eq("nutrient", nutrient)
+    .eq("is_active", true);
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      { error: `A goal for ${nutrient} already exists. Edit the existing one.` },
+      { status: 409 }
+    );
+  }
+
   const { data, error } = await supabase
     .from("food_goals")
     .insert({
