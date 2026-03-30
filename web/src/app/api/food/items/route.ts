@@ -27,8 +27,9 @@ export async function GET(req: Request) {
       .from("food_favorites")
       .select("food_item_id")
       .eq("owner_id", user.id);
-    favoritedIdFilter = (favData ?? []).map((f: { food_item_id: string }) => f.food_item_id);
-    if (favoritedIdFilter.length === 0) return NextResponse.json([]);
+    const favIds = (favData ?? []).map((f: { food_item_id: string }) => f.food_item_id);
+    if (favIds.length === 0) return NextResponse.json([]);
+    favoritedIdFilter = favIds;
   }
 
   let query = supabase
