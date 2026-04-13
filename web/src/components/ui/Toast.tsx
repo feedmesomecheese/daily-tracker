@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -124,7 +125,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* ── Confirm dialog ── */}
-      {confirmState && (
+      {confirmState && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => resolveConfirm(false)} />
           <div className="relative z-10 w-full max-w-sm bg-background rounded-t-2xl sm:rounded-2xl p-6 shadow-xl">
@@ -152,11 +153,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Prompt dialog ── */}
-      {promptState && (
+      {promptState && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center">
           <div className="absolute inset-0 bg-black/50" onClick={() => resolvePrompt(null)} />
           <div className="relative z-10 w-full max-w-sm bg-background rounded-t-2xl sm:rounded-2xl p-6 shadow-xl">
@@ -188,7 +190,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </ToastContext.Provider>
   );
