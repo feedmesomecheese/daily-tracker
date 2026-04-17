@@ -888,6 +888,8 @@ export default function MetricsPage() {
   const [negativeThresholds, setNegativeThresholds] = useState("");
   const [positiveThresholds, setPositiveThresholds] = useState("");
   const [savingNotification, setSavingNotification] = useState(false);
+  const [notificationCheckResult, setNotificationCheckResult] = useState<Record<string, unknown> | null>(null);
+  const [checkingNotification, setCheckingNotification] = useState(false);
 
   // Stats sheet state
   const [statsMetric, setStatsMetric] = useState<Metric | null>(null);
@@ -1425,6 +1427,7 @@ export default function MetricsPage() {
     setNotificationEnabled(config?.enabled ?? false);
     setNegativeThresholds(config?.negative_thresholds?.join(", ") ?? "");
     setPositiveThresholds(config?.positive_thresholds?.join(", ") ?? "");
+    setNotificationCheckResult(null);
   }, []);
 
   // Save notification config
@@ -1487,6 +1490,26 @@ export default function MetricsPage() {
       setSavingNotification(false);
     }
   }, [notificationMetric, notificationEnabled, negativeThresholds, positiveThresholds]);
+
+  // Run diagnostic check for notification
+  const checkNotificationNow = useCallback(async () => {
+    if (!notificationMetric) return;
+    setCheckingNotification(true);
+    setNotificationCheckResult(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/metrics/${notificationMetric.metric_id}/notification-check`, {
+        method: "POST",
+        headers,
+      });
+      const json = await res.json();
+      setNotificationCheckResult(json);
+    } catch (e) {
+      setNotificationCheckResult({ error: String((e as Error)?.message ?? e) });
+    } finally {
+      setCheckingNotification(false);
+    }
+  }, [notificationMetric]);
 
   // Save goals config
   const saveGoalsConfig = useCallback(async (goals: Goal[]) => {
@@ -2201,6 +2224,44 @@ export default function MetricsPage() {
               >
                 Cancel
               </Button>
+            </div>
+
+            {/* Diagnostic check */}
+            <div className="pt-2 border-t space-y-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={checkNotificationNow}
+                disabled={checkingNotification}
+                className="text-xs text-muted-foreground"
+              >
+                {checkingNotification ? "Checking..." : "Check now — would an email send today?"}
+              </Button>
+              {notificationCheckResult && (
+                <div className="p-3 bg-muted rounded-md text-xs space-y-1">
+                  {notificationCheckResult.error ? (
+                    <p className="text-destructive">{String(notificationCheckResult.error)}</p>
+                  ) : (
+                    <>
+                      <p><strong>Today:</strong> {String(notificationCheckResult.today)}</p>
+                      <p><strong>Current streak:</strong> {String(notificationCheckResult.streak)} days ({String(notificationCheckResult.currentSign)})</p>
+                      <p><strong>Negative thresholds saved:</strong> {(notificationCheckResult.negativeThresholds as number[])?.join(", ") || "none"}</p>
+                      <p><strong>Positive thresholds saved:</strong> {(notificationCheckResult.positiveThresholds as number[])?.join(", ") || "none"}</p>
+                      {notificationCheckResult.lastNotifiedThreshold != null && (
+                        <p><strong>Last notified threshold:</strong> {String(notificationCheckResult.lastNotifiedThreshold)}</p>
+                      )}
+                      <p className={notificationCheckResult.wouldNotify ? "text-green-600 font-medium" : "text-orange-500 font-medium"}>
+                        {notificationCheckResult.wouldNotify
+                          ? `✓ Would send email for threshold ${notificationCheckResult.notifyThreshold}`
+                          : `✗ Would NOT send email`}
+                      </p>
+                      {(notificationCheckResult.reasons as string[])?.map((r: string, i: number) => (
+                        <p key={i} className="text-muted-foreground">{r}</p>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </SheetContent>
