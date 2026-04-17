@@ -121,6 +121,38 @@ export async function POST(req: Request) {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
+
+    // Auto-reset streak notification state for any metric that was in a negative streak.
+    // Saving a value breaks the negative streak, so clear last_notified_threshold and
+    // last_streak_sign so the next cron run evaluates the new streak from scratch.
+    const { data: alertConfigs } = await supabaseAdmin
+      .from("config")
+      .select("metric_id, notification_config")
+      .eq("owner_id", owner_id)
+      .in("metric_id", metricIds)
+      .not("notification_config", "is", null);
+
+    if (alertConfigs) {
+      for (const row of alertConfigs) {
+        const alerts = row.notification_config?.streak_alerts;
+        if (alerts?.enabled && alerts.last_streak_sign === "negative") {
+          await supabaseAdmin
+            .from("config")
+            .update({
+              notification_config: {
+                ...row.notification_config,
+                streak_alerts: {
+                  ...alerts,
+                  last_notified_threshold: null,
+                  last_streak_sign: null,
+                },
+              },
+            })
+            .eq("owner_id", owner_id)
+            .eq("metric_id", row.metric_id);
+        }
+      }
+    }
   }
 
   // Recalculate forward from this date to update any dependent calculated metrics

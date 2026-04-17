@@ -247,11 +247,20 @@ const SortableMetricRow = React.memo(function SortableMetricRow({
 
       {/* Name */}
       <td className="py-2 px-2 min-w-[140px]">
-        <EditableText
-          value={metric.metric_name}
-          onChange={(v) => onFieldChange(metric.metric_id, "metric_name", v)}
-          saving={isSaving("metric_name")}
-        />
+        <div className="flex items-center gap-1.5">
+          {metric.notification_config?.streak_alerts?.enabled &&
+            metric.notification_config.streak_alerts.last_notified_threshold != null && (
+            <span
+              title={`Streak alert triggered at threshold ${metric.notification_config.streak_alerts.last_notified_threshold}`}
+              className="shrink-0 text-xs font-bold text-amber-500 leading-none"
+            >!</span>
+          )}
+          <EditableText
+            value={metric.metric_name}
+            onChange={(v) => onFieldChange(metric.metric_id, "metric_name", v)}
+            saving={isSaving("metric_name")}
+          />
+        </div>
       </td>
 
       {/* Group */}
