@@ -2199,11 +2199,39 @@ export default function MetricsPage() {
 
                 {/* Current tracking info */}
                 {notificationMetric?.notification_config?.streak_alerts?.last_notified_threshold && (
-                  <div className="p-3 bg-muted rounded-md text-sm">
+                  <div className="p-3 bg-muted rounded-md text-sm flex items-center justify-between gap-2">
                     <p className="text-muted-foreground">
                       Last notified at threshold:{" "}
                       <strong>{notificationMetric.notification_config.streak_alerts.last_notified_threshold}</strong>
                     </p>
+                    <button
+                      type="button"
+                      className="text-xs text-destructive hover:underline shrink-0"
+                      onClick={async () => {
+                        if (!notificationMetric) return;
+                        const headers = await getAuthHeaders();
+                        const newConfig = {
+                          ...notificationMetric.notification_config,
+                          streak_alerts: {
+                            ...notificationMetric.notification_config?.streak_alerts,
+                            last_notified_threshold: null,
+                            last_streak_sign: null,
+                          },
+                        };
+                        const res = await fetch("/api/metrics", {
+                          method: "PATCH",
+                          headers: { ...headers, "content-type": "application/json" },
+                          body: JSON.stringify({ metric_id: notificationMetric.metric_id, notification_config: newConfig }),
+                        });
+                        if (res.ok) {
+                          setNotificationMetric({ ...notificationMetric, notification_config: newConfig });
+                          setMetrics((prev) => prev.map((m) => m.metric_id === notificationMetric.metric_id ? { ...m, notification_config: newConfig } : m));
+                          setNotificationCheckResult(null);
+                        }
+                      }}
+                    >
+                      Reset state
+                    </button>
                   </div>
                 )}
               </>
