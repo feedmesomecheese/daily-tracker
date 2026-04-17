@@ -2064,16 +2064,20 @@ export default function Home() {
                             {(() => {
                               const alerts = m.notification_config?.streak_alerts;
                               if (!alerts?.enabled || alerts.last_notified_threshold == null) return null;
-                              if (alerts.last_streak_sign === "positive") {
+                              const sign = alerts.last_streak_sign;
+                              const decrease = m.analytics_config?.direction === "decrease";
+                              const goodSign = decrease ? "negative" : "positive";
+                              const badSign  = decrease ? "positive" : "negative";
+                              if (sign === goodSign) {
                                 return (
                                   <span
-                                    title={`Milestone reached: ${alerts.last_notified_threshold}-day streak`}
+                                    title={`Milestone reached: ${Math.abs(alerts.last_notified_threshold)}-day streak`}
                                     className="text-amber-400 text-sm leading-none select-none"
                                     aria-label="Streak milestone"
                                   >★</span>
                                 );
                               }
-                              if (alerts.last_streak_sign === "negative") {
+                              if (sign === badSign) {
                                 return (
                                   <span
                                     title={`Streak alert: ${Math.abs(alerts.last_notified_threshold)} days without logging`}
