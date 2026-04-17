@@ -69,6 +69,13 @@ type ConfigRow = {
     trend_period?: number;
     higher_is_better?: boolean;
   } | null;
+  notification_config?: {
+    streak_alerts?: {
+      enabled?: boolean;
+      last_notified_threshold?: number | null;
+      last_streak_sign?: "positive" | "negative" | "zero" | null;
+    };
+  } | null;
 };
 
 type IndicatorData = {
@@ -2052,6 +2059,29 @@ export default function Home() {
                               onClick={() => { if (tourStatus !== "seeded") setStatsMetric(m); }}
                               hoverDelay={tourStatus === "seeded" ? Infinity : 300}
                             />
+                            {(() => {
+                              const alerts = m.notification_config?.streak_alerts;
+                              if (!alerts?.enabled || alerts.last_notified_threshold == null) return null;
+                              if (alerts.last_streak_sign === "positive") {
+                                return (
+                                  <span
+                                    title={`Milestone reached: ${alerts.last_notified_threshold}-day streak`}
+                                    className="text-amber-400 text-sm leading-none select-none"
+                                    aria-label="Streak milestone"
+                                  >★</span>
+                                );
+                              }
+                              if (alerts.last_streak_sign === "negative") {
+                                return (
+                                  <span
+                                    title={`Streak alert: ${Math.abs(alerts.last_notified_threshold)} days without logging`}
+                                    className="text-orange-500 text-xs font-bold leading-none select-none"
+                                    aria-label="Streak alert"
+                                  >!</span>
+                                );
+                              }
+                              return null;
+                            })()}
                             {m.required && !isCalculated && (
                               <Badge variant="destructive" className="text-[10px] px-1.5 py-0" title="This metric must be filled in before saving">
                                 required
