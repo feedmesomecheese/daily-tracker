@@ -253,6 +253,7 @@ export default function Home() {
         is_calculated: !!r.is_calculated,
         calc_expr: r.calc_expr ?? null,
         analytics_config: r.analytics_config ?? null,
+        notification_config: r.notification_config ?? null,
       }));
       const active = normalized.filter((r) => r.active);
       setMetrics(sortMetricsForForm(active));
@@ -508,6 +509,7 @@ export default function Home() {
             is_calculated: !!r.is_calculated,
             calc_expr: r.calc_expr ?? null,
             analytics_config: r.analytics_config ?? null,
+            notification_config: r.notification_config ?? null,
           }));
           setMetrics(sortMetricsForForm(normalized.filter((r) => r.active)));
           const elapsed = Date.now() - loadStart;
