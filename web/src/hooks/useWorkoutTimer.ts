@@ -444,6 +444,9 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const [swDisplay, setSwDisplay] = useState(0);
   const [swStartTime, setSwStartTime] = useState<Date | null>(null);
   const [swPauseTime, setSwPauseTime] = useState<Date | null>(null);
+  // Refs so persistence callbacks can read the latest values without stale closures
+  const swStartTimeRef = useRef<Date | null>(null);
+  const swPauseTimeRef = useRef<Date | null>(null);
 
   // Restore persisted stopwatch time on mount (survives tab close / page refresh)
   useEffect(() => {
@@ -451,7 +454,9 @@ export function useWorkoutTimer(): WorkoutTimerState {
     try {
       const raw = localStorage.getItem(SW_STORAGE_KEY);
       if (raw) {
-        const { accumulated, startedAt } = JSON.parse(raw) as { accumulated: number; startedAt?: number };
+        const { accumulated, startedAt, startTime, pauseTime } = JSON.parse(raw) as {
+          accumulated: number; startedAt?: number; startTime?: string; pauseTime?: string;
+        };
         // If tab closed while running, add elapsed time since then (restored as paused)
         const total = (typeof accumulated === "number" ? accumulated : 0)
           + (typeof startedAt === "number" ? (Date.now() - startedAt) / 1000 : 0);
@@ -459,7 +464,17 @@ export function useWorkoutTimer(): WorkoutTimerState {
           swAccumulated.current = total;
           setSwDisplay(Math.floor(total));
           // Re-save in paused form so startedAt doesn't keep accumulating on future mounts
-          localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: total }));
+          localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: total, startTime, pauseTime }));
+        }
+        if (startTime) {
+          const d = new Date(startTime);
+          swStartTimeRef.current = d;
+          setSwStartTime(d);
+        }
+        if (pauseTime) {
+          const d = new Date(pauseTime);
+          swPauseTimeRef.current = d;
+          setSwPauseTime(d);
         }
       }
     } catch {}
@@ -470,7 +485,12 @@ export function useWorkoutTimer(): WorkoutTimerState {
       try {
         if (swStartedAt.current != null) {
           const acc = swAccumulated.current + (Date.now() - swStartedAt.current) / 1000;
-          localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: acc, startedAt: Date.now() }));
+          localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({
+            accumulated: acc,
+            startedAt: Date.now(),
+            startTime: swStartTimeRef.current?.toISOString(),
+            pauseTime: swPauseTimeRef.current?.toISOString(),
+          }));
         }
       } catch {}
     };
@@ -489,8 +509,21 @@ export function useWorkoutTimer(): WorkoutTimerState {
     swStartedAt.current = Date.now();
     setSwRunning(true);
     if (isFirstStart) {
-      setSwStartTime(new Date());
+      const now = new Date();
+      swStartTimeRef.current = now;
+      setSwStartTime(now);
+      // Persist the start time so it survives page reload
+      try {
+        const raw = localStorage.getItem(SW_STORAGE_KEY);
+        const existing = raw ? JSON.parse(raw) : {};
+        localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({
+          ...existing,
+          startTime: now.toISOString(),
+          pauseTime: null,
+        }));
+      } catch {}
     }
+    swPauseTimeRef.current = null;
     setSwPauseTime(null);
   }, []);
 
@@ -499,16 +532,24 @@ export function useWorkoutTimer(): WorkoutTimerState {
       swAccumulated.current += (Date.now() - swStartedAt.current) / 1000;
       swStartedAt.current = null;
     }
+    const now = new Date();
+    swPauseTimeRef.current = now;
     setSwRunning(false);
-    setSwPauseTime(new Date());
+    setSwPauseTime(now);
     try {
-      localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({ accumulated: swAccumulated.current }));
+      localStorage.setItem(SW_STORAGE_KEY, JSON.stringify({
+        accumulated: swAccumulated.current,
+        startTime: swStartTimeRef.current?.toISOString(),
+        pauseTime: now.toISOString(),
+      }));
     } catch {}
   }, []);
 
   const swReset = useCallback(() => {
     swAccumulated.current = 0;
     swStartedAt.current = null;
+    swStartTimeRef.current = null;
+    swPauseTimeRef.current = null;
     setSwRunning(false);
     setSwDisplay(0);
     setSwStartTime(null);

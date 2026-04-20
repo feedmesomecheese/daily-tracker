@@ -21,8 +21,6 @@ import {
   type SoundType,
   playTone,
 } from "@/hooks/useWorkoutTimer";
-import { useToast } from "@/components/ui/Toast";
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function pad(n: number) {
@@ -338,8 +336,8 @@ function SplitsView({
   onExport: () => void;
   onReorder: (from: number, to: number) => void;
 }) {
-  const { confirm } = useToast();
   const importRef = useRef<HTMLInputElement>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
@@ -398,15 +396,31 @@ function SplitsView({
                 <p className="text-xs text-muted-foreground truncate">{splitSummary(split)}</p>
               </div>
               <div className="flex gap-1 shrink-0">
-                <button type="button" onClick={() => onCopy(split)} className="text-xs px-2 py-1 rounded border hover:bg-muted" title="Duplicate">Copy</button>
-                <button type="button" onClick={() => onEdit(split)} className="text-xs px-2 py-1 rounded border hover:bg-muted">Edit</button>
-                <button
-                  type="button"
-                  onClick={async () => { if (await confirm({ message: `Delete "${split.name}"?`, destructive: true, confirmLabel: "Delete" })) onDelete(split.id); }}
-                  className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
-                >
-                  Delete
-                </button>
+                {deletingId === split.id ? (
+                  <>
+                    <span className="text-xs text-muted-foreground self-center">Delete?</span>
+                    <button
+                      type="button"
+                      onClick={() => { onDelete(split.id); setDeletingId(null); }}
+                      className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
+                    >Yes</button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingId(null)}
+                      className="text-xs px-2 py-1 rounded border hover:bg-muted"
+                    >No</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => onCopy(split)} className="text-xs px-2 py-1 rounded border hover:bg-muted" title="Duplicate">Copy</button>
+                    <button type="button" onClick={() => onEdit(split)} className="text-xs px-2 py-1 rounded border hover:bg-muted">Edit</button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingId(split.id)}
+                      className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
+                    >Delete</button>
+                  </>
+                )}
               </div>
             </div>
           );

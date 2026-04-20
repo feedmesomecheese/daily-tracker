@@ -69,7 +69,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         supabaseBrowser.auth.refreshSession().then(({ error }) => {
           if (error) {
             console.log("Session refresh on visibility failed:", error.message);
-            router.push("/login");
+            // Only redirect on actual auth errors, not transient network failures.
+            // A failed refresh doesn't mean the session is gone — check first.
+            supabaseBrowser.auth.getSession().then(({ data }) => {
+              if (!data.session) {
+                router.push("/login");
+              }
+            });
           }
         });
       }
