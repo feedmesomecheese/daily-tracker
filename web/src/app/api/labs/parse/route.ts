@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
-import type { ChatCompletion } from "openai/resources/chat/completions";
-import { extractText } from "unpdf";
+import Anthropic from "@anthropic-ai/sdk";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
 
 const PARSE_PROMPT = `You are extracting lab test results from a medical lab report.
@@ -42,8 +40,8 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: "OPENAI_API_KEY is not configured" }, { status: 500 });
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not configured" }, { status: 500 });
   }
 
   try {
@@ -58,47 +56,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "File too large (max 20MB)" }, { status: 400 });
     }
 
-    // Copy into a Node Buffer immediately — pdfjs may detach the original ArrayBuffer
     const fileBuffer = Buffer.from(await file.arrayBuffer());
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const base64 = fileBuffer.toString("base64");
 
-    // Try text extraction first (cheaper). Fall back to GPT-4o PDF vision.
-    const completion: ChatCompletion = await (async () => {
-      try {
-        // Use a fresh Uint8Array copy so unpdf can't detach fileBuffer's memory
-        const { text: pages } = await extractText(new Uint8Array(fileBuffer), { mergePages: true });
-        const text = (Array.isArray(pages) ? pages.join("\n") : String(pages ?? "")).trim();
-        if (text) {
-          return openai.chat.completions.create({
-            stream: false,
-            model: "gpt-4o-mini",
-            max_tokens: 4096,
-            messages: [
-              { role: "system", content: PARSE_PROMPT },
-              { role: "user", content: text },
-            ],
-          });
-        }
-      } catch { /* fall through to vision */ }
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-      // Fallback: send PDF directly to gpt-4o (handles scanned/unusual encodings)
-      const base64 = fileBuffer.toString("base64");
-      return openai.chat.completions.create({
-        stream: false,
-        model: "gpt-4o",
-        max_tokens: 4096,
-        messages: [
-          { role: "system", content: PARSE_PROMPT },
-          {
-            role: "user",
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            content: [{ type: "file", file: { filename: file.name, file_data: `data:application/pdf;base64,${base64}` } }] as any,
-          },
-        ],
-      });
-    })();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const docBlock: any = { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
 
-    const raw = completion.choices[0]?.message?.content ?? "";
+    const response = await client.messages.create({
+      model: "claude-opus-4-7",
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "user",
+          content: [docBlock, { type: "text", text: PARSE_PROMPT }],
+        },
+      ],
+    });
+
+    const raw = response.content[0]?.type === "text" ? response.content[0].text : "";
     const jsonText = raw.replace(/^```(?:json)?\n?/m, "").replace(/\n?```$/m, "").trim();
 
     let parsed: unknown;
