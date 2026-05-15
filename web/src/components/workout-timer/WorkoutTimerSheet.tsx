@@ -437,6 +437,454 @@ function SplitsView({
   );
 }
 
+// ─── Count-up helpers ─────────────────────────────────────────────────────────
+
+function newPresetId(): string {
+  return `cu-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function cuPresetSummary(p: CountUpPreset): string {
+  const parts: string[] = [];
+  if (p.goal_seconds > 0) parts.push(`Goal: ${formatMS(p.goal_seconds)}`);
+  if (p.interval_seconds > 0) parts.push(`Dings every ${p.interval_seconds}s`);
+  if (parts.length === 0) return "No goal · No dings";
+  return parts.join(" · ");
+}
+
+// ─── CountUpPresetEditor ──────────────────────────────────────────────────────
+
+const INTERVAL_OPTIONS = [
+  { label: "None", value: 0 },
+  { label: "15s", value: 15 },
+  { label: "30s", value: 30 },
+  { label: "1m", value: 60 },
+  { label: "2m", value: 120 },
+  { label: "Custom", value: -1 },
+];
+
+function CountUpPresetEditor({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial: CountUpPreset | null;
+  onSave: (p: CountUpPreset) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "New Preset");
+  const [goal, setGoal] = useState(initial?.goal_seconds ?? 60);
+
+  const initInterval = initial?.interval_seconds ?? 15;
+  const isKnownInterval = INTERVAL_OPTIONS.some((o) => o.value === initInterval);
+  const [intervalOption, setIntervalOption] = useState<number>(
+    isKnownInterval ? initInterval : -1
+  );
+  const [customInterval, setCustomInterval] = useState(
+    isKnownInterval ? 30 : initInterval
+  );
+
+  const [intervalAudio, setIntervalAudio] = useState<AudioSettings>(
+    initial?.interval_audio ?? { enabled: true, soundType: "tone", frequency: 880, oscType: "sine" }
+  );
+  const [goalAudio, setGoalAudio] = useState<AudioSettings>(
+    initial?.goal_audio ?? { enabled: true, soundType: "chime", frequency: 660, oscType: "sine" }
+  );
+
+  const intervalSeconds = intervalOption === -1 ? customInterval : intervalOption;
+
+  const handleSave = () => {
+    const preset: CountUpPreset = {
+      id: initial?.id ?? newPresetId(),
+      name: name.trim() || "Preset",
+      goal_seconds: Math.max(0, goal),
+      interval_seconds: Math.max(0, intervalSeconds),
+      interval_audio: intervalAudio,
+      goal_audio: goalAudio,
+    };
+    onSave(preset);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onCancel} className="text-muted-foreground hover:text-foreground text-sm">← Back</button>
+        <h3 className="font-semibold text-base">{initial ? "Edit Preset" : "New Preset"}</h3>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <label className="text-xs text-muted-foreground">Name</label>
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="block w-full h-9 px-3 border rounded-md text-sm mt-0.5"
+          />
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground block mb-0.5">Goal (0 = no goal)</label>
+          <DurationPicker
+            value={goal / 60}
+            onChange={(mins) => setGoal(Math.round(mins * 60))}
+          />
+          {goal === 0 && (
+            <p className="text-xs text-muted-foreground mt-1">No goal — timer runs indefinitely</p>
+          )}
+        </div>
+
+        <div>
+          <label className="text-xs text-muted-foreground block mb-0.5">Interval dings</label>
+          <select
+            value={intervalOption}
+            onChange={(e) => setIntervalOption(Number(e.target.value))}
+            className="w-full h-9 text-sm border rounded-md px-2 bg-background"
+          >
+            {INTERVAL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          {intervalOption === -1 && (
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                value={customInterval}
+                onChange={(e) => setCustomInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-24 h-9 px-3 border rounded-md text-sm"
+              />
+              <span className="text-sm text-muted-foreground">seconds</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">Audio</p>
+        <AudioRow
+          label="Interval"
+          value={intervalAudio}
+          onChange={setIntervalAudio}
+        />
+        <div style={{ opacity: goal === 0 ? 0.4 : 1 }}>
+          <AudioRow
+            label="Goal"
+            value={goalAudio}
+            onChange={setGoalAudio}
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <Button onClick={handleSave}>Save</Button>
+        <Button variant="outline" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── CountUpPresetsView ───────────────────────────────────────────────────────
+
+function CountUpPresetsView({
+  presets,
+  onEdit,
+  onDelete,
+  onCopy,
+  onNew,
+  onBack,
+  onImport,
+  onExport,
+  onReorder,
+}: {
+  presets: CountUpPreset[];
+  onEdit: (p: CountUpPreset) => void;
+  onDelete: (id: string) => void;
+  onCopy: (p: CountUpPreset) => void;
+  onNew: () => void;
+  onBack: () => void;
+  onImport: (json: string) => void;
+  onExport: () => void;
+  onReorder: (from: number, to: number) => void;
+}) {
+  const importRef = useRef<HTMLInputElement>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleFileImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result;
+      if (typeof text === "string") onImport(text);
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
+  const handleDragEnd = () => {
+    if (dragIndex !== null && dragOverIndex !== null && dragIndex !== dragOverIndex) {
+      onReorder(dragIndex, dragOverIndex);
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onBack} className="text-muted-foreground hover:text-foreground text-sm">← Back</button>
+          <h3 className="font-semibold text-base">Manage Presets</h3>
+        </div>
+        <Button size="sm" onClick={onNew}>+ New</Button>
+      </div>
+
+      <div className="space-y-2">
+        {presets.length === 0 && (
+          <p className="text-sm text-muted-foreground text-center py-4">No presets saved.</p>
+        )}
+        {presets.map((preset, index) => {
+          const isDragging = dragIndex === index;
+          const isOver = dragOverIndex === index && dragIndex !== index;
+          return (
+            <div
+              key={preset.id}
+              draggable
+              onDragStart={() => setDragIndex(index)}
+              onDragEnter={() => setDragOverIndex(index)}
+              onDragOver={(e) => e.preventDefault()}
+              onDragEnd={handleDragEnd}
+              className={`flex items-center justify-between border rounded-lg px-3 py-2 gap-2 transition-opacity ${
+                isDragging ? "opacity-40" : "opacity-100"
+              } ${isOver ? "border-primary border-2" : "border-border"}`}
+            >
+              <span className="text-muted-foreground cursor-grab select-none text-lg shrink-0" title="Drag to reorder">⠿</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">{preset.name}</p>
+                <p className="text-xs text-muted-foreground truncate">{cuPresetSummary(preset)}</p>
+              </div>
+              <div className="flex gap-1 shrink-0">
+                {deletingId === preset.id ? (
+                  <>
+                    <span className="text-xs text-muted-foreground self-center">Delete?</span>
+                    <button
+                      type="button"
+                      onClick={() => { onDelete(preset.id); setDeletingId(null); }}
+                      className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
+                    >Yes</button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingId(null)}
+                      className="text-xs px-2 py-1 rounded border hover:bg-muted"
+                    >No</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => onCopy(preset)} className="text-xs px-2 py-1 rounded border hover:bg-muted" title="Duplicate">Copy</button>
+                    <button type="button" onClick={() => onEdit(preset)} className="text-xs px-2 py-1 rounded border hover:bg-muted">Edit</button>
+                    <button
+                      type="button"
+                      onClick={() => setDeletingId(preset.id)}
+                      className="text-xs px-2 py-1 rounded border hover:bg-muted text-destructive"
+                    >Delete</button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex gap-2 border-t pt-3">
+        <Button variant="outline" size="sm" onClick={onExport}>Export JSON</Button>
+        <Button variant="outline" size="sm" onClick={() => importRef.current?.click()}>Import JSON</Button>
+        <input ref={importRef} type="file" accept=".json,application/json" className="hidden" onChange={handleFileImport} />
+      </div>
+    </div>
+  );
+}
+
+// ─── CountUpTab ────────────────────────────────────────────────────────────────
+
+function CountUpTab({
+  timer,
+  onManagePresets,
+}: {
+  timer: WorkoutTimerState;
+  onManagePresets: () => void;
+}) {
+  // Local preset selection — null means "show preset list"
+  const [activePreset, setActivePreset] = useState<CountUpPreset | null>(
+    timer.cuSelectedPreset
+  );
+
+  // Sync if hook preset changes externally (e.g. restored from storage on mount)
+  useEffect(() => {
+    if (timer.cuSelectedPreset && !activePreset) {
+      setActivePreset(timer.cuSelectedPreset);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timer.cuSelectedPreset]);
+
+  const goalReachedEdgeRef = useRef(false);
+  const [flashActive, setFlashActive] = useState(false);
+
+  useEffect(() => {
+    if (timer.cuGoalReached && !goalReachedEdgeRef.current) {
+      goalReachedEdgeRef.current = true;
+      setFlashActive(true);
+      setTimeout(() => setFlashActive(false), 1500);
+    }
+    if (!timer.cuGoalReached) {
+      goalReachedEdgeRef.current = false;
+      setFlashActive(false);
+    }
+  }, [timer.cuGoalReached]);
+
+  const elapsed = Math.floor(timer.cuElapsed);
+
+  const handleSelectPreset = (p: CountUpPreset) => {
+    timer.cuSelectPreset(p);
+    setActivePreset(p);
+  };
+
+  const handleChooseDifferent = () => {
+    timer.cuReset();
+    setActivePreset(null);
+  };
+
+  // ── Idle — no preset selected ────────────────────────────────────────────────
+  if (!activePreset) {
+    return (
+      <div className="space-y-4 py-2">
+        <div className="space-y-2">
+          {timer.cuPresets.length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No presets. Create one via Manage Presets.
+            </p>
+          )}
+          {timer.cuPresets.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => handleSelectPreset(p)}
+              className="w-full text-left border rounded-lg px-3 py-2.5 transition-colors border-border hover:bg-muted active:bg-muted"
+            >
+              <p className="text-sm font-medium">{p.name}</p>
+              <p className="text-xs text-muted-foreground">{cuPresetSummary(p)}</p>
+            </button>
+          ))}
+        </div>
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={onManagePresets}
+            className="text-sm text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+          >
+            Manage Presets →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Running or paused (preset selected) ─────────────────────────────────────
+  const goal = activePreset.goal_seconds;
+  const fillPct = goal > 0 ? Math.min(100, (elapsed / goal) * 100) : 0;
+  const boxColor = "#3b82f6";
+  const isRunning = timer.cuRunning;
+
+  const handleBoxClick = () => {
+    if (!isRunning && elapsed === 0) {
+      timer.cuStart();
+    } else if (isRunning) {
+      timer.cuPause();
+    } else {
+      timer.cuResume();
+    }
+  };
+
+  const hint = !isRunning && elapsed === 0
+    ? "Tap to start"
+    : isRunning
+    ? "Tap to pause"
+    : "Tap to resume";
+
+  return (
+    <div className="flex flex-col gap-3 py-2">
+      <p className="text-sm text-center text-muted-foreground font-medium">{activePreset.name}</p>
+
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={hint}
+        onClick={handleBoxClick}
+        onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") handleBoxClick(); }}
+        className="relative rounded-xl flex flex-col items-center justify-center py-8 gap-2 cursor-pointer select-none overflow-hidden"
+        style={{
+          backgroundColor: boxColor + "22",
+          borderColor: boxColor + "66",
+          borderWidth: 2,
+          animation: flashActive ? "goal-flash 1.2s ease-in-out forwards" : undefined,
+        }}
+      >
+        {/* Fill bar */}
+        {fillPct > 0 && (
+          <div
+            className="absolute inset-y-0 left-0 transition-all duration-500 pointer-events-none"
+            style={{ width: `${fillPct}%`, backgroundColor: boxColor + "30" }}
+          />
+        )}
+
+        <div
+          className="relative z-10 font-mono text-5xl font-bold tabular-nums tracking-tight"
+          style={{ color: boxColor }}
+        >
+          {formatHMS(elapsed)}
+        </div>
+
+        {goal > 0 && (
+          <div className="relative z-10 text-sm font-medium" style={{ color: boxColor + "cc" }}>
+            {timer.cuGoalReached ? "Goal reached!" : `Goal: ${formatMS(goal)}`}
+          </div>
+        )}
+
+        {activePreset.interval_seconds > 0 && (
+          <div className="relative z-10 text-xs text-muted-foreground">
+            Dings every {activePreset.interval_seconds}s
+          </div>
+        )}
+
+        <div className="relative z-10 text-xs mt-1" style={{ color: boxColor + "99" }}>
+          {hint}
+        </div>
+      </div>
+
+      <div className="flex gap-2 justify-center items-center">
+        {isRunning ? (
+          <Button onClick={timer.cuPause} variant="outline" className="w-28">Pause</Button>
+        ) : elapsed > 0 ? (
+          <Button onClick={timer.cuResume} className="w-28">Resume</Button>
+        ) : (
+          <Button onClick={timer.cuStart} className="w-28">Start</Button>
+        )}
+        <Button onClick={timer.cuReset} variant="ghost" size="sm">Reset</Button>
+      </div>
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleChooseDifferent}
+          className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+        >
+          ← Choose different preset
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── StopwatchBox ─────────────────────────────────────────────────────────────
 // Reusable stopwatch display used both in StopwatchTab and inside TabataTab.
 
@@ -879,7 +1327,7 @@ export function WorkoutTimerFAB({
 
 // ─── Main Sheet ───────────────────────────────────────────────────────────────
 
-type InternalView = "main" | "splits" | "editor";
+type InternalView = "main" | "splits" | "editor" | "cu-presets" | "cu-editor";
 
 export function WorkoutTimerSheet({
   timer,
@@ -894,6 +1342,7 @@ export function WorkoutTimerSheet({
 }) {
   const [view, setView] = useState<InternalView>("main");
   const [editingSplit, setEditingSplit] = useState<TabataSplit | null>(null);
+  const [editingPreset, setEditingPreset] = useState<CountUpPreset | null>(null);
   const [activeTab, setActiveTab] = useState("stopwatch");
 
   const handleExport = () => {
@@ -927,6 +1376,37 @@ export function WorkoutTimerSheet({
     setActiveTab("tabata");
   };
 
+  const handleExportPresets = () => {
+    const json = timer.cuExportPresets();
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "countup-presets.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleSavePreset = (preset: CountUpPreset) => {
+    timer.cuSavePreset(preset);
+    setView("cu-presets");
+    setEditingPreset(null);
+  };
+
+  const handleCopyPreset = (preset: CountUpPreset) => {
+    const copy: CountUpPreset = {
+      ...preset,
+      id: newPresetId(),
+      name: `${preset.name} (copy)`,
+    };
+    timer.cuSavePreset(copy);
+  };
+
+  const goBackToCountUp = () => {
+    setView("main");
+    setActiveTab("countup");
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="bottom" className="h-[85vh] overflow-y-auto">
@@ -954,13 +1434,36 @@ export function WorkoutTimerSheet({
           />
         )}
 
+        {view === "cu-editor" && (
+          <CountUpPresetEditor
+            initial={editingPreset}
+            onSave={handleSavePreset}
+            onCancel={() => { setView("cu-presets"); setEditingPreset(null); }}
+          />
+        )}
+
+        {view === "cu-presets" && (
+          <CountUpPresetsView
+            presets={timer.cuPresets}
+            onEdit={(preset) => { setEditingPreset(preset); setView("cu-editor"); }}
+            onDelete={timer.cuDeletePreset}
+            onCopy={handleCopyPreset}
+            onNew={() => { setEditingPreset(null); setView("cu-editor"); }}
+            onBack={goBackToCountUp}
+            onImport={timer.cuImportPresets}
+            onExport={handleExportPresets}
+            onReorder={timer.cuReorderPresets}
+          />
+        )}
+
         {view === "main" && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">Workout Timer</h2>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="w-full">
                 <TabsTrigger value="stopwatch" className="flex-1">Stopwatch</TabsTrigger>
-                <TabsTrigger value="tabata" className="flex-1">Tabata / HIIT</TabsTrigger>
+                <TabsTrigger value="tabata" className="flex-1">HIIT</TabsTrigger>
+                <TabsTrigger value="countup" className="flex-1">Count-up</TabsTrigger>
               </TabsList>
               <TabsContent value="stopwatch">
                 <StopwatchTab timer={timer} onSendToWorkout={onSendToWorkout} />
@@ -970,6 +1473,12 @@ export function WorkoutTimerSheet({
                   timer={timer}
                   onManageSplits={() => setView("splits")}
                   onSendToWorkout={onSendToWorkout}
+                />
+              </TabsContent>
+              <TabsContent value="countup">
+                <CountUpTab
+                  timer={timer}
+                  onManagePresets={() => setView("cu-presets")}
                 />
               </TabsContent>
             </Tabs>
