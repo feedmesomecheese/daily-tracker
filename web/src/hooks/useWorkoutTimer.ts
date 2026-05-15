@@ -658,6 +658,12 @@ export function useWorkoutTimer(): WorkoutTimerState {
     const split = tabSplitRef.current;
     if (!split) return;
     const result = computePrevPhase(tabPhaseRef.current, tabCycleRef.current, split);
+    // Going back through "off" or "cooldown" means un-completing the "on" phase that preceded it
+    if (tabPhaseRef.current === "off" || tabPhaseRef.current === "cooldown") {
+      const newCompleted = Math.max(0, tabCompletedWorkCyclesRef.current - 1);
+      tabCompletedWorkCyclesRef.current = newCompleted;
+      setTabCompletedWorkCycles(newCompleted);
+    }
     if (result === null) {
       // Reset to idle
       tabPhaseEndAt.current = null;
@@ -859,6 +865,63 @@ export function useWorkoutTimer(): WorkoutTimerState {
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
+  // When returning from background, silently skip through any phases that elapsed
+  // while JS was suspended, then play only the current phase's audio once.
+  useEffect(() => {
+    const handleReturnFromBackground = () => {
+      if (document.visibilityState !== "visible") return;
+      const split = tabSplitRef.current;
+      if (!split || !tabRunningRef.current || tabPhaseEndAt.current == null) return;
+
+      const now = Date.now();
+      if (tabPhaseEndAt.current > now) return; // still within the current phase
+
+      let phase = tabPhaseRef.current;
+      let cycle = tabCycleRef.current;
+      let endAt = tabPhaseEndAt.current;
+      let completed = tabCompletedWorkCyclesRef.current;
+
+      // Walk forward through phases using wall-clock end times until we reach a phase
+      // that hasn't expired yet (or we reach "done").
+      while (endAt <= now && phase !== "done") {
+        if (phase === "on") completed++;
+        const result = computeNextPhase(phase, cycle, split);
+        phase = result.nextPhase;
+        cycle = result.nextCycle;
+        endAt = phase === "done" ? Infinity : endAt + result.nextDuration * 1000;
+      }
+
+      countdownFiredRef.current = new Set();
+      tabCompletedWorkCyclesRef.current = completed;
+      tabPhaseRef.current = phase;
+      tabCycleRef.current = cycle;
+      setTabCompletedWorkCycles(completed);
+      setTabPhase(phase);
+      setTabCurrentCycle(cycle);
+
+      if (phase === "done") {
+        tabPhaseEndAt.current = null;
+        tabRunningRef.current = false;
+        setTabRunning(false);
+        setTabPhaseRemaining(0);
+        playTone(split.done_audio);
+      } else {
+        tabPhaseEndAt.current = endAt;
+        const remaining = Math.max(1, Math.ceil((endAt - now) / 1000));
+        setTabPhaseRemaining(remaining);
+        const phaseAudio =
+          phase === "on"       ? split.on_audio :
+          phase === "off"      ? split.off_audio :
+          phase === "warmup"   ? split.warmup_audio :
+          phase === "cooldown" ? split.cooldown_audio : null;
+        if (phaseAudio) playTone(phaseAudio);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleReturnFromBackground);
+    return () => document.removeEventListener("visibilitychange", handleReturnFromBackground);
   }, []);
 
   return {
