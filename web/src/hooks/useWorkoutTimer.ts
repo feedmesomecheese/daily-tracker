@@ -15,6 +15,15 @@ export type AudioSettings = {
   oscType: OscType;      // used by "tone" type
 };
 
+export type CountUpPreset = {
+  id: string;
+  name: string;
+  goal_seconds: number;
+  interval_seconds: number;
+  interval_audio: AudioSettings;
+  goal_audio: AudioSettings;
+};
+
 export type TabataSplit = {
   id: string;
   name: string;
@@ -69,6 +78,23 @@ export type WorkoutTimerState = {
   importSplits: (json: string) => void;
   exportSplits: () => string;
 
+  // Count-up
+  cuRunning: boolean;
+  cuElapsed: number;
+  cuGoalReached: boolean;
+  cuSelectedPreset: CountUpPreset | null;
+  cuSelectPreset: (preset: CountUpPreset) => void;
+  cuStart: () => void;
+  cuPause: () => void;
+  cuResume: () => void;
+  cuReset: () => void;
+  cuPresets: CountUpPreset[];
+  cuSavePreset: (preset: CountUpPreset) => void;
+  cuDeletePreset: (id: string) => void;
+  cuReorderPresets: (from: number, to: number) => void;
+  cuImportPresets: (json: string) => void;
+  cuExportPresets: () => string;
+
   // Computed
   anyRunning: boolean;
   tabCompletedWorkCycles: number; // how many "on" phases have finished this run
@@ -98,6 +124,17 @@ const DEFAULT_SPLIT: TabataSplit = {
 const STORAGE_KEY = "workout_timer_splits";
 const SW_STORAGE_KEY = "workout_sw_state";
 const HIIT_STORAGE_KEY = "workout_hiit_state";
+const CU_PRESETS_KEY = "workout_cu_presets";
+const CU_STATE_KEY = "workout_cu_state";
+
+const DEFAULT_CU_PRESET: CountUpPreset = {
+  id: "default-countup",
+  name: "Plank",
+  goal_seconds: 60,
+  interval_seconds: 15,
+  interval_audio: { enabled: true, soundType: "tone", frequency: 880, oscType: "sine" },
+  goal_audio: { enabled: true, soundType: "chime", frequency: 660, oscType: "sine" },
+};
 
 // ─── Sound file map ─────────────────────────────────────────────────────────────
 // Files go in /public/sounds/. If a file is missing, synthesis is used as fallback.
@@ -437,6 +474,59 @@ export function useWorkoutTimer(): WorkoutTimerState {
     return JSON.stringify(splits, null, 2);
   }, [splits]);
 
+  // ── Count-up presets ─────────────────────────────────────────────────────────
+  const [cuPresetsState, setCuPresetsState] = useState<CountUpPreset[]>(() => {
+    if (typeof window === "undefined") return [DEFAULT_CU_PRESET];
+    try {
+      const raw = localStorage.getItem(CU_PRESETS_KEY);
+      if (raw) return JSON.parse(raw) as CountUpPreset[];
+    } catch {}
+    return [DEFAULT_CU_PRESET];
+  });
+
+  const persistCuPresets = useCallback((next: CountUpPreset[]) => {
+    setCuPresetsState(next);
+    try { localStorage.setItem(CU_PRESETS_KEY, JSON.stringify(next)); } catch {}
+  }, []);
+
+  const cuSavePreset = useCallback((preset: CountUpPreset) => {
+    setCuPresetsState((prev) => {
+      const idx = prev.findIndex((p) => p.id === preset.id);
+      const next = idx >= 0 ? prev.map((p) => (p.id === preset.id ? preset : p)) : [...prev, preset];
+      try { localStorage.setItem(CU_PRESETS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const cuDeletePreset = useCallback((id: string) => {
+    setCuPresetsState((prev) => {
+      const next = prev.filter((p) => p.id !== id);
+      try { localStorage.setItem(CU_PRESETS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const cuReorderPresets = useCallback((fromIndex: number, toIndex: number) => {
+    setCuPresetsState((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, item);
+      try { localStorage.setItem(CU_PRESETS_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const cuImportPresets = useCallback((json: string) => {
+    try {
+      const parsed = JSON.parse(json) as CountUpPreset[];
+      if (Array.isArray(parsed)) persistCuPresets(parsed);
+    } catch {}
+  }, [persistCuPresets]);
+
+  const cuExportPresets = useCallback((): string => {
+    return JSON.stringify(cuPresetsState, null, 2);
+  }, [cuPresetsState]);
+
   // ── Stopwatch ────────────────────────────────────────────────────────────────
   const [swRunning, setSwRunning] = useState(false);
   const swAccumulated = useRef(0);
@@ -736,6 +826,67 @@ export function useWorkoutTimer(): WorkoutTimerState {
     try { localStorage.removeItem(HIIT_STORAGE_KEY); } catch {}
   }, []);
 
+  // ── Count-up timer ───────────────────────────────────────────────────────────
+  const [cuRunning, setCuRunning] = useState(false);
+  const [cuElapsed, setCuElapsed] = useState(0);
+  const [cuGoalReached, setCuGoalReached] = useState(false);
+  const [cuSelectedPreset, setCuSelectedPreset] = useState<CountUpPreset | null>(null);
+
+  const cuStartedAt = useRef<number | null>(null);
+  const cuAccumulated = useRef<number>(0);
+  const cuGoalFiredRef = useRef<boolean>(false);
+  const cuLastElapsedTickRef = useRef<number>(0);
+  const cuRunningRef = useRef<boolean>(false);
+  const cuPresetRef = useRef<CountUpPreset | null>(null);
+
+  useEffect(() => { cuRunningRef.current = cuRunning; }, [cuRunning]);
+  useEffect(() => { cuPresetRef.current = cuSelectedPreset; }, [cuSelectedPreset]);
+
+  const cuSelectPreset = useCallback((preset: CountUpPreset) => {
+    setCuSelectedPreset(preset);
+    cuPresetRef.current = preset;
+  }, []);
+
+  const cuStart = useCallback(() => {
+    preloadSounds();
+    cuAccumulated.current = 0;
+    cuStartedAt.current = Date.now();
+    cuGoalFiredRef.current = false;
+    cuLastElapsedTickRef.current = 0;
+    setCuGoalReached(false);
+    setCuElapsed(0);
+    cuRunningRef.current = true;
+    setCuRunning(true);
+  }, []);
+
+  const cuPause = useCallback(() => {
+    if (cuStartedAt.current != null) {
+      cuAccumulated.current += (Date.now() - cuStartedAt.current) / 1000;
+      cuStartedAt.current = null;
+    }
+    cuRunningRef.current = false;
+    setCuRunning(false);
+  }, []);
+
+  const cuResume = useCallback(() => {
+    preloadSounds();
+    cuStartedAt.current = Date.now();
+    cuRunningRef.current = true;
+    setCuRunning(true);
+  }, []);
+
+  const cuReset = useCallback(() => {
+    cuAccumulated.current = 0;
+    cuStartedAt.current = null;
+    cuGoalFiredRef.current = false;
+    cuLastElapsedTickRef.current = 0;
+    cuRunningRef.current = false;
+    setCuRunning(false);
+    setCuElapsed(0);
+    setCuGoalReached(false);
+    try { localStorage.removeItem(CU_STATE_KEY); } catch {}
+  }, []);
+
   // ── HIIT state persistence ────────────────────────────────────────────────────
   // Restore paused HIIT state on mount (e.g. after tab close mid-session)
   useEffect(() => {
@@ -784,6 +935,77 @@ export function useWorkoutTimer(): WorkoutTimerState {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [splits]);
 
+  // ── Count-up persistence ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(CU_STATE_KEY);
+      if (raw) {
+        const { presetId, accumulated, startedAt } = JSON.parse(raw);
+        const preset = cuPresetsState.find((p) => p.id === presetId);
+        if (preset && typeof accumulated === "number") {
+          const total = accumulated + (typeof startedAt === "number" ? (Date.now() - startedAt) / 1000 : 0);
+          cuAccumulated.current = total;
+          setCuElapsed(total);
+          cuGoalFiredRef.current = preset.goal_seconds > 0 && total >= preset.goal_seconds;
+          if (cuGoalFiredRef.current) setCuGoalReached(true);
+          cuLastElapsedTickRef.current = Math.floor(total);
+          setCuSelectedPreset(preset);
+          cuPresetRef.current = preset;
+          localStorage.setItem(CU_STATE_KEY, JSON.stringify({ presetId, accumulated: total }));
+        }
+      }
+    } catch {}
+
+    const saveCuState = () => {
+      try {
+        const preset = cuPresetRef.current;
+        if (preset && cuRunningRef.current && cuStartedAt.current != null) {
+          const acc = cuAccumulated.current + (Date.now() - cuStartedAt.current) / 1000;
+          localStorage.setItem(CU_STATE_KEY, JSON.stringify({
+            presetId: preset.id,
+            accumulated: acc,
+            startedAt: Date.now(),
+          }));
+        }
+      } catch {}
+    };
+    const handleCuVisibility = () => { if (document.visibilityState === "hidden") saveCuState(); };
+    document.addEventListener("visibilitychange", handleCuVisibility);
+    window.addEventListener("beforeunload", saveCuState);
+    return () => {
+      document.removeEventListener("visibilitychange", handleCuVisibility);
+      window.removeEventListener("beforeunload", saveCuState);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cuPresetsState]);
+
+  // ── Count-up background recovery ─────────────────────────────────────────────
+  useEffect(() => {
+    const handleCuBackground = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!cuRunningRef.current || cuStartedAt.current == null) return;
+      const now = Date.now();
+      const elapsed = cuAccumulated.current + (now - cuStartedAt.current) / 1000;
+      const elapsedInt = Math.floor(elapsed);
+      const lastInt = cuLastElapsedTickRef.current;
+      if (elapsedInt > lastInt) {
+        cuLastElapsedTickRef.current = elapsedInt;
+        const preset = cuPresetRef.current;
+        if (preset) {
+          const { goal_seconds, goal_audio } = preset;
+          if (goal_seconds > 0 && elapsedInt >= goal_seconds && !cuGoalFiredRef.current) {
+            cuGoalFiredRef.current = true;
+            setCuGoalReached(true);
+            playTone(goal_audio);
+          }
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleCuBackground);
+    return () => document.removeEventListener("visibilitychange", handleCuBackground);
+  }, []);
+
   // ── Unified tick interval ────────────────────────────────────────────────────
   const tickRef = useRef<() => void>(() => {});
 
@@ -821,6 +1043,31 @@ export function useWorkoutTimer(): WorkoutTimerState {
           }
         }
       }
+
+      // Count-up tick
+      if (cuStartedAt.current != null) {
+        const elapsed = cuAccumulated.current + (now - cuStartedAt.current) / 1000;
+        setCuElapsed(elapsed);
+        const elapsedInt = Math.floor(elapsed);
+        const lastInt = cuLastElapsedTickRef.current;
+        if (elapsedInt > lastInt) {
+          cuLastElapsedTickRef.current = elapsedInt;
+          const preset = cuPresetRef.current;
+          if (preset) {
+            const { interval_seconds, goal_seconds, interval_audio, goal_audio } = preset;
+            if (goal_seconds > 0 && elapsedInt >= goal_seconds && !cuGoalFiredRef.current) {
+              cuGoalFiredRef.current = true;
+              setCuGoalReached(true);
+              playTone(goal_audio);
+            }
+            if (interval_seconds > 0 && elapsedInt > 0 && elapsedInt % interval_seconds === 0) {
+              if (!(goal_seconds > 0 && elapsedInt === goal_seconds)) {
+                playTone(interval_audio);
+              }
+            }
+          }
+        }
+      }
     };
   }, [advancePhase]);
 
@@ -831,7 +1078,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
   // ── Wake lock ────────────────────────────────────────────────────────────────
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  const anyRunning = swRunning || tabRunning;
+  const anyRunning = swRunning || tabRunning || cuRunning;
 
   useEffect(() => {
     if (!("wakeLock" in navigator)) return;
@@ -952,6 +1199,22 @@ export function useWorkoutTimer(): WorkoutTimerState {
     reorderSplits,
     importSplits,
     exportSplits,
+
+    cuRunning,
+    cuElapsed,
+    cuGoalReached,
+    cuSelectedPreset,
+    cuSelectPreset,
+    cuStart,
+    cuPause,
+    cuResume,
+    cuReset,
+    cuPresets: cuPresetsState,
+    cuSavePreset,
+    cuDeletePreset,
+    cuReorderPresets,
+    cuImportPresets,
+    cuExportPresets,
 
     anyRunning,
     tabCompletedWorkCycles,

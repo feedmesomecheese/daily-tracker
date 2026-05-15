@@ -17,6 +17,7 @@ import { DurationPicker } from "@/components/ui/mobile-pickers";
 import {
   type WorkoutTimerState,
   type TabataSplit,
+  type CountUpPreset,
   type AudioSettings,
   type SoundType,
   playTone,
