@@ -1548,6 +1548,12 @@ export default function Home() {
         setFieldErrors((prev) => ({ ...prev, ...newErrors }));
         setError("Please fix the highlighted fields before saving.");
         setSaving(false);
+        const firstErrorId = metrics.find((m) => newErrors[m.metric_id])?.metric_id;
+        if (firstErrorId) {
+          setTimeout(() => {
+            document.getElementById(`metric-field-${firstErrorId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 0);
+        }
         return;
       }
 
@@ -1600,6 +1606,12 @@ export default function Home() {
             )}.`
           );
           setSaving(false);
+          const firstMissingId = metrics.find((m) => requiredErrors[m.metric_id])?.metric_id;
+          if (firstMissingId) {
+            setTimeout(() => {
+              document.getElementById(`metric-field-${firstMissingId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }, 0);
+          }
           return;
         }
       }
@@ -2046,6 +2058,7 @@ export default function Home() {
                       return (
                         <div
                           key={m.metric_id}
+                          id={`metric-field-${m.metric_id}`}
                           className="mb-3"
                           {...(isFirstItem ? { "data-tour": "metric-row" } : {})}
                         >
