@@ -168,6 +168,12 @@ function getCtx(): AudioContext {
   if (!_ctx || _ctx.state === "closed") {
     _ctx = new AudioContext();
     _bufferCache.clear(); // old buffers are invalid for a new context
+    // Resume immediately if another audio app suspends our context while HIIT is running.
+    _ctx.addEventListener("statechange", () => {
+      if (_ctx?.state === "suspended" && _hiitActive) {
+        _ctx.resume().catch(() => {});
+      }
+    });
   }
   return _ctx;
 }
@@ -313,15 +319,22 @@ function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioC
 // Sounds are scheduled ahead of time using the Web Audio API timeline so they
 // fire even when JS is throttled (screen off, backgrounded app).
 //
-// Every scheduled node is stored so cancelHiitSchedule() can stop them before
-// they play (critical when skipping phases or pausing mid-session).
+// All pre-scheduled sounds are routed through a single session GainNode.
+// Cancellation disconnects that node — instantly silences everything through it
+// regardless of individual node state, which is more reliable than stop(0) alone.
 
 let _hiitActive = false;
-// Both AudioBufferSourceNode and OscillatorNode expose stop(when?)
+let _hiitSessionGain: GainNode | null = null;
 type StoppableNode = { stop: (when?: number) => void };
 const _scheduledHiitNodes: StoppableNode[] = [];
 
 function cancelHiitSchedule() {
+  // Disconnect session gain — immediately silences all sounds routed through it.
+  if (_hiitSessionGain) {
+    try { _hiitSessionGain.disconnect(); } catch {}
+    _hiitSessionGain = null;
+  }
+  // Belt-and-suspenders: also stop individual nodes.
   for (const node of _scheduledHiitNodes) {
     try { node.stop(0); } catch {}
   }
@@ -330,9 +343,10 @@ function cancelHiitSchedule() {
 
 function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: number) {
   if (!audio.enabled) return;
+  const dest: AudioNode = _hiitSessionGain ?? ctx.destination;
   const soundType = audio.soundType ?? "tone";
 
-  // Prefer file-based buffer (pre-loaded by preloadSounds) — fully cancellable.
+  // Prefer file-based buffer (pre-loaded by preloadSounds).
   const filePath = SOUND_FILES[soundType];
   if (filePath) {
     const buf = _bufferCache.get(filePath);
@@ -342,7 +356,7 @@ function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: numb
       const gain = ctx.createGain();
       gain.gain.setValueAtTime(0.8, when);
       src.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(dest);
       src.start(when);
       _scheduledHiitNodes.push(src);
       return;
@@ -351,12 +365,12 @@ function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: numb
   }
 
   if (soundType === "tone") {
-    // Simple beep: OscillatorNode is cancellable and stored.
+    // Simple beep via OscillatorNode — stored for cancellation.
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = audio.oscType ?? "sine";
     osc.connect(gain);
-    gain.connect(ctx.destination);
+    gain.connect(dest);
     osc.frequency.setValueAtTime(audio.frequency ?? 440, when);
     gain.gain.setValueAtTime(0.4, when);
     gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.5);
@@ -366,9 +380,8 @@ function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: numb
     return;
   }
 
-  // Complex synth fallback when buffer isn't loaded yet (rare after preloadSounds).
-  // These oscillators can't be cancelled, but this path should almost never fire
-  // during a live HIIT session.
+  // Complex synth fallback (rare — only if buffer not yet cached).
+  // Goes to dest so it's still silenced if session gain is disconnected.
   playSynthesized(soundType, audio, ctx, when);
 }
 
@@ -378,12 +391,17 @@ function scheduleAllHiitSounds(
   cycle: number,
   phaseEndAt: number  // Date.now() ms when this phase ends
 ) {
-  cancelHiitSchedule();
+  cancelHiitSchedule(); // disconnects old session gain, clears node list
   if (typeof window === "undefined") return;
   let ctx: AudioContext;
   try { ctx = getCtx(); } catch { return; }
 
   if (_suspendTimer !== null) { clearTimeout(_suspendTimer); _suspendTimer = null; }
+
+  // Fresh session gain — all sounds in this schedule route through it.
+  // Cancelling the next session will disconnect this gain and silence them instantly.
+  _hiitSessionGain = ctx.createGain();
+  _hiitSessionGain.connect(ctx.destination);
 
   const nowMs = Date.now();
   const nowAudio = ctx.currentTime;
