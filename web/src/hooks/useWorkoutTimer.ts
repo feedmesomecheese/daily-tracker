@@ -385,21 +385,27 @@ function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: numb
   playSynthesized(soundType, audio, ctx, when);
 }
 
-function scheduleAllHiitSounds(
+// Pre-schedule sounds for the CURRENT phase only. Keeping the window small
+// (≤5 nodes) makes cancellation reliable — no stale oscillators from future
+// phases can bleed through when the user skips or resets.
+//
+// The transition sound at phaseEnd fires even when the screen is off because
+// it's a Web Audio scheduled event. The next phase's sounds are scheduled by
+// advancePhase/handleReturnFromBackground when that phase begins.
+function scheduleCurrentPhaseHiitSounds(
   split: TabataSplit,
   phase: TabataPhase,
   cycle: number,
   phaseEndAt: number  // Date.now() ms when this phase ends
 ) {
   cancelHiitSchedule(); // disconnects old session gain, clears node list
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || phase === "idle" || phase === "done") return;
   let ctx: AudioContext;
   try { ctx = getCtx(); } catch { return; }
 
   if (_suspendTimer !== null) { clearTimeout(_suspendTimer); _suspendTimer = null; }
 
-  // Fresh session gain — all sounds in this schedule route through it.
-  // Cancelling the next session will disconnect this gain and silence them instantly.
+  // Fresh session gain — all sounds here route through it.
   _hiitSessionGain = ctx.createGain();
   _hiitSessionGain.connect(ctx.destination);
 
@@ -407,39 +413,27 @@ function scheduleAllHiitSounds(
   const nowAudio = ctx.currentTime;
   const toAudio = (ms: number) => nowAudio + Math.max(0, (ms - nowMs) / 1000);
 
-  let curPhase = phase;
-  let curCycle = cycle;
-  let curEndMs = phaseEndAt;
-  let guard = 0;
-
-  while (curPhase !== "done" && curPhase !== "idle" && guard++ < 300) {
-    // Countdown beeps (3, 2, 1) before each phase ends
-    for (const cd of [3, 2, 1]) {
-      const beepMs = curEndMs - cd * 1000;
-      if (beepMs > nowMs) {
-        scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 1200, oscType: "sine" }, toAudio(beepMs));
-      }
+  // 3-2-1 countdown beeps before this phase ends
+  for (const cd of [3, 2, 1]) {
+    const beepMs = phaseEndAt - cd * 1000;
+    if (beepMs > nowMs) {
+      scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 1200, oscType: "sine" }, toAudio(beepMs));
     }
+  }
 
-    // 30-second warning during rest phases longer than 30s
-    if (curPhase === "off" && (split.off_seconds ?? 0) > 30) {
-      const warnMs = curEndMs - 30 * 1000;
-      if (warnMs > nowMs) {
-        scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 880, oscType: "sine" }, toAudio(warnMs));
-      }
+  // 30-second warning during long rest phases
+  if (phase === "off" && (split.off_seconds ?? 0) > 30) {
+    const warnMs = phaseEndAt - 30 * 1000;
+    if (warnMs > nowMs) {
+      scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 880, oscType: "sine" }, toAudio(warnMs));
     }
+  }
 
-    const result = computeNextPhase(curPhase, curCycle, split);
-
-    // Transition sound fires at the end of curPhase (= start of next)
-    if (result.audio && curEndMs > nowMs) {
-      scheduleHiitSoundAt(ctx, result.audio, toAudio(curEndMs));
-    }
-
-    curPhase = result.nextPhase;
-    curCycle = result.nextCycle;
-    if (curPhase === "done" || result.nextDuration <= 0) break;
-    curEndMs = curEndMs + result.nextDuration * 1000;
+  // Transition sound at the end of this phase (= start of next phase).
+  // Scheduling it here ensures it fires even if JS is throttled when the phase ends.
+  const result = computeNextPhase(phase, cycle, split);
+  if (result.audio && phaseEndAt > nowMs) {
+    scheduleHiitSoundAt(ctx, result.audio, toAudio(phaseEndAt));
   }
 }
 
@@ -835,7 +829,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
       if (tabRunningRef.current) {
         const endAt = Date.now() + nextDuration * 1000;
         tabPhaseEndAt.current = endAt;
-        scheduleAllHiitSounds(tabSplitRef.current!, nextPhase, nextCycle, endAt);
+        scheduleCurrentPhaseHiitSounds(tabSplitRef.current!, nextPhase, nextCycle, endAt);
       } else {
         tabPausedRemaining.current = nextDuration;
         tabPhaseEndAt.current = null;
@@ -844,18 +838,19 @@ export function useWorkoutTimer(): WorkoutTimerState {
   }, []);
 
   // Advance to the next phase (called by tick — always running).
-  // Transition sounds are pre-scheduled via scheduleAllHiitSounds; this only
-  // updates state and re-schedules remaining sounds for the new phase.
   const advancePhase = useCallback(() => {
     const split = tabSplitRef.current;
     if (!split) return;
     const result = computeNextPhase(tabPhaseRef.current, tabCycleRef.current, split);
-    // Track completed work cycles before transitioning
     if (tabPhaseRef.current === "on") {
       tabCompletedWorkCyclesRef.current += 1;
       setTabCompletedWorkCycles(tabCompletedWorkCyclesRef.current);
     }
     countdownFiredRef.current = new Set();
+
+    // The pre-scheduled transition sound has already fired. Play it immediately
+    // too so it's heard in case the pre-scheduled one was cancelled or missed.
+    if (result.audio) playTone(result.audio);
 
     tabPhaseRef.current = result.nextPhase;
     tabCycleRef.current = result.nextCycle;
@@ -870,10 +865,10 @@ export function useWorkoutTimer(): WorkoutTimerState {
       setTabPhaseRemaining(0);
       cancelHiitSchedule();
     } else {
-      tabPhaseEndAt.current = Date.now() + result.nextDuration * 1000;
+      const endAt = Date.now() + result.nextDuration * 1000;
+      tabPhaseEndAt.current = endAt;
       setTabPhaseRemaining(result.nextDuration);
-      // Re-schedule remaining sounds starting from the new phase
-      scheduleAllHiitSounds(split, result.nextPhase, result.nextCycle, tabPhaseEndAt.current);
+      scheduleCurrentPhaseHiitSounds(split, result.nextPhase, result.nextCycle, endAt);
     }
   }, []);
 
@@ -966,12 +961,12 @@ export function useWorkoutTimer(): WorkoutTimerState {
     }
     tabRunningRef.current = true;
     setTabRunning(true);
-    // Re-schedule all remaining sounds from the current phase
+    // Re-schedule sounds for the current phase
     const split = tabSplitRef.current;
     const phase = tabPhaseRef.current;
     const cycle = tabCycleRef.current;
     if (split && phase !== "idle" && phase !== "done" && tabPhaseEndAt.current != null) {
-      scheduleAllHiitSounds(split, phase, cycle, tabPhaseEndAt.current);
+      scheduleCurrentPhaseHiitSounds(split, phase, cycle, tabPhaseEndAt.current);
     }
   }, []);
 
@@ -1235,16 +1230,21 @@ export function useWorkoutTimer(): WorkoutTimerState {
     if (!("wakeLock" in navigator)) return;
 
     const requestWakeLock = () => {
-      if (document.visibilityState === "visible") {
-        navigator.wakeLock.request("screen").then((sentinel) => {
-          wakeLockRef.current = sentinel;
-        }).catch(() => {});
-      }
+      if (document.visibilityState !== "visible") return;
+      navigator.wakeLock.request("screen").then((sentinel) => {
+        wakeLockRef.current = sentinel;
+        // Auto-re-acquire if the OS releases it (battery saver, another app, etc.)
+        sentinel.addEventListener("release", () => {
+          if (anyRunning && document.visibilityState === "visible") {
+            requestWakeLock();
+          }
+        });
+      }).catch(() => {});
     };
 
     if (anyRunning) {
       requestWakeLock();
-      // Re-acquire when tab becomes visible again (wake lock is auto-released on hide)
+      // Re-acquire when the page becomes visible again (OS releases lock on hide)
       document.addEventListener("visibilitychange", requestWakeLock);
       return () => document.removeEventListener("visibilitychange", requestWakeLock);
     } else {
@@ -1317,8 +1317,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
           phase === "warmup"   ? split.warmup_audio :
           phase === "cooldown" ? split.cooldown_audio : null;
         if (phaseAudio) playTone(phaseAudio);
-        // Re-schedule remaining sounds from recovered phase position
-        scheduleAllHiitSounds(split, phase, cycle, endAt);
+        // Re-schedule sounds for the recovered phase
+        scheduleCurrentPhaseHiitSounds(split, phase, cycle, endAt);
       }
     };
 
