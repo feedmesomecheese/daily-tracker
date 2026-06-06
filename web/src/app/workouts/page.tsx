@@ -1283,6 +1283,7 @@ export default function WorkoutsPage() {
                 exercises={bucketExercises}
                 ghostData={ghostData}
                 onExercisesChange={setBucketExercises}
+                onExerciseClick={(id, name) => setSelectedExercise({ id, name })}
               />
             </div>
           )}

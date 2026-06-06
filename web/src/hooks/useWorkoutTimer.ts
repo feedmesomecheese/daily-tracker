@@ -201,20 +201,20 @@ export function preloadSounds() {
 
 // ─── Audio helpers ─────────────────────────────────────────────────────────────
 
-function playOscTone(ctx: AudioContext, audio: AudioSettings) {
+function playOscTone(ctx: AudioContext, audio: AudioSettings, t = ctx.currentTime) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
   gain.connect(ctx.destination);
   osc.type = audio.oscType;
-  osc.frequency.setValueAtTime(audio.frequency, ctx.currentTime);
-  gain.gain.setValueAtTime(0.4, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.5);
-  osc.start(ctx.currentTime);
-  osc.stop(ctx.currentTime + 0.5);
+  osc.frequency.setValueAtTime(audio.frequency, t);
+  gain.gain.setValueAtTime(0.4, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+  osc.start(t);
+  osc.stop(t + 0.5);
 }
 
-function playBoxingBell(ctx: AudioContext) {
+function playBoxingBell(ctx: AudioContext, t = ctx.currentTime) {
   const dur = 2.0;
   const osc1 = ctx.createOscillator();
   const osc2 = ctx.createOscillator();
@@ -223,52 +223,52 @@ function playBoxingBell(ctx: AudioContext) {
   osc1.connect(gain1); gain1.connect(ctx.destination);
   osc2.connect(gain2); gain2.connect(ctx.destination);
   osc1.type = "triangle";
-  osc1.frequency.setValueAtTime(920, ctx.currentTime);
-  osc1.frequency.exponentialRampToValueAtTime(820, ctx.currentTime + 0.15);
+  osc1.frequency.setValueAtTime(920, t);
+  osc1.frequency.exponentialRampToValueAtTime(820, t + 0.15);
   osc2.type = "sine";
-  osc2.frequency.setValueAtTime(1380, ctx.currentTime);
-  gain1.gain.setValueAtTime(0.7, ctx.currentTime);
-  gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-  gain2.gain.setValueAtTime(0.25, ctx.currentTime);
-  gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur * 0.5);
-  osc1.start(ctx.currentTime); osc1.stop(ctx.currentTime + dur);
-  osc2.start(ctx.currentTime); osc2.stop(ctx.currentTime + dur * 0.5);
+  osc2.frequency.setValueAtTime(1380, t);
+  gain1.gain.setValueAtTime(0.7, t);
+  gain1.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  gain2.gain.setValueAtTime(0.25, t);
+  gain2.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.5);
+  osc1.start(t); osc1.stop(t + dur);
+  osc2.start(t); osc2.stop(t + dur * 0.5);
 }
 
-function playAirHorn(ctx: AudioContext) {
+function playAirHorn(ctx: AudioContext, t = ctx.currentTime) {
   const dur = 1.3;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain); gain.connect(ctx.destination);
   osc.type = "sawtooth";
-  osc.frequency.setValueAtTime(215, ctx.currentTime);
-  osc.frequency.setValueAtTime(228, ctx.currentTime + 0.06);
-  osc.frequency.setValueAtTime(210, ctx.currentTime + 0.2);
-  osc.frequency.setValueAtTime(222, ctx.currentTime + 0.4);
-  gain.gain.setValueAtTime(0, ctx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 0.05);
-  gain.gain.setValueAtTime(0.5, ctx.currentTime + dur - 0.12);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-  osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
+  osc.frequency.setValueAtTime(215, t);
+  osc.frequency.setValueAtTime(228, t + 0.06);
+  osc.frequency.setValueAtTime(210, t + 0.2);
+  osc.frequency.setValueAtTime(222, t + 0.4);
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.5, t + 0.05);
+  gain.gain.setValueAtTime(0.5, t + dur - 0.12);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.start(t); osc.stop(t + dur);
 }
 
-function playWhistle(ctx: AudioContext) {
+function playWhistle(ctx: AudioContext, t = ctx.currentTime) {
   const dur = 0.65;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain); gain.connect(ctx.destination);
   osc.type = "sine";
-  osc.frequency.setValueAtTime(2400, ctx.currentTime);
-  osc.frequency.linearRampToValueAtTime(2650, ctx.currentTime + 0.15);
-  osc.frequency.setValueAtTime(2500, ctx.currentTime + 0.45);
-  gain.gain.setValueAtTime(0, ctx.currentTime);
-  gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 0.02);
-  gain.gain.setValueAtTime(0.4, ctx.currentTime + 0.5);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-  osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
+  osc.frequency.setValueAtTime(2400, t);
+  osc.frequency.linearRampToValueAtTime(2650, t + 0.15);
+  osc.frequency.setValueAtTime(2500, t + 0.45);
+  gain.gain.setValueAtTime(0, t);
+  gain.gain.linearRampToValueAtTime(0.4, t + 0.02);
+  gain.gain.setValueAtTime(0.4, t + 0.5);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.start(t); osc.stop(t + dur);
 }
 
-function playChime(ctx: AudioContext) {
+function playChime(ctx: AudioContext, t = ctx.currentTime) {
   const freqs = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
   const dur = 2.0;
   freqs.forEach((freq, i) => {
@@ -276,43 +276,133 @@ function playChime(ctx: AudioContext) {
     const gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     osc.type = "sine";
-    const t = ctx.currentTime + i * 0.12;
-    osc.frequency.setValueAtTime(freq, t);
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(0.3, t + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    osc.start(t); osc.stop(t + dur);
+    const st = t + i * 0.12;
+    osc.frequency.setValueAtTime(freq, st);
+    gain.gain.setValueAtTime(0, st);
+    gain.gain.linearRampToValueAtTime(0.3, st + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, st + dur);
+    osc.start(st); osc.stop(st + dur);
   });
 }
 
-function playBuzzer(ctx: AudioContext) {
+function playBuzzer(ctx: AudioContext, t = ctx.currentTime) {
   const dur = 0.45;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain); gain.connect(ctx.destination);
   osc.type = "square";
-  osc.frequency.setValueAtTime(160, ctx.currentTime);
-  gain.gain.setValueAtTime(0.3, ctx.currentTime);
-  gain.gain.setValueAtTime(0.3, ctx.currentTime + dur - 0.05);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-  osc.start(ctx.currentTime); osc.stop(ctx.currentTime + dur);
+  osc.frequency.setValueAtTime(160, t);
+  gain.gain.setValueAtTime(0.3, t);
+  gain.gain.setValueAtTime(0.3, t + dur - 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  osc.start(t); osc.stop(t + dur);
 }
 
-function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioContext) {
+function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioContext, t = ctx.currentTime) {
   switch (soundType) {
-    case "boxing-bell": playBoxingBell(ctx); break;
-    case "air-horn":    playAirHorn(ctx);    break;
-    case "whistle":     playWhistle(ctx);    break;
-    case "chime":       playChime(ctx);      break;
-    case "buzzer":      playBuzzer(ctx);     break;
-    default:            playOscTone(ctx, audio); break;
+    case "boxing-bell": playBoxingBell(ctx, t); break;
+    case "air-horn":    playAirHorn(ctx, t);    break;
+    case "whistle":     playWhistle(ctx, t);    break;
+    case "chime":       playChime(ctx, t);      break;
+    case "buzzer":      playBuzzer(ctx, t);     break;
+    default:            playOscTone(ctx, audio, t); break;
+  }
+}
+
+// ─── HIIT pre-scheduling ────────────────────────────────────────────────────────
+// Sounds are scheduled ahead of time using the Web Audio API timeline so they
+// fire even when JS is throttled (screen off, backgrounded app).
+
+let _hiitActive = false;
+const _scheduledHiitNodes: AudioBufferSourceNode[] = [];
+
+function cancelHiitSchedule() {
+  for (const node of _scheduledHiitNodes) {
+    try { node.stop(0); } catch {}
+  }
+  _scheduledHiitNodes.length = 0;
+}
+
+function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: number) {
+  if (!audio.enabled) return;
+  const soundType = audio.soundType ?? "tone";
+  const filePath = SOUND_FILES[soundType];
+  if (filePath) {
+    const buf = _bufferCache.get(filePath);
+    if (buf) {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0.8, when);
+      src.connect(gain);
+      gain.connect(ctx.destination);
+      src.start(when);
+      _scheduledHiitNodes.push(src);
+      return;
+    }
+  }
+  playSynthesized(soundType, audio, ctx, when);
+}
+
+function scheduleAllHiitSounds(
+  split: TabataSplit,
+  phase: TabataPhase,
+  cycle: number,
+  phaseEndAt: number  // Date.now() ms when this phase ends
+) {
+  cancelHiitSchedule();
+  if (typeof window === "undefined") return;
+  let ctx: AudioContext;
+  try { ctx = getCtx(); } catch { return; }
+
+  if (_suspendTimer !== null) { clearTimeout(_suspendTimer); _suspendTimer = null; }
+
+  const nowMs = Date.now();
+  const nowAudio = ctx.currentTime;
+  const toAudio = (ms: number) => nowAudio + Math.max(0, (ms - nowMs) / 1000);
+
+  let curPhase = phase;
+  let curCycle = cycle;
+  let curEndMs = phaseEndAt;
+  let guard = 0;
+
+  while (curPhase !== "done" && curPhase !== "idle" && guard++ < 300) {
+    // Countdown beeps (3, 2, 1) before each phase ends
+    for (const cd of [3, 2, 1]) {
+      const beepMs = curEndMs - cd * 1000;
+      if (beepMs > nowMs) {
+        scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 1200, oscType: "sine" }, toAudio(beepMs));
+      }
+    }
+
+    // 30-second warning during rest phases longer than 30s
+    if (curPhase === "off" && (split.off_seconds ?? 0) > 30) {
+      const warnMs = curEndMs - 30 * 1000;
+      if (warnMs > nowMs) {
+        scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 880, oscType: "sine" }, toAudio(warnMs));
+      }
+    }
+
+    const result = computeNextPhase(curPhase, curCycle, split);
+
+    // Transition sound fires at the end of curPhase (= start of next)
+    if (result.audio && curEndMs > nowMs) {
+      scheduleHiitSoundAt(ctx, result.audio, toAudio(curEndMs));
+    }
+
+    curPhase = result.nextPhase;
+    curCycle = result.nextCycle;
+    if (curPhase === "done" || result.nextDuration <= 0) break;
+    curEndMs = curEndMs + result.nextDuration * 1000;
   }
 }
 
 // Debounced suspend: schedule a context suspend after a delay. Calling again
 // cancels and reschedules, so back-to-back sounds never suspend mid-sequence.
+// Skipped while HIIT is running so pre-scheduled sounds can fire uninterrupted.
 let _suspendTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleSuspend() {
+  if (_hiitActive) return;
   if (_suspendTimer !== null) clearTimeout(_suspendTimer);
   _suspendTimer = setTimeout(() => {
     _ctx?.suspend().catch(() => {});
@@ -676,8 +766,9 @@ export function useWorkoutTimer(): WorkoutTimerState {
     setTabSelectedSplit(split);
   }, []);
 
-  // Internal helper to apply a phase transition (pause-aware)
+  // Internal helper to apply a phase transition (pause-aware, used by manual next/prev).
   const applyPhase = useCallback((result: PhaseResult) => {
+    cancelHiitSchedule();
     const { nextPhase, nextCycle, nextDuration, audio } = result;
     countdownFiredRef.current = new Set();
     if (audio) playTone(audio);
@@ -689,12 +780,16 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
     if (nextPhase === "done") {
       tabPhaseEndAt.current = null;
+      tabRunningRef.current = false;
+      _hiitActive = false;
       setTabRunning(false);
       setTabPhaseRemaining(0);
     } else {
       setTabPhaseRemaining(nextDuration);
       if (tabRunningRef.current) {
-        tabPhaseEndAt.current = Date.now() + nextDuration * 1000;
+        const endAt = Date.now() + nextDuration * 1000;
+        tabPhaseEndAt.current = endAt;
+        scheduleAllHiitSounds(tabSplitRef.current!, nextPhase, nextCycle, endAt);
       } else {
         tabPausedRemaining.current = nextDuration;
         tabPhaseEndAt.current = null;
@@ -702,7 +797,9 @@ export function useWorkoutTimer(): WorkoutTimerState {
     }
   }, []);
 
-  // Advance to the next phase (called by tick — always running)
+  // Advance to the next phase (called by tick — always running).
+  // Transition sounds are pre-scheduled via scheduleAllHiitSounds; this only
+  // updates state and re-schedules remaining sounds for the new phase.
   const advancePhase = useCallback(() => {
     const split = tabSplitRef.current;
     if (!split) return;
@@ -713,7 +810,6 @@ export function useWorkoutTimer(): WorkoutTimerState {
       setTabCompletedWorkCycles(tabCompletedWorkCyclesRef.current);
     }
     countdownFiredRef.current = new Set();
-    if (result.audio) playTone(result.audio);
 
     tabPhaseRef.current = result.nextPhase;
     tabCycleRef.current = result.nextCycle;
@@ -722,11 +818,16 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
     if (result.nextPhase === "done") {
       tabPhaseEndAt.current = null;
+      tabRunningRef.current = false;
+      _hiitActive = false;
       setTabRunning(false);
       setTabPhaseRemaining(0);
+      cancelHiitSchedule();
     } else {
       tabPhaseEndAt.current = Date.now() + result.nextDuration * 1000;
       setTabPhaseRemaining(result.nextDuration);
+      // Re-schedule remaining sounds starting from the new phase
+      scheduleAllHiitSounds(split, result.nextPhase, result.nextCycle, tabPhaseEndAt.current);
     }
   }, []);
 
@@ -772,6 +873,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const tabStart = useCallback(() => {
     if (!tabSplitRef.current) return;
     preloadSounds(); // warm up AudioContext + pre-fetch sound files
+    cancelHiitSchedule();
+    _hiitActive = true;
     setTabPhase("idle");
     tabPhaseRef.current = "idle";
     setTabCurrentCycle(0);
@@ -781,11 +884,13 @@ export function useWorkoutTimer(): WorkoutTimerState {
     setTabCompletedWorkCycles(0);
     tabRunningRef.current = true;
     setTabRunning(true);
-    // Immediately advance from idle
+    // Immediately advance from idle; advancePhase will call scheduleAllHiitSounds
     setTimeout(advancePhase, 0);
   }, [advancePhase]);
 
   const tabPause = useCallback(() => {
+    cancelHiitSchedule();
+    _hiitActive = false;
     if (tabPhaseEndAt.current != null) {
       tabPausedRemaining.current = Math.max(0, Math.ceil((tabPhaseEndAt.current - Date.now()) / 1000));
       tabPhaseEndAt.current = null;
@@ -805,14 +910,24 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
   const tabResume = useCallback(() => {
     preloadSounds(); // ensure AudioContext is initialized after potential suspend
+    _hiitActive = true;
     if (tabPausedRemaining.current > 0) {
       tabPhaseEndAt.current = Date.now() + tabPausedRemaining.current * 1000;
     }
     tabRunningRef.current = true;
     setTabRunning(true);
+    // Re-schedule all remaining sounds from the current phase
+    const split = tabSplitRef.current;
+    const phase = tabPhaseRef.current;
+    const cycle = tabCycleRef.current;
+    if (split && phase !== "idle" && phase !== "done" && tabPhaseEndAt.current != null) {
+      scheduleAllHiitSounds(split, phase, cycle, tabPhaseEndAt.current);
+    }
   }, []);
 
   const tabReset = useCallback(() => {
+    cancelHiitSchedule();
+    _hiitActive = false;
     tabPhaseEndAt.current = null;
     tabPausedRemaining.current = 0;
     tabRunningRef.current = false;
@@ -1019,28 +1134,14 @@ export function useWorkoutTimer(): WorkoutTimerState {
         setSwDisplay(Math.floor(elapsed));
       }
 
-      // Tabata tick
+      // Tabata tick: only update remaining time display and trigger phase advance.
+      // Countdown beeps and warning tones are pre-scheduled via scheduleAllHiitSounds.
       if (tabPhaseEndAt.current != null) {
         const remaining = Math.ceil((tabPhaseEndAt.current - now) / 1000);
         if (remaining <= 0) {
           advancePhase();
         } else {
           setTabPhaseRemaining(remaining);
-          // 3-2-1 countdown beeps: short high-pitched tone, once per second
-          if (remaining <= 3 && !countdownFiredRef.current.has(remaining)) {
-            countdownFiredRef.current.add(remaining);
-            playTone({ enabled: true, soundType: "tone", frequency: 1200, oscType: "sine" });
-          }
-          // 30-second warning beep during rest phase (only if rest > 30s)
-          if (
-            remaining === 30 &&
-            tabPhaseRef.current === "off" &&
-            (tabSplitRef.current?.off_seconds ?? 0) > 30 &&
-            !countdownFiredRef.current.has(30)
-          ) {
-            countdownFiredRef.current.add(30);
-            playTone({ enabled: true, soundType: "tone", frequency: 880, oscType: "sine" });
-          }
         }
       }
 
@@ -1151,8 +1252,10 @@ export function useWorkoutTimer(): WorkoutTimerState {
       if (phase === "done") {
         tabPhaseEndAt.current = null;
         tabRunningRef.current = false;
+        _hiitActive = false;
         setTabRunning(false);
         setTabPhaseRemaining(0);
+        cancelHiitSchedule();
         playTone(split.done_audio);
       } else {
         tabPhaseEndAt.current = endAt;
@@ -1164,6 +1267,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
           phase === "warmup"   ? split.warmup_audio :
           phase === "cooldown" ? split.cooldown_audio : null;
         if (phaseAudio) playTone(phaseAudio);
+        // Re-schedule remaining sounds from recovered phase position
+        scheduleAllHiitSounds(split, phase, cycle, endAt);
       }
     };
 

@@ -193,11 +193,11 @@ export default function FoodSearchSheet({ open, onClose, logId, mealId, onAdded,
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch("/api/food/items?limit=100", { headers });
+        const res = await fetch("/api/food/items?favorites=true&limit=100", { headers });
         if (res.ok) {
           const data = await res.json();
           const all: FoodItem[] = Array.isArray(data) ? data : data.items ?? [];
-          setFavorites(all.filter((f) => f.is_favorited).sort((a, b) => a.name.localeCompare(b.name)));
+          setFavorites(all.sort((a, b) => a.name.localeCompare(b.name)));
         }
       } catch { /* best-effort */ }
       setFavoritesLoaded(true);

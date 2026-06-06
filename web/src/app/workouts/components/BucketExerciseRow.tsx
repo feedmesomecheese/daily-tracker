@@ -52,6 +52,8 @@ type BucketExerciseRowProps = {
   registerFirstInput: (el: HTMLInputElement | null) => void;
   /** Focus the first input of the next row */
   focusNextRow: () => void;
+  /** Open the exercise stats sheet for this exercise */
+  onExerciseClick?: (exerciseId: string, exerciseName: string) => void;
 };
 
 const DEFAULT_SET_COUNT = 5;
@@ -64,6 +66,7 @@ export default function BucketExerciseRow({
   onRemove,
   registerFirstInput,
   focusNextRow,
+  onExerciseClick,
 }: BucketExerciseRowProps) {
   const {
     attributes,
@@ -114,6 +117,19 @@ export default function BucketExerciseRow({
   const toggleFlag = (index: number, flag: "is_pr" | "is_cycle_max" | "is_missed" | "is_move_up") => {
     const newSets = [...displaySets];
     newSets[index] = { ...newSets[index], [flag]: !newSets[index][flag] };
+    onUpdate({ ...data, sets: newSets });
+  };
+
+  const acceptAllGhosts = () => {
+    const newSets = displaySets.map((set, i) => {
+      const ghost = ghostSets[i];
+      if (!ghost) return set;
+      return {
+        ...set,
+        reps: set.reps || (ghost.reps != null ? String(ghost.reps) : set.reps),
+        weight: set.weight || (ghost.weight != null ? String(ghost.weight) : set.weight),
+      };
+    });
     onUpdate({ ...data, sets: newSets });
   };
 
@@ -196,12 +212,34 @@ export default function BucketExerciseRow({
 
       {/* Exercise content */}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium mb-1 truncate">{data.exercise_name_display}</div>
+        {data.exercise_id && onExerciseClick ? (
+          <button
+            type="button"
+            onClick={() => onExerciseClick(data.exercise_id!, data.exercise_name_display)}
+            className="text-sm font-medium mb-1 truncate text-left hover:text-primary hover:underline underline-offset-2 transition-colors"
+          >
+            {data.exercise_name_display}
+          </button>
+        ) : (
+          <div className="text-sm font-medium mb-1 truncate">{data.exercise_name_display}</div>
+        )}
 
         {data.input_type === "strength" && (
           <>
             {/* Set inputs */}
             <div className="flex items-start gap-1 overflow-x-auto pb-1">
+              {ghostSets.some((g) => g?.reps != null || g?.weight != null) && (
+                <button
+                  type="button"
+                  onClick={acceptAllGhosts}
+                  className="mt-3 flex-shrink-0 w-6 h-14 flex items-center justify-center text-amber-400 hover:text-amber-300 transition-colors"
+                  title="Accept previous session values"
+                >
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                  </svg>
+                </button>
+              )}
               {displaySets.map((set, i) => {
                 const ghost = ghostSets[i];
                 return (

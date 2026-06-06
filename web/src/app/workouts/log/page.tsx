@@ -214,7 +214,7 @@ export default function WorkoutLogPage() {
   }, [filteredWorkouts, filters.exerciseSearch, filters.groupId, filters.flags, exerciseGroupMap]);
 
   return (
-    <main className="p-4 sm:p-6 max-w-6xl mx-auto space-y-4">
+    <main className="p-4 pb-24 sm:p-6 sm:pb-24 max-w-6xl mx-auto space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">

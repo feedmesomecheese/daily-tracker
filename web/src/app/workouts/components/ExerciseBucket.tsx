@@ -35,12 +35,14 @@ type ExerciseBucketProps = {
   exercises: BucketExerciseData[];
   ghostData: GhostData;
   onExercisesChange: (exercises: BucketExerciseData[]) => void;
+  onExerciseClick?: (exerciseId: string, exerciseName: string) => void;
 };
 
 export default function ExerciseBucket({
   exercises,
   ghostData,
   onExercisesChange,
+  onExerciseClick,
 }: ExerciseBucketProps) {
   const sensors = useSensors(
     useSensor(MouseSensor),
@@ -204,6 +206,7 @@ export default function ExerciseBucket({
                   onRemove={() => removeExercise(index)}
                   registerFirstInput={registerFirstInput(ex.id)}
                   focusNextRow={focusNextRow(index)}
+                  onExerciseClick={onExerciseClick}
                 />
                 {index < exercises.length - 1 && (
                   <SupersetChainLink
