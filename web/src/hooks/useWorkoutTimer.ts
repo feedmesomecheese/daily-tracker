@@ -312,9 +312,14 @@ function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioC
 // ─── HIIT pre-scheduling ────────────────────────────────────────────────────────
 // Sounds are scheduled ahead of time using the Web Audio API timeline so they
 // fire even when JS is throttled (screen off, backgrounded app).
+//
+// Every scheduled node is stored so cancelHiitSchedule() can stop them before
+// they play (critical when skipping phases or pausing mid-session).
 
 let _hiitActive = false;
-const _scheduledHiitNodes: AudioBufferSourceNode[] = [];
+// Both AudioBufferSourceNode and OscillatorNode expose stop(when?)
+type StoppableNode = { stop: (when?: number) => void };
+const _scheduledHiitNodes: StoppableNode[] = [];
 
 function cancelHiitSchedule() {
   for (const node of _scheduledHiitNodes) {
@@ -326,6 +331,8 @@ function cancelHiitSchedule() {
 function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: number) {
   if (!audio.enabled) return;
   const soundType = audio.soundType ?? "tone";
+
+  // Prefer file-based buffer (pre-loaded by preloadSounds) — fully cancellable.
   const filePath = SOUND_FILES[soundType];
   if (filePath) {
     const buf = _bufferCache.get(filePath);
@@ -340,7 +347,28 @@ function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: numb
       _scheduledHiitNodes.push(src);
       return;
     }
+    // Buffer not yet loaded — fall through to synth
   }
+
+  if (soundType === "tone") {
+    // Simple beep: OscillatorNode is cancellable and stored.
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = audio.oscType ?? "sine";
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.setValueAtTime(audio.frequency ?? 440, when);
+    gain.gain.setValueAtTime(0.4, when);
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.5);
+    osc.start(when);
+    osc.stop(when + 0.5);
+    _scheduledHiitNodes.push(osc);
+    return;
+  }
+
+  // Complex synth fallback when buffer isn't loaded yet (rare after preloadSounds).
+  // These oscillators can't be cancelled, but this path should almost never fire
+  // during a live HIIT session.
   playSynthesized(soundType, audio, ctx, when);
 }
 
@@ -884,7 +912,11 @@ export function useWorkoutTimer(): WorkoutTimerState {
     setTabCompletedWorkCycles(0);
     tabRunningRef.current = true;
     setTabRunning(true);
-    // Immediately advance from idle; advancePhase will call scheduleAllHiitSounds
+    // Play the first phase's start sound immediately (advancePhase only schedules
+    // sounds from the phase-end onward, so the initial sound would otherwise be missed).
+    const firstResult = computeNextPhase("idle", 0, tabSplitRef.current);
+    if (firstResult.audio) playTone(firstResult.audio);
+    // Advance from idle; advancePhase sets state and calls scheduleAllHiitSounds
     setTimeout(advancePhase, 0);
   }, [advancePhase]);
 
