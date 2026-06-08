@@ -5,6 +5,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import SetInputCell from "./SetInputCell";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/components/ui/Toast";
 
 export type BucketSet = {
   reps: string;
@@ -83,6 +84,8 @@ export default function BucketExerciseRow({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const { toast } = useToast();
+
   // Ref map for set inputs: `reps-{i}` and `weight-{i}`
   const inputRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
 
@@ -144,6 +147,29 @@ export default function BucketExerciseRow({
       const el = inputRefs.current.get(`reps-${newSets.length - 1}`);
       el?.focus();
     });
+  };
+
+  const copyFromLeft = (targetIndex: number) => {
+    // Find the nearest populated set to the left of targetIndex
+    let sourceIndex = -1;
+    for (let i = targetIndex - 1; i >= 0; i--) {
+      if (displaySets[i].reps || displaySets[i].weight) {
+        sourceIndex = i;
+        break;
+      }
+    }
+
+    if (sourceIndex === -1) {
+      toast("Nothing to copy", "info");
+      return;
+    }
+
+    const src = displaySets[sourceIndex];
+    const newSets = [...displaySets];
+    for (let i = sourceIndex + 1; i <= targetIndex; i++) {
+      newSets[i] = { ...newSets[i], reps: src.reps, weight: src.weight };
+    }
+    onUpdate({ ...data, sets: newSets });
   };
 
   const handleRepsKeyDown = (setIdx: number) => (e: React.KeyboardEvent) => {
@@ -264,6 +290,7 @@ export default function BucketExerciseRow({
                     weightRef={setInputRef(`weight-${i}`)}
                     onRepsKeyDown={handleRepsKeyDown(i)}
                     onWeightKeyDown={handleWeightKeyDown(i)}
+                    onCopyLeft={i > 0 ? () => copyFromLeft(i) : undefined}
                   />
                 );
               })}

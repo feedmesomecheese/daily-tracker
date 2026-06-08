@@ -20,6 +20,7 @@ type SetInputCellProps = {
   weightRef?: (el: HTMLInputElement | null) => void;
   onRepsKeyDown?: (e: React.KeyboardEvent) => void;
   onWeightKeyDown?: (e: React.KeyboardEvent) => void;
+  onCopyLeft?: () => void;
 };
 
 export default function SetInputCell({
@@ -39,6 +40,7 @@ export default function SetInputCell({
   weightRef,
   onRepsKeyDown,
   onWeightKeyDown,
+  onCopyLeft,
 }: SetInputCellProps) {
   const localRepsRef = useRef<HTMLInputElement | null>(null);
   const localWeightRef = useRef<HTMLInputElement | null>(null);
@@ -126,6 +128,21 @@ export default function SetInputCell({
 
   return (
     <div className="flex flex-col items-center gap-0.5">
+      {onCopyLeft ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={onCopyLeft}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          title="Copy from previous set"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3">
+            <path d="M19 12H5M5 12l7-7M5 12l7 7" />
+          </svg>
+        </button>
+      ) : (
+        <span className="h-3" />
+      )}
       <span className="text-[10px] text-muted-foreground">S{setIndex + 1}</span>
       <input
         ref={setRepsRef}
