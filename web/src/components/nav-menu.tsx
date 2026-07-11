@@ -185,7 +185,7 @@ export function NavMenu() {
 
       {/* Mobile dropdown */}
       {mobileOpen && (
-        <div className="sm:hidden flex flex-col gap-1 pt-2 pb-1 text-sm border-t mt-2">
+        <div className="sm:hidden flex flex-col gap-1 pt-2 pb-1 text-sm border-t mt-2 max-h-[calc(100vh-4rem)] overflow-y-auto overscroll-contain">
           {modules.map((module) => (
             <div key={module.name}>
               <div className="px-1 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">

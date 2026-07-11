@@ -65,7 +65,7 @@ export async function POST(req: Request) {
     const docBlock: any = { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } };
 
     const response = await client.messages.create({
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
       max_tokens: 16000,
       messages: [
         {
