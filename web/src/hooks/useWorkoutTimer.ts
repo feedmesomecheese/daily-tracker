@@ -168,9 +168,9 @@ function getCtx(): AudioContext {
   if (!_ctx || _ctx.state === "closed") {
     _ctx = new AudioContext();
     _bufferCache.clear(); // old buffers are invalid for a new context
-    // Resume immediately if another audio app suspends our context while HIIT is running.
+    // Resume immediately if another audio app suspends our context while a timer is running.
     _ctx.addEventListener("statechange", () => {
-      if (_ctx?.state === "suspended" && _hiitActive) {
+      if (_ctx?.state === "suspended" && (_hiitActive || _cuActive)) {
         _ctx.resume().catch(() => {});
       }
     });
@@ -193,25 +193,29 @@ async function getBuffer(path: string): Promise<AudioBuffer | null> {
   }
 }
 
-/** Call on user gesture to warm up the AudioContext and pre-fetch sound files. */
-export function preloadSounds() {
-  if (typeof window === "undefined") return;
+/** Call on user gesture to warm up the AudioContext and pre-fetch sound files.
+ * Resolves once all sound buffers are cached, so callers can re-schedule with
+ * real files after a first run that fell back to synthesis. */
+export function preloadSounds(): Promise<void> {
+  if (typeof window === "undefined") return Promise.resolve();
   try {
     const ctx = getCtx();
     ctx.resume().catch(() => {});
-    for (const path of Object.values(SOUND_FILES)) {
-      getBuffer(path as string);
-    }
-  } catch {}
+    return Promise.all(
+      Object.values(SOUND_FILES).map((path) => getBuffer(path as string))
+    ).then(() => undefined);
+  } catch {
+    return Promise.resolve();
+  }
 }
 
 // ─── Audio helpers ─────────────────────────────────────────────────────────────
 
-function playOscTone(ctx: AudioContext, audio: AudioSettings, t = ctx.currentTime) {
+function playOscTone(ctx: AudioContext, audio: AudioSettings, t = ctx.currentTime, dest: AudioNode = ctx.destination) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
-  gain.connect(ctx.destination);
+  gain.connect(dest);
   osc.type = audio.oscType;
   osc.frequency.setValueAtTime(audio.frequency, t);
   gain.gain.setValueAtTime(0.4, t);
@@ -220,14 +224,14 @@ function playOscTone(ctx: AudioContext, audio: AudioSettings, t = ctx.currentTim
   osc.stop(t + 0.5);
 }
 
-function playBoxingBell(ctx: AudioContext, t = ctx.currentTime) {
+function playBoxingBell(ctx: AudioContext, t = ctx.currentTime, dest: AudioNode = ctx.destination) {
   const dur = 2.0;
   const osc1 = ctx.createOscillator();
   const osc2 = ctx.createOscillator();
   const gain1 = ctx.createGain();
   const gain2 = ctx.createGain();
-  osc1.connect(gain1); gain1.connect(ctx.destination);
-  osc2.connect(gain2); gain2.connect(ctx.destination);
+  osc1.connect(gain1); gain1.connect(dest);
+  osc2.connect(gain2); gain2.connect(dest);
   osc1.type = "triangle";
   osc1.frequency.setValueAtTime(920, t);
   osc1.frequency.exponentialRampToValueAtTime(820, t + 0.15);
@@ -241,11 +245,11 @@ function playBoxingBell(ctx: AudioContext, t = ctx.currentTime) {
   osc2.start(t); osc2.stop(t + dur * 0.5);
 }
 
-function playAirHorn(ctx: AudioContext, t = ctx.currentTime) {
+function playAirHorn(ctx: AudioContext, t = ctx.currentTime, dest: AudioNode = ctx.destination) {
   const dur = 1.3;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.connect(gain); gain.connect(ctx.destination);
+  osc.connect(gain); gain.connect(dest);
   osc.type = "sawtooth";
   osc.frequency.setValueAtTime(215, t);
   osc.frequency.setValueAtTime(228, t + 0.06);
@@ -258,11 +262,11 @@ function playAirHorn(ctx: AudioContext, t = ctx.currentTime) {
   osc.start(t); osc.stop(t + dur);
 }
 
-function playWhistle(ctx: AudioContext, t = ctx.currentTime) {
+function playWhistle(ctx: AudioContext, t = ctx.currentTime, dest: AudioNode = ctx.destination) {
   const dur = 0.65;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.connect(gain); gain.connect(ctx.destination);
+  osc.connect(gain); gain.connect(dest);
   osc.type = "sine";
   osc.frequency.setValueAtTime(2400, t);
   osc.frequency.linearRampToValueAtTime(2650, t + 0.15);
@@ -274,13 +278,13 @@ function playWhistle(ctx: AudioContext, t = ctx.currentTime) {
   osc.start(t); osc.stop(t + dur);
 }
 
-function playChime(ctx: AudioContext, t = ctx.currentTime) {
+function playChime(ctx: AudioContext, t = ctx.currentTime, dest: AudioNode = ctx.destination) {
   const freqs = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
   const dur = 2.0;
   freqs.forEach((freq, i) => {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
+    osc.connect(gain); gain.connect(dest);
     osc.type = "sine";
     const st = t + i * 0.12;
     osc.frequency.setValueAtTime(freq, st);
@@ -291,11 +295,11 @@ function playChime(ctx: AudioContext, t = ctx.currentTime) {
   });
 }
 
-function playBuzzer(ctx: AudioContext, t = ctx.currentTime) {
+function playBuzzer(ctx: AudioContext, t = ctx.currentTime, dest: AudioNode = ctx.destination) {
   const dur = 0.45;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-  osc.connect(gain); gain.connect(ctx.destination);
+  osc.connect(gain); gain.connect(dest);
   osc.type = "square";
   osc.frequency.setValueAtTime(160, t);
   gain.gain.setValueAtTime(0.3, t);
@@ -304,46 +308,109 @@ function playBuzzer(ctx: AudioContext, t = ctx.currentTime) {
   osc.start(t); osc.stop(t + dur);
 }
 
-function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioContext, t = ctx.currentTime) {
+function playSynthesized(soundType: SoundType, audio: AudioSettings, ctx: AudioContext, t = ctx.currentTime, dest: AudioNode = ctx.destination) {
   switch (soundType) {
-    case "boxing-bell": playBoxingBell(ctx, t); break;
-    case "air-horn":    playAirHorn(ctx, t);    break;
-    case "whistle":     playWhistle(ctx, t);    break;
-    case "chime":       playChime(ctx, t);      break;
-    case "buzzer":      playBuzzer(ctx, t);     break;
-    default:            playOscTone(ctx, audio, t); break;
+    case "boxing-bell": playBoxingBell(ctx, t, dest); break;
+    case "air-horn":    playAirHorn(ctx, t, dest);    break;
+    case "whistle":     playWhistle(ctx, t, dest);    break;
+    case "chime":       playChime(ctx, t, dest);      break;
+    case "buzzer":      playBuzzer(ctx, t, dest);     break;
+    default:            playOscTone(ctx, audio, t, dest); break;
   }
 }
 
-// ─── HIIT pre-scheduling ────────────────────────────────────────────────────────
+// ─── Pre-scheduling ─────────────────────────────────────────────────────────────
 // Sounds are scheduled ahead of time using the Web Audio API timeline so they
-// fire even when JS is throttled (screen off, backgrounded app).
+// fire even when JS is throttled or frozen (screen off, backgrounded PWA).
+// The ENTIRE remaining session is scheduled — HIIT is deterministic once
+// started, so every phase's beeps and transitions can sit on the timeline up
+// front. That way no JS needs to run at phase boundaries for audio to work.
 //
-// All pre-scheduled sounds are routed through a single session GainNode.
+// All pre-scheduled sounds are routed through a per-session GainNode.
 // Cancellation disconnects that node — instantly silences everything through it
 // regardless of individual node state, which is more reliable than stop(0) alone.
 
 let _hiitActive = false;
+let _cuActive = false;
 let _hiitSessionGain: GainNode | null = null;
+let _cuSessionGain: GainNode | null = null;
 type StoppableNode = { stop: (when?: number) => void };
 const _scheduledHiitNodes: StoppableNode[] = [];
+const _scheduledCuNodes: StoppableNode[] = [];
 
-function cancelHiitSchedule() {
-  // Disconnect session gain — immediately silences all sounds routed through it.
-  if (_hiitSessionGain) {
-    try { _hiitSessionGain.disconnect(); } catch {}
-    _hiitSessionGain = null;
-  }
-  // Belt-and-suspenders: also stop individual nodes.
-  for (const node of _scheduledHiitNodes) {
-    try { node.stop(0); } catch {}
-  }
-  _scheduledHiitNodes.length = 0;
+// Wall-clock ↔ audio-clock mapping captured at the last (re)schedule. While the
+// context is suspended its clock doesn't advance, so scheduled sounds slip late
+// relative to wall time. The tick compares these bases to detect that drift and
+// re-schedule with a fresh mapping.
+let _clockBaseMs = 0;
+let _clockBaseAudio = 0;
+
+/** How far (seconds) the audio clock has fallen behind wall clock since the last schedule. */
+function audioClockDrift(): number {
+  if (!_ctx || _clockBaseMs === 0) return 0;
+  return (Date.now() - _clockBaseMs) / 1000 - (_ctx.currentTime - _clockBaseAudio);
 }
 
-function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: number) {
+function cancelSchedule(nodes: StoppableNode[], gain: GainNode | null) {
+  // Disconnect session gain — immediately silences all sounds routed through it.
+  if (gain) {
+    try { gain.disconnect(); } catch {}
+  }
+  // Belt-and-suspenders: also stop individual nodes.
+  for (const node of nodes) {
+    try { node.stop(0); } catch {}
+  }
+  nodes.length = 0;
+}
+
+function cancelHiitSchedule() {
+  cancelSchedule(_scheduledHiitNodes, _hiitSessionGain);
+  _hiitSessionGain = null;
+}
+
+function cancelCuSchedule() {
+  cancelSchedule(_scheduledCuNodes, _cuSessionGain);
+  _cuSessionGain = null;
+}
+
+// ─── Keep-alive ─────────────────────────────────────────────────────────────────
+// Chrome suspends the AudioContext of a hidden page whose output is silent —
+// which kills pre-scheduled sounds when the screen is off or another app is on
+// top. While a timer is running we play a constant 30 Hz tone at a gain low
+// enough to be inaudible on any phone speaker but high enough that Chrome's
+// audibility detector keeps the context (and the page's audio pipeline) alive.
+let _keepAlive: { osc: OscillatorNode; gain: GainNode } | null = null;
+
+function updateKeepAlive() {
+  const wanted = _hiitActive || _cuActive;
+  if (wanted && !_keepAlive) {
+    try {
+      const ctx = getCtx();
+      ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 30;
+      gain.gain.value = 0.004;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      _keepAlive = { osc, gain };
+    } catch {}
+  } else if (!wanted && _keepAlive) {
+    try { _keepAlive.osc.stop(); _keepAlive.gain.disconnect(); } catch {}
+    _keepAlive = null;
+  }
+}
+
+function scheduleSoundAt(
+  ctx: AudioContext,
+  audio: AudioSettings,
+  when: number,
+  dest: AudioNode,
+  nodes: StoppableNode[]
+) {
   if (!audio.enabled) return;
-  const dest: AudioNode = _hiitSessionGain ?? ctx.destination;
   const soundType = audio.soundType ?? "tone";
 
   // Prefer file-based buffer (pre-loaded by preloadSounds).
@@ -358,7 +425,7 @@ function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: numb
       src.connect(gain);
       gain.connect(dest);
       src.start(when);
-      _scheduledHiitNodes.push(src);
+      nodes.push(src);
       return;
     }
     // Buffer not yet loaded — fall through to synth
@@ -376,27 +443,25 @@ function scheduleHiitSoundAt(ctx: AudioContext, audio: AudioSettings, when: numb
     gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.5);
     osc.start(when);
     osc.stop(when + 0.5);
-    _scheduledHiitNodes.push(osc);
+    nodes.push(osc);
     return;
   }
 
   // Complex synth fallback (rare — only if buffer not yet cached).
-  // Goes to dest so it's still silenced if session gain is disconnected.
-  playSynthesized(soundType, audio, ctx, when);
+  // Routed through dest so it's still silenced if the session gain is disconnected.
+  playSynthesized(soundType, audio, ctx, when, dest);
 }
 
-// Pre-schedule sounds for the CURRENT phase only. Keeping the window small
-// (≤5 nodes) makes cancellation reliable — no stale oscillators from future
-// phases can bleed through when the user skips or resets.
-//
-// The transition sound at phaseEnd fires even when the screen is off because
-// it's a Web Audio scheduled event. The next phase's sounds are scheduled by
-// advancePhase/handleReturnFromBackground when that phase begins.
-function scheduleCurrentPhaseHiitSounds(
+// Pre-schedule the ENTIRE remaining HIIT session from the current phase through
+// "done": countdown beeps, rest warnings, every transition sound, and the final
+// done sound. Nothing needs to run at phase boundaries — advancePhase only
+// updates UI state. Cancellation (pause/skip/reset) disconnects the session
+// gain, so a large node count is safe.
+function scheduleHiitSession(
   split: TabataSplit,
   phase: TabataPhase,
   cycle: number,
-  phaseEndAt: number  // Date.now() ms when this phase ends
+  phaseEndAt: number  // Date.now() ms when the CURRENT phase ends
 ) {
   cancelHiitSchedule(); // disconnects old session gain, clears node list
   if (typeof window === "undefined" || phase === "idle" || phase === "done") return;
@@ -411,38 +476,53 @@ function scheduleCurrentPhaseHiitSounds(
 
   const nowMs = Date.now();
   const nowAudio = ctx.currentTime;
+  _clockBaseMs = nowMs;
+  _clockBaseAudio = nowAudio;
   const toAudio = (ms: number) => nowAudio + Math.max(0, (ms - nowMs) / 1000);
+  const beep = (freq: number): AudioSettings =>
+    ({ enabled: true, soundType: "tone", frequency: freq, oscType: "sine" });
 
-  // 3-2-1 countdown beeps before this phase ends
-  for (const cd of [3, 2, 1]) {
-    const beepMs = phaseEndAt - cd * 1000;
-    if (beepMs > nowMs) {
-      scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 1200, oscType: "sine" }, toAudio(beepMs));
+  let curPhase: TabataPhase = phase;
+  let curCycle = cycle;
+  let curStartMs = -Infinity; // current phase already started
+  let curEndMs = phaseEndAt;
+
+  for (let guard = 0; curPhase !== "done" && guard < 400; guard++) {
+    // 3-2-1 countdown beeps before this phase ends
+    for (const cd of [3, 2, 1]) {
+      const beepMs = curEndMs - cd * 1000;
+      if (beepMs > nowMs && beepMs > curStartMs) {
+        scheduleSoundAt(ctx, beep(1200), toAudio(beepMs), _hiitSessionGain, _scheduledHiitNodes);
+      }
     }
-  }
 
-  // 30-second warning during long rest phases
-  if (phase === "off" && (split.off_seconds ?? 0) > 30) {
-    const warnMs = phaseEndAt - 30 * 1000;
-    if (warnMs > nowMs) {
-      scheduleHiitSoundAt(ctx, { enabled: true, soundType: "tone", frequency: 880, oscType: "sine" }, toAudio(warnMs));
+    // 30-second warning during long rest phases
+    if (curPhase === "off" && (split.off_seconds ?? 0) > 30) {
+      const warnMs = curEndMs - 30 * 1000;
+      if (warnMs > nowMs && warnMs > curStartMs) {
+        scheduleSoundAt(ctx, beep(880), toAudio(warnMs), _hiitSessionGain, _scheduledHiitNodes);
+      }
     }
-  }
 
-  // Transition sound at the end of this phase (= start of next phase).
-  // Scheduling it here ensures it fires even if JS is throttled when the phase ends.
-  const result = computeNextPhase(phase, cycle, split);
-  if (result.audio && phaseEndAt > nowMs) {
-    scheduleHiitSoundAt(ctx, result.audio, toAudio(phaseEndAt));
+    // Transition sound at the end of this phase (= start of next phase, or done).
+    const result = computeNextPhase(curPhase, curCycle, split);
+    if (result.audio && curEndMs > nowMs) {
+      scheduleSoundAt(ctx, result.audio, toAudio(curEndMs), _hiitSessionGain, _scheduledHiitNodes);
+    }
+
+    curPhase = result.nextPhase;
+    curCycle = result.nextCycle;
+    curStartMs = curEndMs;
+    curEndMs = curEndMs + result.nextDuration * 1000;
   }
 }
 
 // Debounced suspend: schedule a context suspend after a delay. Calling again
 // cancels and reschedules, so back-to-back sounds never suspend mid-sequence.
-// Skipped while HIIT is running so pre-scheduled sounds can fire uninterrupted.
+// Skipped while a timer is running so pre-scheduled sounds can fire uninterrupted.
 let _suspendTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleSuspend() {
-  if (_hiitActive) return;
+  if (_hiitActive || _cuActive) return;
   if (_suspendTimer !== null) clearTimeout(_suspendTimer);
   _suspendTimer = setTimeout(() => {
     _ctx?.suspend().catch(() => {});
@@ -824,12 +904,14 @@ export function useWorkoutTimer(): WorkoutTimerState {
       _hiitActive = false;
       setTabRunning(false);
       setTabPhaseRemaining(0);
+      updateKeepAlive();
+      setTimeout(scheduleSuspend, 3000); // after the done sound finishes
     } else {
       setTabPhaseRemaining(nextDuration);
       if (tabRunningRef.current) {
         const endAt = Date.now() + nextDuration * 1000;
         tabPhaseEndAt.current = endAt;
-        scheduleCurrentPhaseHiitSounds(tabSplitRef.current!, nextPhase, nextCycle, endAt);
+        scheduleHiitSession(tabSplitRef.current!, nextPhase, nextCycle, endAt);
       } else {
         tabPausedRemaining.current = nextDuration;
         tabPhaseEndAt.current = null;
@@ -838,19 +920,19 @@ export function useWorkoutTimer(): WorkoutTimerState {
   }, []);
 
   // Advance to the next phase (called by tick — always running).
+  // Audio is NOT touched here: the whole session's sounds are already on the
+  // Web Audio timeline (scheduleHiitSession). Cancelling/re-scheduling at phase
+  // boundaries is what used to kill late-running countdown beeps.
   const advancePhase = useCallback(() => {
     const split = tabSplitRef.current;
     if (!split) return;
+    const prevEndAt = tabPhaseEndAt.current ?? Date.now();
     const result = computeNextPhase(tabPhaseRef.current, tabCycleRef.current, split);
     if (tabPhaseRef.current === "on") {
       tabCompletedWorkCyclesRef.current += 1;
       setTabCompletedWorkCycles(tabCompletedWorkCyclesRef.current);
     }
     countdownFiredRef.current = new Set();
-
-    // The pre-scheduled transition sound has already fired. Play it immediately
-    // too so it's heard in case the pre-scheduled one was cancelled or missed.
-    if (result.audio) playTone(result.audio);
 
     tabPhaseRef.current = result.nextPhase;
     tabCycleRef.current = result.nextCycle;
@@ -863,12 +945,15 @@ export function useWorkoutTimer(): WorkoutTimerState {
       _hiitActive = false;
       setTabRunning(false);
       setTabPhaseRemaining(0);
-      cancelHiitSchedule();
+      // Don't cancel the schedule — the pre-scheduled done sound is playing right now.
+      updateKeepAlive();
+      setTimeout(scheduleSuspend, 3000); // after the done sound finishes
     } else {
-      const endAt = Date.now() + result.nextDuration * 1000;
+      // Chain from the previous phase's end so the UI countdown stays locked to
+      // the pre-scheduled audio timeline (the tick fires up to 100ms late).
+      const endAt = prevEndAt + result.nextDuration * 1000;
       tabPhaseEndAt.current = endAt;
-      setTabPhaseRemaining(result.nextDuration);
-      scheduleCurrentPhaseHiitSounds(split, result.nextPhase, result.nextCycle, endAt);
+      setTabPhaseRemaining(Math.max(1, Math.ceil((endAt - Date.now()) / 1000)));
     }
   }, []);
 
@@ -913,29 +998,34 @@ export function useWorkoutTimer(): WorkoutTimerState {
 
   const tabStart = useCallback(() => {
     if (!tabSplitRef.current) return;
-    preloadSounds(); // warm up AudioContext + pre-fetch sound files
     cancelHiitSchedule();
     _hiitActive = true;
-    setTabPhase("idle");
-    tabPhaseRef.current = "idle";
-    setTabCurrentCycle(0);
-    tabCycleRef.current = 0;
+    updateKeepAlive();
+    // Warm up AudioContext + pre-fetch sound files. On the first run after a
+    // page load the buffers aren't cached yet, so the initial schedule falls
+    // back to synthesis — re-schedule with the real files once they're loaded.
+    preloadSounds().then(() => {
+      const s = tabSplitRef.current;
+      if (s && tabRunningRef.current && tabPhaseEndAt.current != null
+          && tabPhaseRef.current !== "idle" && tabPhaseRef.current !== "done") {
+        scheduleHiitSession(s, tabPhaseRef.current, tabCycleRef.current, tabPhaseEndAt.current);
+      }
+    });
     tabPhaseEndAt.current = null;
     tabCompletedWorkCyclesRef.current = 0;
     setTabCompletedWorkCycles(0);
     tabRunningRef.current = true;
     setTabRunning(true);
-    // Play the first phase's start sound immediately (advancePhase only schedules
-    // sounds from the phase-end onward, so the initial sound would otherwise be missed).
-    const firstResult = computeNextPhase("idle", 0, tabSplitRef.current);
-    if (firstResult.audio) playTone(firstResult.audio);
-    // Advance from idle; advancePhase sets state and calls scheduleAllHiitSounds
-    setTimeout(advancePhase, 0);
-  }, [advancePhase]);
+    // Enter the first phase: applyPhase plays its start sound and pre-schedules
+    // the whole session from there.
+    applyPhase(computeNextPhase("idle", 0, tabSplitRef.current));
+  }, [applyPhase]);
 
   const tabPause = useCallback(() => {
     cancelHiitSchedule();
     _hiitActive = false;
+    updateKeepAlive();
+    scheduleSuspend();
     if (tabPhaseEndAt.current != null) {
       tabPausedRemaining.current = Math.max(0, Math.ceil((tabPhaseEndAt.current - Date.now()) / 1000));
       tabPhaseEndAt.current = null;
@@ -954,25 +1044,36 @@ export function useWorkoutTimer(): WorkoutTimerState {
   }, []);
 
   const tabResume = useCallback(() => {
-    preloadSounds(); // ensure AudioContext is initialized after potential suspend
     _hiitActive = true;
+    updateKeepAlive();
+    // Ensure AudioContext is initialized after potential suspend; re-schedule
+    // with real files once buffers are cached (first run after page load).
+    preloadSounds().then(() => {
+      const s = tabSplitRef.current;
+      if (s && tabRunningRef.current && tabPhaseEndAt.current != null
+          && tabPhaseRef.current !== "idle" && tabPhaseRef.current !== "done") {
+        scheduleHiitSession(s, tabPhaseRef.current, tabCycleRef.current, tabPhaseEndAt.current);
+      }
+    });
     if (tabPausedRemaining.current > 0) {
       tabPhaseEndAt.current = Date.now() + tabPausedRemaining.current * 1000;
     }
     tabRunningRef.current = true;
     setTabRunning(true);
-    // Re-schedule sounds for the current phase
+    // Re-schedule the remaining session from the current phase
     const split = tabSplitRef.current;
     const phase = tabPhaseRef.current;
     const cycle = tabCycleRef.current;
     if (split && phase !== "idle" && phase !== "done" && tabPhaseEndAt.current != null) {
-      scheduleCurrentPhaseHiitSounds(split, phase, cycle, tabPhaseEndAt.current);
+      scheduleHiitSession(split, phase, cycle, tabPhaseEndAt.current);
     }
   }, []);
 
   const tabReset = useCallback(() => {
     cancelHiitSchedule();
     _hiitActive = false;
+    updateKeepAlive();
+    scheduleSuspend();
     tabPhaseEndAt.current = null;
     tabPausedRemaining.current = 0;
     tabRunningRef.current = false;
@@ -998,6 +1099,8 @@ export function useWorkoutTimer(): WorkoutTimerState {
   const cuLastElapsedTickRef = useRef<number>(0);
   const cuRunningRef = useRef<boolean>(false);
   const cuPresetRef = useRef<CountUpPreset | null>(null);
+  // Elapsed-seconds boundary up to which interval/goal sounds are pre-scheduled
+  const cuScheduledUntilRef = useRef<number>(0);
 
   useEffect(() => { cuRunningRef.current = cuRunning; }, [cuRunning]);
   useEffect(() => { cuPresetRef.current = cuSelectedPreset; }, [cuSelectedPreset]);
@@ -1007,8 +1110,51 @@ export function useWorkoutTimer(): WorkoutTimerState {
     cuPresetRef.current = preset;
   }, []);
 
+  // Pre-schedule interval beeps + the goal sound on the Web Audio timeline so
+  // they fire while the app is backgrounded / screen is off (the JS tick is
+  // frozen then). A rolling window is used since count-up has no fixed end;
+  // the foreground tick tops it up.
+  const scheduleCuSounds = useCallback((horizonSec = 900) => {
+    cancelCuSchedule();
+    const preset = cuPresetRef.current;
+    if (!preset || !cuRunningRef.current || cuStartedAt.current == null) return;
+    let ctx: AudioContext;
+    try { ctx = getCtx(); } catch { return; }
+    if (_suspendTimer !== null) { clearTimeout(_suspendTimer); _suspendTimer = null; }
+
+    _cuSessionGain = ctx.createGain();
+    _cuSessionGain.connect(ctx.destination);
+
+    const nowMs = Date.now();
+    const nowAudio = ctx.currentTime;
+    _clockBaseMs = nowMs;
+    _clockBaseAudio = nowAudio;
+    const elapsedNow = cuAccumulated.current + (nowMs - cuStartedAt.current) / 1000;
+    const { interval_seconds, goal_seconds, interval_audio, goal_audio } = preset;
+
+    const from = Math.floor(elapsedNow) + 1;
+    const to = Math.floor(elapsedNow + horizonSec);
+    let count = 0;
+    for (let s = from; s <= to && count < 400; s++) {
+      const when = nowAudio + (s - elapsedNow);
+      if (goal_seconds > 0 && s === goal_seconds) {
+        if (!cuGoalFiredRef.current) {
+          scheduleSoundAt(ctx, goal_audio, when, _cuSessionGain, _scheduledCuNodes);
+          count++;
+        }
+        continue; // interval beep is suppressed on the goal second
+      }
+      if (interval_seconds > 0 && s % interval_seconds === 0) {
+        scheduleSoundAt(ctx, interval_audio, when, _cuSessionGain, _scheduledCuNodes);
+        count++;
+      }
+    }
+    cuScheduledUntilRef.current = to;
+  }, []);
+
   const cuStart = useCallback(() => {
-    preloadSounds();
+    _cuActive = true;
+    updateKeepAlive();
     cuAccumulated.current = 0;
     cuStartedAt.current = Date.now();
     cuGoalFiredRef.current = false;
@@ -1017,9 +1163,16 @@ export function useWorkoutTimer(): WorkoutTimerState {
     setCuElapsed(0);
     cuRunningRef.current = true;
     setCuRunning(true);
-  }, []);
+    scheduleCuSounds();
+    // Re-schedule with real files once buffers finish loading (first run after page load)
+    preloadSounds().then(() => { if (cuRunningRef.current) scheduleCuSounds(); });
+  }, [scheduleCuSounds]);
 
   const cuPause = useCallback(() => {
+    cancelCuSchedule();
+    _cuActive = false;
+    updateKeepAlive();
+    scheduleSuspend();
     if (cuStartedAt.current != null) {
       cuAccumulated.current += (Date.now() - cuStartedAt.current) / 1000;
       cuStartedAt.current = null;
@@ -1029,17 +1182,25 @@ export function useWorkoutTimer(): WorkoutTimerState {
   }, []);
 
   const cuResume = useCallback(() => {
-    preloadSounds();
+    _cuActive = true;
+    updateKeepAlive();
     cuStartedAt.current = Date.now();
     cuRunningRef.current = true;
     setCuRunning(true);
-  }, []);
+    scheduleCuSounds();
+    preloadSounds().then(() => { if (cuRunningRef.current) scheduleCuSounds(); });
+  }, [scheduleCuSounds]);
 
   const cuReset = useCallback(() => {
+    cancelCuSchedule();
+    _cuActive = false;
+    updateKeepAlive();
+    scheduleSuspend();
     cuAccumulated.current = 0;
     cuStartedAt.current = null;
     cuGoalFiredRef.current = false;
     cuLastElapsedTickRef.current = 0;
+    cuScheduledUntilRef.current = 0;
     cuRunningRef.current = false;
     setCuRunning(false);
     setCuElapsed(0);
@@ -1148,26 +1309,27 @@ export function useWorkoutTimer(): WorkoutTimerState {
       const now = Date.now();
       const elapsed = cuAccumulated.current + (now - cuStartedAt.current) / 1000;
       const elapsedInt = Math.floor(elapsed);
-      const lastInt = cuLastElapsedTickRef.current;
-      if (elapsedInt > lastInt) {
+      if (elapsedInt > cuLastElapsedTickRef.current) {
         cuLastElapsedTickRef.current = elapsedInt;
-        const preset = cuPresetRef.current;
-        if (preset) {
-          const { goal_seconds, goal_audio } = preset;
-          if (goal_seconds > 0 && elapsedInt >= goal_seconds && !cuGoalFiredRef.current) {
-            cuGoalFiredRef.current = true;
-            setCuGoalReached(true);
-            playTone(goal_audio);
-          }
-        }
       }
+      // If the audio clock stalled while backgrounded, the pre-scheduled sounds
+      // didn't fire on time — replay a missed goal sound and re-map the schedule.
+      const drifted = _ctx ? audioClockDrift() > 0.35 : true;
+      const preset = cuPresetRef.current;
+      if (preset && preset.goal_seconds > 0 && elapsedInt >= preset.goal_seconds && !cuGoalFiredRef.current) {
+        cuGoalFiredRef.current = true;
+        setCuGoalReached(true);
+        if (drifted) playTone(preset.goal_audio);
+      }
+      if (drifted) scheduleCuSounds();
     };
     document.addEventListener("visibilitychange", handleCuBackground);
     return () => document.removeEventListener("visibilitychange", handleCuBackground);
-  }, []);
+  }, [scheduleCuSounds]);
 
   // ── Unified tick interval ────────────────────────────────────────────────────
   const tickRef = useRef<() => void>(() => {});
+  const lastDriftCheckRef = useRef(0);
 
   useEffect(() => {
     tickRef.current = () => {
@@ -1180,7 +1342,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
       }
 
       // Tabata tick: only update remaining time display and trigger phase advance.
-      // Countdown beeps and warning tones are pre-scheduled via scheduleAllHiitSounds.
+      // All sounds are pre-scheduled via scheduleHiitSession.
       if (tabPhaseEndAt.current != null) {
         const remaining = Math.ceil((tabPhaseEndAt.current - now) / 1000);
         if (remaining <= 0) {
@@ -1190,32 +1352,44 @@ export function useWorkoutTimer(): WorkoutTimerState {
         }
       }
 
-      // Count-up tick
+      // Count-up tick: display + goal state. Sounds are pre-scheduled; top up
+      // the rolling window as elapsed time approaches its edge.
       if (cuStartedAt.current != null) {
         const elapsed = cuAccumulated.current + (now - cuStartedAt.current) / 1000;
         setCuElapsed(elapsed);
         const elapsedInt = Math.floor(elapsed);
-        const lastInt = cuLastElapsedTickRef.current;
-        if (elapsedInt > lastInt) {
+        if (elapsedInt > cuLastElapsedTickRef.current) {
           cuLastElapsedTickRef.current = elapsedInt;
           const preset = cuPresetRef.current;
-          if (preset) {
-            const { interval_seconds, goal_seconds, interval_audio, goal_audio } = preset;
-            if (goal_seconds > 0 && elapsedInt >= goal_seconds && !cuGoalFiredRef.current) {
-              cuGoalFiredRef.current = true;
-              setCuGoalReached(true);
-              playTone(goal_audio);
-            }
-            if (interval_seconds > 0 && elapsedInt > 0 && elapsedInt % interval_seconds === 0) {
-              if (!(goal_seconds > 0 && elapsedInt === goal_seconds)) {
-                playTone(interval_audio);
-              }
-            }
+          if (preset && preset.goal_seconds > 0 && elapsedInt >= preset.goal_seconds && !cuGoalFiredRef.current) {
+            cuGoalFiredRef.current = true;
+            setCuGoalReached(true);
+            // The goal sound itself comes from the pre-scheduled timeline.
+          }
+        }
+        if (cuRunningRef.current && cuScheduledUntilRef.current - elapsedInt < 300) {
+          scheduleCuSounds();
+        }
+      }
+
+      // Drift resync: if the audio clock stalled (context was suspended by the
+      // OS or another app), the pre-scheduled sounds are now late relative to
+      // wall clock — re-schedule everything with a fresh clock mapping.
+      if (now - lastDriftCheckRef.current >= 2000) {
+        lastDriftCheckRef.current = now;
+        if (_ctx && _ctx.state === "running" && audioClockDrift() > 0.35) {
+          const split = tabSplitRef.current;
+          if (_hiitActive && split && tabPhaseEndAt.current != null
+              && tabPhaseRef.current !== "idle" && tabPhaseRef.current !== "done") {
+            scheduleHiitSession(split, tabPhaseRef.current, tabCycleRef.current, tabPhaseEndAt.current);
+          }
+          if (cuRunningRef.current && cuStartedAt.current != null) {
+            scheduleCuSounds();
           }
         }
       }
     };
-  }, [advancePhase]);
+  }, [advancePhase, scheduleCuSounds]);
 
   useEffect(() => {
     const id = setInterval(() => tickRef.current(), 100);
@@ -1254,10 +1428,11 @@ export function useWorkoutTimer(): WorkoutTimerState {
   }, [anyRunning]);
 
   // Resume AudioContext when tab becomes visible (e.g. user wakes screen).
-  // iOS may suspend the context on screen-off; this recovers it when the screen comes back on.
+  // The OS may suspend the context on screen-off despite the keep-alive; this
+  // recovers it when the screen comes back on.
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && tabRunningRef.current && _ctx) {
+      if (document.visibilityState === "visible" && (tabRunningRef.current || cuRunningRef.current) && _ctx) {
         _ctx.resume().catch(() => {});
       }
     };
@@ -1265,8 +1440,11 @@ export function useWorkoutTimer(): WorkoutTimerState {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  // When returning from background, silently skip through any phases that elapsed
-  // while JS was suspended, then play only the current phase's audio once.
+  // When returning from background, silently fast-forward the UI through any
+  // phases that elapsed while JS was frozen. The pre-scheduled session normally
+  // played every sound on time while we were away — only if the audio clock
+  // stalled (context suspended) do we replay the current phase's audio and
+  // re-schedule with a fresh clock mapping.
   useEffect(() => {
     const handleReturnFromBackground = () => {
       if (document.visibilityState !== "visible") return;
@@ -1274,7 +1452,15 @@ export function useWorkoutTimer(): WorkoutTimerState {
       if (!split || !tabRunningRef.current || tabPhaseEndAt.current == null) return;
 
       const now = Date.now();
-      if (tabPhaseEndAt.current > now) return; // still within the current phase
+      const drifted = _ctx ? audioClockDrift() > 0.35 : true;
+
+      if (tabPhaseEndAt.current > now) {
+        // Still within the current phase — re-map the schedule only if it stalled.
+        if (drifted) {
+          scheduleHiitSession(split, tabPhaseRef.current, tabCycleRef.current, tabPhaseEndAt.current);
+        }
+        return;
+      }
 
       let phase = tabPhaseRef.current;
       let cycle = tabCycleRef.current;
@@ -1305,20 +1491,28 @@ export function useWorkoutTimer(): WorkoutTimerState {
         _hiitActive = false;
         setTabRunning(false);
         setTabPhaseRemaining(0);
-        cancelHiitSchedule();
-        playTone(split.done_audio);
+        updateKeepAlive();
+        if (drifted) {
+          // The scheduled done sound never fired — cancel stale nodes and replay it.
+          cancelHiitSchedule();
+          playTone(split.done_audio);
+        }
+        setTimeout(scheduleSuspend, 3000);
       } else {
         tabPhaseEndAt.current = endAt;
         const remaining = Math.max(1, Math.ceil((endAt - now) / 1000));
         setTabPhaseRemaining(remaining);
-        const phaseAudio =
-          phase === "on"       ? split.on_audio :
-          phase === "off"      ? split.off_audio :
-          phase === "warmup"   ? split.warmup_audio :
-          phase === "cooldown" ? split.cooldown_audio : null;
-        if (phaseAudio) playTone(phaseAudio);
-        // Re-schedule sounds for the recovered phase
-        scheduleCurrentPhaseHiitSounds(split, phase, cycle, endAt);
+        if (drifted) {
+          // Sounds were missed while the context was stalled — announce the
+          // current phase and re-schedule the rest with a fresh mapping.
+          const phaseAudio =
+            phase === "on"       ? split.on_audio :
+            phase === "off"      ? split.off_audio :
+            phase === "warmup"   ? split.warmup_audio :
+            phase === "cooldown" ? split.cooldown_audio : null;
+          if (phaseAudio) playTone(phaseAudio);
+          scheduleHiitSession(split, phase, cycle, endAt);
+        }
       }
     };
 
