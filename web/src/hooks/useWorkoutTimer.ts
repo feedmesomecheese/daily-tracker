@@ -168,6 +168,12 @@ function getCtx(): AudioContext {
   if (!_ctx || _ctx.state === "closed") {
     _ctx = new AudioContext();
     _bufferCache.clear(); // old buffers are invalid for a new context
+    // Output routing belongs to the old context — rebuild lazily.
+    _masterGain = null;
+    _mediaStreamDest = null;
+    _usingMediaEl = false;
+    try { _mediaEl?.pause(); } catch {}
+    _mediaEl = null;
     // Resume immediately if another audio app suspends our context while a timer is running.
     _ctx.addEventListener("statechange", () => {
       if (_ctx?.state === "suspended" && (_hiitActive || _cuActive)) {
@@ -178,6 +184,72 @@ function getCtx(): AudioContext {
   return _ctx;
 }
 
+
+// ─── Output routing ─────────────────────────────────────────────────────────────
+// All timer audio flows through one master GainNode. While a timer is running
+// the master is routed into a MediaStream played by an <audio> element: a page
+// playing live media (like a WebRTC call) is NOT suspended by Chrome when the
+// screen turns off, whereas a bare AudioContext whose output it judges silent
+// is — which froze pre-scheduled sounds during long quiet stretches (e.g. a
+// single 5-minute block). Falls back to ctx.destination if the element can't
+// start (autoplay policy, old browser).
+let _masterGain: GainNode | null = null;
+let _mediaStreamDest: MediaStreamAudioDestinationNode | null = null;
+let _mediaEl: HTMLAudioElement | null = null;
+let _usingMediaEl = false;
+
+function getMasterOut(ctx: AudioContext): AudioNode {
+  if (_masterGain) return _masterGain;
+  _masterGain = ctx.createGain();
+  _masterGain.connect(ctx.destination); // default route until the media element starts
+  try {
+    _mediaStreamDest = ctx.createMediaStreamDestination();
+    const el = new Audio();
+    el.srcObject = _mediaStreamDest.stream;
+    _mediaEl = el;
+  } catch {
+    _mediaStreamDest = null;
+    _mediaEl = null;
+  }
+  return _masterGain;
+}
+
+// Call from a user gesture (timer start/resume). Switches the master route to
+// the media element once playback is confirmed.
+function ensureMediaRoute() {
+  if (typeof window === "undefined" || _usingMediaEl) return;
+  try { getMasterOut(getCtx()); } catch { return; }
+  if (!_mediaEl || !_mediaStreamDest || !_masterGain) return;
+  _mediaEl.play().then(() => {
+    if (_usingMediaEl || !_masterGain || !_mediaStreamDest) return;
+    _usingMediaEl = true;
+    try { _masterGain.disconnect(); } catch {}
+    _masterGain.connect(_mediaStreamDest);
+    try {
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: "Workout Timer", artist: "Daily Tracker" });
+        navigator.mediaSession.playbackState = "playing";
+        // Keep timer control in-app: system media buttons must not silently pause the sounds.
+        for (const action of ["play", "pause", "stop"] as MediaSessionAction[]) {
+          try { navigator.mediaSession.setActionHandler(action, () => {}); } catch {}
+        }
+      }
+    } catch {}
+  }).catch(() => { /* stay routed to ctx.destination */ });
+}
+
+function releaseMediaRoute() {
+  if (!_usingMediaEl) return;
+  _usingMediaEl = false;
+  try { _mediaEl?.pause(); } catch {}
+  if (_masterGain && _ctx) {
+    try { _masterGain.disconnect(); } catch {}
+    try { _masterGain.connect(_ctx.destination); } catch {}
+  }
+  try {
+    if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "none";
+  } catch {}
+}
 
 async function getBuffer(path: string): Promise<AudioBuffer | null> {
   if (_bufferCache.has(path)) return _bufferCache.get(path)!;
@@ -387,19 +459,21 @@ function updateKeepAlive() {
     try {
       const ctx = getCtx();
       ctx.resume().catch(() => {});
+      ensureMediaRoute(); // reached from a user gesture (timer start/resume)
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = "sine";
       osc.frequency.value = 30;
       gain.gain.value = 0.004;
       osc.connect(gain);
-      gain.connect(ctx.destination);
+      gain.connect(getMasterOut(ctx));
       osc.start();
       _keepAlive = { osc, gain };
     } catch {}
   } else if (!wanted && _keepAlive) {
     try { _keepAlive.osc.stop(); _keepAlive.gain.disconnect(); } catch {}
     _keepAlive = null;
+    releaseMediaRoute();
   }
 }
 
@@ -472,7 +546,7 @@ function scheduleHiitSession(
 
   // Fresh session gain — all sounds here route through it.
   _hiitSessionGain = ctx.createGain();
-  _hiitSessionGain.connect(ctx.destination);
+  _hiitSessionGain.connect(getMasterOut(ctx));
 
   const nowMs = Date.now();
   const nowAudio = ctx.currentTime;
@@ -548,13 +622,13 @@ export function playTone(audio: AudioSettings) {
         const gain = ctx.createGain();
         gain.gain.setValueAtTime(0.8, ctx.currentTime);
         src.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(getMasterOut(ctx));
         src.start();
         src.onended = scheduleSuspend;
         return;
       }
     }
-    playSynthesized(soundType, audio, ctx);
+    playSynthesized(soundType, audio, ctx, ctx.currentTime, getMasterOut(ctx));
     const dur = SYNTH_DURATIONS[soundType] ?? 0.5;
     setTimeout(scheduleSuspend, (dur + 0.1) * 1000);
   };
@@ -1123,7 +1197,7 @@ export function useWorkoutTimer(): WorkoutTimerState {
     if (_suspendTimer !== null) { clearTimeout(_suspendTimer); _suspendTimer = null; }
 
     _cuSessionGain = ctx.createGain();
-    _cuSessionGain.connect(ctx.destination);
+    _cuSessionGain.connect(getMasterOut(ctx));
 
     const nowMs = Date.now();
     const nowAudio = ctx.currentTime;
@@ -1434,6 +1508,11 @@ export function useWorkoutTimer(): WorkoutTimerState {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible" && (tabRunningRef.current || cuRunningRef.current) && _ctx) {
         _ctx.resume().catch(() => {});
+        // If the OS paused the media element (audio focus loss), all routed
+        // sound is silent — restart it, or fall back to the direct route.
+        if (_usingMediaEl && _mediaEl?.paused) {
+          _mediaEl.play().catch(() => releaseMediaRoute());
+        }
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
