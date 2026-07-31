@@ -106,8 +106,8 @@ export function RadarChart({
         <Radar
           name={primaryLabel}
           dataKey="value"
-          stroke="#3b82f6"
-          fill="#3b82f6"
+          stroke="var(--chart-1)"
+          fill="var(--chart-1)"
           fillOpacity={0.5}
           strokeWidth={2}
         />
@@ -115,8 +115,8 @@ export function RadarChart({
           <Radar
             name={compareLabel}
             dataKey="compare"
-            stroke="#f97316"
-            fill="#f97316"
+            stroke="var(--chart-6)"
+            fill="var(--chart-6)"
             fillOpacity={0.3}
             strokeWidth={2}
           />

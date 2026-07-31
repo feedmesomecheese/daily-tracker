@@ -376,7 +376,7 @@ function TrendDetail({
                   <Line
                     type="monotone"
                     dataKey="value"
-                    stroke="#3b82f6"
+                    stroke="var(--chart-1)"
                     dot={false}
                     strokeWidth={1.5}
                     animationDuration={300}
@@ -385,7 +385,7 @@ function TrendDetail({
                     <Line
                       type="monotone"
                       dataKey="ma7"
-                      stroke="#f59e0b"
+                      stroke="var(--chart-4)"
                       dot={false}
                       strokeWidth={2}
                       strokeDasharray="5 5"
@@ -482,7 +482,7 @@ function TrendDetail({
                         return (
                           <Cell
                             key={i}
-                            fill={refVal != null ? (isGood ? "#22c55e" : "#ef4444") : "#3b82f6"}
+                            fill={refVal != null ? (isGood ? "var(--status-good)" : "var(--status-danger)") : "var(--chart-1)"}
                             fillOpacity={0.7}
                           />
                         );
@@ -591,7 +591,7 @@ function DayOfWeekDetail({ data }: { data: DetailData }) {
                       return (
                         <Cell
                           key={i}
-                          fill={refVal != null ? (isGood ? "#22c55e" : "#ef4444") : "#3b82f6"}
+                          fill={refVal != null ? (isGood ? "var(--status-good)" : "var(--status-danger)") : "var(--chart-1)"}
                           fillOpacity={0.7}
                         />
                       );
@@ -803,7 +803,7 @@ function NumericNumericDetail({ data }: { data: DetailData }) {
                     );
                   }}
                 />
-                <Scatter data={points} fill="#3b82f6" fillOpacity={0.6} />
+                <Scatter data={points} fill="var(--chart-1)" fillOpacity={0.6} />
               </ScatterChart>
             </ResponsiveContainer>
           </div>
@@ -850,7 +850,7 @@ function CheckboxNumericDetail({ data }: { data: DetailData }) {
                   {barData.map((entry, i) => {
                     const isHigher = entry.avg >= barData[1 - i].avg;
                     const isGood = hib ? isHigher : !isHigher;
-                    return <Cell key={i} fill={isGood ? "#22c55e" : "#ef4444"} fillOpacity={0.7} />;
+                    return <Cell key={i} fill={isGood ? "var(--status-good)" : "var(--status-danger)"} fillOpacity={0.7} />;
                   })}
                 </Bar>
               </BarChart>
@@ -872,13 +872,13 @@ function CheckboxNumericDetail({ data }: { data: DetailData }) {
                   <Tooltip content={<ChartTooltip formatter={(e) => `${e.name}: ${e.value}`} />} />
                   <Scatter
                     data={(data.distribution as { date: string; value: number; checked: boolean }[]).filter((d) => d.checked)}
-                    fill="#22c55e"
+                    fill="var(--status-good)"
                     fillOpacity={0.6}
                     name="Checked"
                   />
                   <Scatter
                     data={(data.distribution as { date: string; value: number; checked: boolean }[]).filter((d) => !d.checked)}
-                    fill="#94a3b8"
+                    fill="var(--chart-axis)"
                     fillOpacity={0.4}
                     name="Not checked"
                   />
@@ -923,7 +923,7 @@ function TimeLaggedDetail({ data }: { data: DetailData }) {
                   {barData.map((entry, i) => {
                     const isHigher = entry.avg >= barData[1 - i].avg;
                     const isGood = hib ? isHigher : !isHigher;
-                    return <Cell key={i} fill={isGood ? "#22c55e" : "#ef4444"} fillOpacity={0.7} />;
+                    return <Cell key={i} fill={isGood ? "var(--status-good)" : "var(--status-danger)"} fillOpacity={0.7} />;
                   })}
                 </Bar>
               </BarChart>
@@ -962,7 +962,7 @@ function CheckboxCheckboxDetail({ data }: { data: DetailData }) {
                   {barData.map((entry, i) => (
                     <Cell
                       key={i}
-                      fill={i === 0 ? "#3b82f6" : "#94a3b8"}
+                      fill={i === 0 ? "var(--chart-1)" : "var(--chart-axis)"}
                       fillOpacity={0.7}
                     />
                   ))}
@@ -1017,12 +1017,12 @@ function HistogramDetail({ data }: { data: DetailData }) {
                     x={bins.findIndex((b) => stats.mean >= b.binStart && stats.mean < b.binEnd) >= 0
                       ? bins[bins.findIndex((b) => stats.mean >= b.binStart && stats.mean < b.binEnd)].label
                       : undefined}
-                    stroke="#f59e0b"
+                    stroke="var(--chart-4)"
                     strokeDasharray="5 5"
-                    label={{ value: `Mean: ${formatValue(stats.mean, metricType)}`, fontSize: 9, fill: "#f59e0b", position: "top" }}
+                    label={{ value: `Mean: ${formatValue(stats.mean, metricType)}`, fontSize: 9, fill: "var(--chart-4)", position: "top" }}
                   />
                 )}
-                <Bar dataKey="count" fill="#3b82f6" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="count" fill="var(--chart-1)" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -1140,8 +1140,8 @@ function CumulativeDetail({ data }: { data: DetailData }) {
                   <Area
                     type="monotone"
                     dataKey="cumulativeTotal"
-                    stroke="#3b82f6"
-                    fill="#3b82f6"
+                    stroke="var(--chart-1)"
+                    fill="var(--chart-1)"
                     fillOpacity={0.15}
                     strokeWidth={2}
                     animationDuration={300}
@@ -1164,7 +1164,7 @@ function CumulativeDetail({ data }: { data: DetailData }) {
                   <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={formatShortDate} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => formatValue(v, metricType)} />
                   <Tooltip content={<ChartTooltip formatter={(e) => `${formatValue(Number(e.value), metricType)}`} />} />
-                  <Line type="monotone" dataKey="pace" stroke="#f59e0b" strokeDasharray="8 4" strokeWidth={2} dot animationDuration={300} />
+                  <Line type="monotone" dataKey="pace" stroke="var(--chart-4)" strokeDasharray="8 4" strokeWidth={2} dot animationDuration={300} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -1408,7 +1408,7 @@ function StreakTimelineDetail({ data }: { data: DetailData }) {
                   className="relative group"
                   style={{
                     width: `${Math.max(widthPct, 0.5)}%`,
-                    backgroundColor: s.type === "active" ? "#22c55e" : "#e5e7eb",
+                    backgroundColor: s.type === "active" ? "var(--status-good)" : "var(--chart-grid)",
                     minWidth: 2,
                   }}
                   title={`${s.type === "active" ? "Streak" : "Gap"}: ${s.length}d (${s.startDate} to ${s.endDate})`}
@@ -1439,7 +1439,7 @@ function StreakTimelineDetail({ data }: { data: DetailData }) {
                   <XAxis dataKey="range" tick={{ fontSize: 10 }} />
                   <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                   <Tooltip formatter={(value: number) => [`${value} streaks`, "Count"]} />
-                  <Bar dataKey="count" fill="#22c55e" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="count" fill="var(--status-good)" fillOpacity={0.7} radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1480,7 +1480,7 @@ function CandleShape(props: any) {
 
   const { open, high, low, close } = payload;
   const isGreen = close >= open;
-  const color = isGreen ? "#22c55e" : "#ef4444";
+  const color = isGreen ? "var(--status-good)" : "var(--status-danger)";
 
   const bodyTop = yScale(Math.max(open, close));
   const bodyBottom = yScale(Math.min(open, close));

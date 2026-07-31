@@ -384,7 +384,7 @@ function FullWidthSparkline({
 }) {
   const startAvg = maValues.slice(0, 3).reduce((a, b) => a + b, 0) / Math.min(3, maValues.length);
   const endAvg = maValues.slice(-3).reduce((a, b) => a + b, 0) / Math.min(3, maValues.length);
-  const strokeColor = endAvg > startAvg ? "#22c55e" : endAvg < startAvg ? "#ef4444" : "#6b7280";
+  const strokeColor = endAvg > startAvg ? "var(--status-good)" : endAvg < startAvg ? "var(--status-danger)" : "var(--chart-axis)";
 
   const data = maValues.map((v, i) => ({
     i,
@@ -399,8 +399,8 @@ function FullWidthSparkline({
         <Line
           type="monotone"
           dataKey="daily"
-          stroke="#94a3b8"
-          dot={{ r: 2.5, fill: "#94a3b8", strokeWidth: 0, opacity: 0.6 }}
+          stroke="var(--chart-axis)"
+          dot={{ r: 2.5, fill: "var(--chart-axis)", strokeWidth: 0, opacity: 0.6 }}
           activeDot={false}
           strokeWidth={0}
           isAnimationActive={true}
@@ -1434,13 +1434,13 @@ export function MetricStatsSheet({
                           <ReferenceLine
                             key={`year-${marker.year}`}
                             x={marker.date}
-                            stroke="#374151"
+                            stroke="var(--chart-grid)"
                             strokeWidth={2}
                             label={{
                               value: String(marker.year),
                               position: "insideTopRight",
                               fontSize: 11,
-                              fill: "#374151",
+                              fill: "var(--chart-grid)",
                               fontWeight: "bold",
                             }}
                           />
@@ -1496,10 +1496,10 @@ export function MetricStatsSheet({
                           content={({ payload }) => {
                             // Force specific order regardless of what Recharts provides
                             const orderedItems = [
-                              { dataKey: "ma7", name: "7-day", color: "#3b82f6" },
-                              { dataKey: "ma30", name: "30-day", color: "#10b981" },
-                              { dataKey: "ma90", name: "90-day", color: "#f59e0b" },
-                              { dataKey: "ma180", name: "180-day", color: "#8b5cf6" },
+                              { dataKey: "ma7", name: "7-day", color: "var(--chart-1)" },
+                              { dataKey: "ma30", name: "30-day", color: "var(--chart-5)" },
+                              { dataKey: "ma90", name: "90-day", color: "var(--chart-4)" },
+                              { dataKey: "ma180", name: "180-day", color: "var(--chart-3)" },
                             ];
                             return (
                               <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
@@ -1585,7 +1585,7 @@ export function MetricStatsSheet({
                           type="monotone"
                           dataKey="ma7"
                           name="7-day"
-                          stroke="#3b82f6"
+                          stroke="var(--chart-1)"
                           dot={false}
                           strokeWidth={2}
                           connectNulls
@@ -1595,7 +1595,7 @@ export function MetricStatsSheet({
                           type="monotone"
                           dataKey="ma30"
                           name="30-day"
-                          stroke="#10b981"
+                          stroke="var(--chart-5)"
                           dot={false}
                           strokeWidth={2}
                           connectNulls
@@ -1605,7 +1605,7 @@ export function MetricStatsSheet({
                           type="monotone"
                           dataKey="ma90"
                           name="90-day"
-                          stroke="#f59e0b"
+                          stroke="var(--chart-4)"
                           dot={false}
                           strokeWidth={2}
                           connectNulls
@@ -1615,7 +1615,7 @@ export function MetricStatsSheet({
                           type="monotone"
                           dataKey="ma180"
                           name="180-day"
-                          stroke="#8b5cf6"
+                          stroke="var(--chart-3)"
                           dot={false}
                           strokeWidth={2}
                           connectNulls
@@ -1629,7 +1629,7 @@ export function MetricStatsSheet({
                               type="monotone"
                               dataKey="ma7_ly"
                               name="7-day (LY)"
-                              stroke="#3b82f6"
+                              stroke="var(--chart-1)"
                               strokeOpacity={0.4}
                               strokeDasharray="4 4"
                               dot={false}
@@ -1641,7 +1641,7 @@ export function MetricStatsSheet({
                               type="monotone"
                               dataKey="ma30_ly"
                               name="30-day (LY)"
-                              stroke="#10b981"
+                              stroke="var(--chart-5)"
                               strokeOpacity={0.4}
                               strokeDasharray="4 4"
                               dot={false}

@@ -69,12 +69,12 @@ const FORMAT_COLORS = {
 };
 
 const GENRE_COLORS = [
-  "#6366f1", // indigo
-  "#8b5cf6", // violet
-  "#a855f7", // purple
-  "#d946ef", // fuchsia
-  "#ec4899", // pink
-  "#f43f5e", // rose
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+  "var(--chart-6)",
   "#f97316", // orange
   "#eab308", // yellow
   "#22c55e", // green
@@ -496,9 +496,9 @@ export default function BooksStatsPage() {
                   <Line
                     type="monotone"
                     dataKey="pagesPerDay"
-                    stroke="#3b82f6"
+                    stroke="var(--chart-1)"
                     strokeWidth={2}
-                    dot={{ fill: "#3b82f6", r: 4 }}
+                    dot={{ fill: "var(--chart-1)", r: 4 }}
                     name="Pages/Day"
                     activeDot={{ r: 6, cursor: "pointer" }}
                   />
@@ -532,7 +532,7 @@ export default function BooksStatsPage() {
                   <XAxis dataKey="rating" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#f59e0b" radius={[4, 4, 0, 0]} name="Books" />
+                  <Bar dataKey="count" fill="var(--chart-4)" radius={[4, 4, 0, 0]} name="Books" />
                 </BarChart>
               </ResponsiveContainer>
             </div>

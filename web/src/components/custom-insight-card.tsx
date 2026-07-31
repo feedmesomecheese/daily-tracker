@@ -167,7 +167,7 @@ function MiniTrendChart({ data }: { data: DetailData }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <LineChart data={sampled} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-        <Line type="monotone" dataKey="value" stroke="#3b82f6" dot={false} strokeWidth={1.5} isAnimationActive={false} />
+        <Line type="monotone" dataKey="value" stroke="var(--chart-1)" dot={false} strokeWidth={1.5} isAnimationActive={false} />
         <ReferenceLine y={data.overallAvg} stroke="#888" strokeDasharray="3 3" />
       </LineChart>
     </ResponsiveContainer>
@@ -181,7 +181,7 @@ function MiniHistogramChart({ data }: { data: DetailData }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={bins} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-        <Bar dataKey="count" fill="#3b82f6" fillOpacity={0.7} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+        <Bar dataKey="count" fill="var(--chart-1)" fillOpacity={0.7} radius={[2, 2, 0, 0]} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -197,7 +197,7 @@ function MiniCumulativeChart({ data }: { data: DetailData }) {
   return (
     <ResponsiveContainer width="100%" height="100%">
       <AreaChart data={sampled} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-        <Area type="monotone" dataKey="cumulativeTotal" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} strokeWidth={1.5} isAnimationActive={false} />
+        <Area type="monotone" dataKey="cumulativeTotal" stroke="var(--chart-1)" fill="var(--chart-1)" fillOpacity={0.15} strokeWidth={1.5} isAnimationActive={false} />
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -211,7 +211,7 @@ function MiniDayOfWeekChart({ data }: { data: DetailData }) {
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={dayAverages} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
         <XAxis dataKey="day" tick={{ fontSize: 8 }} tickFormatter={(d) => d.slice(0, 2)} />
-        <Bar dataKey="avg" fill="#3b82f6" fillOpacity={0.7} radius={[2, 2, 0, 0]} isAnimationActive={false} />
+        <Bar dataKey="avg" fill="var(--chart-1)" fillOpacity={0.7} radius={[2, 2, 0, 0]} isAnimationActive={false} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -225,7 +225,7 @@ function MiniCandlestickChart({ data }: { data: DetailData }) {
   const chartData = candles.slice(-12).map((c) => ({
     period: c.period,
     value: c.close,
-    color: c.close >= c.open ? "#22c55e" : "#ef4444",
+    color: c.close >= c.open ? "var(--status-good)" : "var(--status-danger)",
   }));
 
   return (

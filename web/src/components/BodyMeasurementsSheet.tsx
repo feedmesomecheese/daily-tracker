@@ -385,18 +385,18 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                         <ReferenceLine
                           key={`yr-${m.year}`}
                           x={m.ts}
-                          stroke="#374151"
+                          stroke="var(--chart-grid)"
                           strokeWidth={2}
-                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                         />
                       ))}
                       {highlightDate && (
                         <ReferenceLine
                           x={dateToTs(highlightDate)}
-                          stroke="#f59e0b"
+                          stroke="var(--chart-4)"
                           strokeWidth={2}
                           strokeDasharray="4 2"
-                          label={{ value: "workout", position: "insideTopLeft", fontSize: 10, fill: "#f59e0b" }}
+                          label={{ value: "workout", position: "insideTopLeft", fontSize: 10, fill: "var(--chart-4)" }}
                         />
                       )}
                       <XAxis
@@ -414,7 +414,7 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                       <Line
                         type="monotone"
                         dataKey="value"
-                        stroke="#3b82f6"
+                        stroke="var(--chart-1)"
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         activeDot={{ r: 4 }}
@@ -439,18 +439,18 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                         <ReferenceLine
                           key={`yr-${m.year}`}
                           x={m.ts}
-                          stroke="#374151"
+                          stroke="var(--chart-grid)"
                           strokeWidth={2}
-                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                         />
                       ))}
                       {highlightDate && (
                         <ReferenceLine
                           x={dateToTs(highlightDate)}
-                          stroke="#f59e0b"
+                          stroke="var(--chart-4)"
                           strokeWidth={2}
                           strokeDasharray="4 2"
-                          label={{ value: "workout", position: "insideTopLeft", fontSize: 10, fill: "#f59e0b" }}
+                          label={{ value: "workout", position: "insideTopLeft", fontSize: 10, fill: "var(--chart-4)" }}
                         />
                       )}
                       <XAxis
@@ -473,7 +473,7 @@ export default function BodyMeasurementsSheet({ open, onOpenChange, highlightDat
                       <Line
                         type="monotone"
                         dataKey="value"
-                        stroke="#f59e0b"
+                        stroke="var(--chart-4)"
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         activeDot={{ r: 4 }}

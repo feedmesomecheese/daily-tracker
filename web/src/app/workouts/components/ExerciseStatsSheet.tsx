@@ -613,9 +613,9 @@ export default function ExerciseStatsSheet({
                         <ReferenceLine
                           key={`yr-${m.year}`}
                           x={m.ts}
-                          stroke="#374151"
+                          stroke="var(--chart-grid)"
                           strokeWidth={2}
-                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                         />
                       ))}
                       <XAxis
@@ -633,7 +633,7 @@ export default function ExerciseStatsSheet({
                       <Line
                         type="monotone"
                         dataKey="tonnage"
-                        stroke="#3b82f6"
+                        stroke="var(--chart-1)"
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         activeDot={{ r: 4 }}
@@ -660,9 +660,9 @@ export default function ExerciseStatsSheet({
                         <ReferenceLine
                           key={`yr-${m.year}`}
                           x={m.ts}
-                          stroke="#374151"
+                          stroke="var(--chart-grid)"
                           strokeWidth={2}
-                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                         />
                       ))}
                       <XAxis
@@ -681,7 +681,7 @@ export default function ExerciseStatsSheet({
                       <Line
                         type="monotone"
                         dataKey="weight"
-                        stroke="#f59e0b"
+                        stroke="var(--chart-4)"
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         activeDot={{ r: 4 }}
@@ -708,9 +708,9 @@ export default function ExerciseStatsSheet({
                         <ReferenceLine
                           key={`yr-${m.year}`}
                           x={m.ts}
-                          stroke="#374151"
+                          stroke="var(--chart-grid)"
                           strokeWidth={2}
-                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                         />
                       ))}
                       <XAxis
@@ -736,7 +736,7 @@ export default function ExerciseStatsSheet({
                               {data?.date && (
                                 <p className="font-semibold text-foreground mb-1">{formatDate(data.date)}</p>
                               )}
-                              <p style={{ color: "#10b981" }}>Intensity: {data?.intensity}%</p>
+                              <p style={{ color: "var(--chart-5)" }}>Intensity: {data?.intensity}%</p>
                               <p className="text-muted-foreground">Top Weight: {data?.topWeight} lbs</p>
                               <p className="text-muted-foreground">Cycle Max: {data?.cycleMax} lbs</p>
                             </div>
@@ -746,7 +746,7 @@ export default function ExerciseStatsSheet({
                       <Line
                         type="monotone"
                         dataKey="intensity"
-                        stroke="#10b981"
+                        stroke="var(--chart-5)"
                         strokeWidth={2}
                         dot={{ r: 2 }}
                         activeDot={{ r: 4 }}
@@ -773,9 +773,9 @@ export default function ExerciseStatsSheet({
                         <ReferenceLine
                           key={`yr-${m.year}`}
                           x={m.ts}
-                          stroke="#374151"
+                          stroke="var(--chart-grid)"
                           strokeWidth={2}
-                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                          label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                         />
                       ))}
                       <XAxis
@@ -793,7 +793,7 @@ export default function ExerciseStatsSheet({
                       <Line
                         type="monotone"
                         dataKey="weight"
-                        stroke="#10b981"
+                        stroke="var(--chart-5)"
                         strokeWidth={2}
                         dot={{ r: 3 }}
                         activeDot={{ r: 5 }}
@@ -821,9 +821,9 @@ export default function ExerciseStatsSheet({
                           <ReferenceLine
                             key={`yr-${m.year}`}
                             x={m.ts}
-                            stroke="#374151"
+                            stroke="var(--chart-grid)"
                             strokeWidth={2}
-                            label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                            label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                           />
                         ))}
                         <XAxis
@@ -841,7 +841,7 @@ export default function ExerciseStatsSheet({
                         <Line
                           type="monotone"
                           dataKey="distance"
-                          stroke="#3b82f6"
+                          stroke="var(--chart-1)"
                           strokeWidth={2}
                           dot={{ r: 2 }}
                         />
@@ -863,9 +863,9 @@ export default function ExerciseStatsSheet({
                           <ReferenceLine
                             key={`yr-${m.year}`}
                             x={m.ts}
-                            stroke="#374151"
+                            stroke="var(--chart-grid)"
                             strokeWidth={2}
-                            label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "#374151", fontWeight: "bold" }}
+                            label={{ value: String(m.year), position: "insideTopRight", fontSize: 11, fill: "var(--chart-grid)", fontWeight: "bold" }}
                           />
                         ))}
                         <XAxis
@@ -883,7 +883,7 @@ export default function ExerciseStatsSheet({
                         <Line
                           type="monotone"
                           dataKey="duration"
-                          stroke="#8b5cf6"
+                          stroke="var(--chart-3)"
                           strokeWidth={2}
                           dot={{ r: 2 }}
                         />
