@@ -9,8 +9,10 @@ import {
   formatHHMM,
   formatDuration,
 } from "@/components/calendar-heatmap";
+import { YearGrid } from "@/components/year-grid";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { StatTile, StatTileRow } from "@/components/ui/stat-tile";
 import {
   Select,
   SelectContent,
@@ -108,6 +110,17 @@ export default function HeatmapPage() {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [hoveredCell, setHoveredCell] = useState<{ date: string; value: number } | null>(null);
+  const [view, setView] = useState<"months" | "year">("months");
+
+  useEffect(() => {
+    const stored = localStorage.getItem("heatmap:view");
+    if (stored === "months" || stored === "year") setView(stored);
+  }, []);
+
+  const handleViewChange = useCallback((next: "months" | "year") => {
+    setView(next);
+    localStorage.setItem("heatmap:view", next);
+  }, []);
 
   // Load config on mount
   useEffect(() => {
@@ -245,8 +258,61 @@ export default function HeatmapPage() {
   // Legend colors
   const legendColors = useMemo(() => {
     if (!yearStats || metricType === "checkbox") return null;
-    return getHeatmapLegendColors(direction, yearStats.min, yearStats.max);
+    return getHeatmapLegendColors(direction);
   }, [yearStats, direction, metricType]);
+
+  // Header stat tiles: days logged, current streak, longest streak, goal met %
+  const headerStats = useMemo(() => {
+    if (!yearStats) return null;
+    const dateSet = new Set(heatmapData.filter((d) => d.date.startsWith(String(selectedYear))).map((d) => d.date));
+    const sortedDates = [...dateSet].sort();
+
+    const toDateStr = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+    let longest = 0;
+    let run = 0;
+    let prevDate: string | null = null;
+    for (const d of sortedDates) {
+      if (prevDate) {
+        const diffDays = Math.round(
+          (new Date(`${d}T00:00:00`).getTime() - new Date(`${prevDate}T00:00:00`).getTime()) / 86400000
+        );
+        run = diffDays === 1 ? run + 1 : 1;
+      } else {
+        run = 1;
+      }
+      longest = Math.max(longest, run);
+      prevDate = d;
+    }
+
+    const now = new Date();
+    const isCurrentYear = selectedYear === now.getFullYear();
+    const cur = isCurrentYear ? new Date(now) : new Date(selectedYear, 11, 31);
+    if (!dateSet.has(toDateStr(cur))) cur.setDate(cur.getDate() - 1);
+    let current = 0;
+    while (dateSet.has(toDateStr(cur))) {
+      current++;
+      cur.setDate(cur.getDate() - 1);
+    }
+
+    const isLeap = (y: number) => (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+    const elapsed = isCurrentYear
+      ? Math.floor((now.getTime() - new Date(selectedYear, 0, 1).getTime()) / 86400000) + 1
+      : isLeap(selectedYear)
+      ? 366
+      : 365;
+
+    const goalMetPct =
+      dailyGoal && dateSet.size > 0 ? Math.round((yearStats.goalMetCount / dateSet.size) * 100) : null;
+
+    return {
+      loggedText: `${dateSet.size}/${elapsed}`,
+      longest,
+      current,
+      goalMetPct,
+    };
+  }, [heatmapData, selectedYear, yearStats, dailyGoal]);
 
   const handleHover = useCallback((cell: { date: string; value: number } | null) => {
     setHoveredCell(cell);
@@ -346,8 +412,40 @@ export default function HeatmapPage() {
               &gt;
             </Button>
           </div>
+
+          {/* View toggle */}
+          <div className="flex items-center gap-1 border rounded-md p-0.5">
+            <Button
+              variant={view === "months" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => handleViewChange("months")}
+            >
+              Months
+            </Button>
+            <Button
+              variant={view === "year" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => handleViewChange("year")}
+            >
+              Year
+            </Button>
+          </div>
         </div>
       </div>
+
+      {/* Header stat tiles */}
+      {headerStats && (
+        <StatTileRow>
+          <StatTile label="Days logged" value={headerStats.loggedText} />
+          <StatTile label="Current streak" value={`${headerStats.current} days`} />
+          <StatTile label="Longest streak" value={`${headerStats.longest} days`} />
+          {headerStats.goalMetPct !== null && (
+            <StatTile label="Goal met" value={`${headerStats.goalMetPct}%`} />
+          )}
+        </StatTileRow>
+      )}
 
       {/* Stats card with legend and tap info */}
       <Card>
@@ -370,17 +468,17 @@ export default function HeatmapPage() {
               {/* Legend - compact */}
               {legendColors && (
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="hidden sm:inline">{direction === "decrease" ? "High" : "Low"}</span>
+                  <span className="hidden sm:inline">{direction === "neutral" ? "less" : "worse"}</span>
                   <div className="flex gap-0.5">
-                    {legendColors.map((item, idx) => (
+                    {legendColors.map((color, idx) => (
                       <div
                         key={idx}
                         className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm"
-                        style={{ backgroundColor: item.color }}
+                        style={{ backgroundColor: color }}
                       />
                     ))}
                   </div>
-                  <span className="hidden sm:inline">{direction === "decrease" ? "Low" : "High"}</span>
+                  <span className="hidden sm:inline">{direction === "neutral" ? "more" : "better"}</span>
                 </div>
               )}
               {metricType === "checkbox" && (
@@ -388,7 +486,7 @@ export default function HeatmapPage() {
                   <div
                     className="w-3 h-3 rounded-sm"
                     style={{
-                      backgroundColor: direction === "decrease" ? "rgb(239, 68, 68)" : "rgb(34, 197, 94)",
+                      backgroundColor: direction === "decrease" ? "var(--status-danger)" : "var(--heat-4)",
                     }}
                   />
                   <span>Done</span>
@@ -447,15 +545,27 @@ export default function HeatmapPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <CalendarHeatmap
-            data={heatmapData}
-            year={selectedYear}
-            metricType={metricType}
-            direction={direction}
-            selectedDate={hoveredCell?.date}
-            onHover={handleHover}
-            onCellClick={handleCellClick}
-          />
+          {view === "months" ? (
+            <CalendarHeatmap
+              data={heatmapData}
+              year={selectedYear}
+              metricType={metricType}
+              direction={direction}
+              selectedDate={hoveredCell?.date}
+              onHover={handleHover}
+              onCellClick={handleCellClick}
+            />
+          ) : (
+            <YearGrid
+              data={heatmapData}
+              year={selectedYear}
+              metricType={metricType}
+              direction={direction}
+              selectedDate={hoveredCell?.date}
+              onHover={handleHover}
+              onCellClick={handleCellClick}
+            />
+          )}
         </CardContent>
       </Card>
     </main>
