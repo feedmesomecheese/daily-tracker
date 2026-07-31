@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export type HeatmapDataPoint = {
@@ -9,10 +9,13 @@ export type HeatmapDataPoint = {
   goalMet?: boolean;
 };
 
+export type HeatmapMetricType = "number" | "checkbox" | "hhmm" | "time" | "score" | "count" | "text";
+export type HeatmapDirection = "increase" | "decrease" | "neutral";
+
 export type CalendarHeatmapProps = {
   data: HeatmapDataPoint[];
-  metricType?: "number" | "checkbox" | "hhmm" | "time" | "score" | "count" | "text";
-  direction?: "increase" | "decrease" | "neutral";
+  metricType?: HeatmapMetricType;
+  direction?: HeatmapDirection;
   year?: number;
   selectedDate?: string | null;
   onHover?: (cell: { date: string; value: number } | null) => void;
@@ -34,6 +37,49 @@ function formatDuration(totalMinutes: number): string {
   const m = minutes % 60;
   if (h === 0) return `${m}m`;
   return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+/** Bucket a value into a quintile of the visible range, 1 (lowest) to 5 (highest). */
+export function heatBucket(value: number, min: number, max: number): 1 | 2 | 3 | 4 | 5 {
+  const t = (value - min) / (max - min || 1);
+  return (Math.min(4, Math.floor(t * 5)) + 1) as 1 | 2 | 3 | 4 | 5;
+}
+
+/** Resolve the CSS color for a data cell given its value and the metric's config. */
+export function getHeatCellColor(
+  value: number,
+  min: number,
+  max: number,
+  metricType: HeatmapMetricType,
+  direction: HeatmapDirection
+): string {
+  if (metricType === "checkbox") {
+    if (value >= 0.5) {
+      return direction === "decrease" ? "var(--status-danger)" : "var(--heat-4)";
+    }
+    return "transparent";
+  }
+  let bucket = heatBucket(value, min, max);
+  if (direction === "decrease") bucket = (6 - bucket) as 1 | 2 | 3 | 4 | 5;
+  return `var(--heat-${bucket})`;
+}
+
+export function formatCellValue(value: number, metricType: HeatmapMetricType): string {
+  switch (metricType) {
+    case "hhmm":
+      return formatHHMM(value);
+    case "time":
+      return formatDuration(value);
+    case "checkbox":
+      return value >= 0.5 ? "Yes" : "No";
+    default:
+      return String(Math.round(value * 100) / 100);
+  }
+}
+
+function formatCellDate(date: string): string {
+  const d = new Date(`${date}T00:00:00`);
+  return d.toLocaleString("default", { month: "short", day: "numeric" });
 }
 
 export function CalendarHeatmap({
@@ -63,7 +109,7 @@ export function CalendarHeatmap({
   const filteredData = useMemo(() => {
     if (!year) return data;
     const yearStr = String(year);
-    return data.filter(d => d.date.startsWith(yearStr));
+    return data.filter((d) => d.date.startsWith(yearStr));
   }, [data, year]);
 
   // Months in chronological order (Jan-Dec)
@@ -94,62 +140,6 @@ export function CalendarHeatmap({
   const allValues = filteredData.map((d) => d.value);
   const minVal = allValues.length > 0 ? Math.min(...allValues) : 0;
   const maxVal = allValues.length > 0 ? Math.max(...allValues) : 1;
-  const valRange = maxVal - minVal || 1;
-
-  // Determine if higher is better based on direction
-  const higherIsBetter = direction === "increase";
-  const isNeutral = direction === "neutral";
-
-  function getColor(value: number): string {
-    // Checkbox type: green for checked (1), gray for unchecked (0)
-    if (metricType === "checkbox") {
-      if (value >= 0.5) {
-        // Checked - green or red based on direction
-        return higherIsBetter ? "rgb(34, 197, 94)" : "rgb(239, 68, 68)";
-      }
-      return "var(--muted)";
-    }
-
-    // Neutral direction: use a blue gradient
-    if (isNeutral) {
-      const t = (value - minVal) / valRange;
-      const intensity = Math.round(100 + t * 155);
-      return `rgb(${255 - intensity}, ${255 - intensity}, ${intensity})`;
-    }
-
-    const t = (value - minVal) / valRange;
-    if (higherIsBetter) {
-      // Green gradient for higher is better (red low -> green high)
-      if (t < 0.5) {
-        const s = t * 2;
-        const r = Math.round(220 - s * 40);
-        const g = Math.round(60 + s * 160);
-        const b = Math.round(60 + s * 10);
-        return `rgb(${r}, ${g}, ${b})`;
-      } else {
-        const s = (t - 0.5) * 2;
-        const r = Math.round(180 - s * 140);
-        const g = Math.round(220 - s * 25);
-        const b = Math.round(70 + s * 30);
-        return `rgb(${r}, ${g}, ${b})`;
-      }
-    } else {
-      // Inverted - green for low, red for high
-      if (t < 0.5) {
-        const s = t * 2;
-        const r = Math.round(40 + s * 140);
-        const g = Math.round(195 - s * 25);
-        const b = Math.round(100 - s * 30);
-        return `rgb(${r}, ${g}, ${b})`;
-      } else {
-        const s = (t - 0.5) * 2;
-        const r = Math.round(180 + s * 40);
-        const g = Math.round(170 - s * 110);
-        const b = Math.round(70 - s * 10);
-        return `rgb(${r}, ${g}, ${b})`;
-      }
-    }
-  }
 
   const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -181,7 +171,7 @@ export function CalendarHeatmap({
               <p className="text-[10px] font-medium mb-1 text-muted-foreground">
                 {firstDay.toLocaleString("default", { month: "short" })} {y}
               </p>
-              <div className="grid grid-cols-7 gap-px">
+              <div className="grid grid-cols-7 gap-[2px]">
                 {DAY_LABELS.map((d, i) => (
                   <div key={`${d}${i}`} className="text-[7px] text-muted-foreground/60 text-center">
                     {d}
@@ -190,36 +180,39 @@ export function CalendarHeatmap({
                 {cells.map((cell, i) => {
                   if (!cell) return <div key={`e${i}`} />;
                   const hasValue = cell.value !== undefined;
+                  const isChecked = metricType === "checkbox" && hasValue && cell.value! >= 0.5;
+                  const isEmpty = !hasValue || (metricType === "checkbox" && !isChecked);
                   const isGoalMet = goalMetMap.get(cell.date);
                   const isSelected = selectedDate === cell.date;
 
-                  // For checkbox, only color if checked
-                  const showColor = hasValue && (metricType !== "checkbox" || cell.value! >= 0.5);
+                  const bgColor = hasValue
+                    ? getHeatCellColor(cell.value!, minVal, maxVal, metricType, direction)
+                    : "var(--heat-empty)";
+
+                  const title = hasValue
+                    ? `${formatCellDate(cell.date)} — ${formatCellValue(cell.value!, metricType)}${
+                        isGoalMet ? " · Goal met" : ""
+                      }`
+                    : formatCellDate(cell.date);
 
                   return (
                     <div
                       key={cell.date}
-                      className={`aspect-square rounded-[2px] flex items-center justify-center text-[7px] transition-all relative ${
-                        hasValue ? "cursor-pointer hover:scale-125 hover:z-10" : "cursor-default"
-                      } ${isSelected ? "scale-150 z-20 ring-2 ring-foreground shadow-lg" : ""}`}
+                      title={title}
+                      className={`aspect-square rounded-[3px] transition-all relative ${
+                        hasValue ? "cursor-pointer hover:ring-1 hover:ring-foreground/40 hover:z-10" : "cursor-default"
+                      } ${isSelected ? "ring-2 ring-foreground z-20 shadow-lg" : ""}`}
                       style={{
-                        backgroundColor: showColor ? getColor(cell.value!) : "var(--muted)",
-                        opacity: hasValue ? 1 : 0.2,
-                        color: showColor ? "rgba(0,0,0,0.5)" : undefined,
+                        backgroundColor: bgColor,
+                        opacity: isEmpty ? 0.35 : 1,
+                        boxShadow: isGoalMet ? "inset 0 0 0 1.5px var(--status-good)" : undefined,
                       }}
                       onMouseEnter={() =>
                         hasValue && onHover?.({ date: cell.date, value: cell.value! })
                       }
                       onMouseLeave={() => onHover?.(null)}
                       onClick={() => hasValue && onCellClick?.(cell.date, cell.value!)}
-                    >
-                      {cell.day}
-                      {isGoalMet && (
-                        <span className="absolute -top-0.5 -right-0.5 text-[6px]" title="Goal met">
-                          🏆
-                        </span>
-                      )}
-                    </div>
+                    />
                   );
                 })}
               </div>
@@ -231,55 +224,14 @@ export function CalendarHeatmap({
   );
 }
 
-// Helper to get legend colors
-export function getHeatmapLegendColors(
-  direction: "increase" | "decrease" | "neutral",
-  minVal: number,
-  maxVal: number
-): { color: string; value: number }[] {
-  const valRange = maxVal - minVal || 1;
-  const higherIsBetter = direction === "increase";
-  const isNeutral = direction === "neutral";
-
-  return [0, 0.25, 0.5, 0.75, 1].map((t) => {
-    const value = minVal + t * valRange;
-    let color: string;
-
-    if (isNeutral) {
-      const intensity = Math.round(100 + t * 155);
-      color = `rgb(${255 - intensity}, ${255 - intensity}, ${intensity})`;
-    } else if (higherIsBetter) {
-      if (t < 0.5) {
-        const s = t * 2;
-        const r = Math.round(220 - s * 40);
-        const g = Math.round(60 + s * 160);
-        const b = Math.round(60 + s * 10);
-        color = `rgb(${r}, ${g}, ${b})`;
-      } else {
-        const s = (t - 0.5) * 2;
-        const r = Math.round(180 - s * 140);
-        const g = Math.round(220 - s * 25);
-        const b = Math.round(70 + s * 30);
-        color = `rgb(${r}, ${g}, ${b})`;
-      }
-    } else {
-      if (t < 0.5) {
-        const s = t * 2;
-        const r = Math.round(40 + s * 140);
-        const g = Math.round(195 - s * 25);
-        const b = Math.round(100 - s * 30);
-        color = `rgb(${r}, ${g}, ${b})`;
-      } else {
-        const s = (t - 0.5) * 2;
-        const r = Math.round(180 + s * 40);
-        const g = Math.round(170 - s * 110);
-        const b = Math.round(70 - s * 10);
-        color = `rgb(${r}, ${g}, ${b})`;
-      }
-    }
-
-    return { color, value };
-  });
+/**
+ * 5 swatches reading low → high intensity. Per-cell colors already apply the
+ * direction inversion (see getHeatCellColor), so worst → best always reads
+ * as heat-1 → heat-5 regardless of direction; `direction` is accepted for
+ * API symmetry with the per-cell rule and potential future use.
+ */
+export function getHeatmapLegendColors(_direction: HeatmapDirection): string[] {
+  return [1, 2, 3, 4, 5].map((b) => `var(--heat-${b})`);
 }
 
 export { formatHHMM, formatDuration };
