@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/components/auth-provider";
 import { NavMenu } from "@/components/nav-menu";
@@ -26,14 +27,16 @@ export const metadata: Metadata = {
   },
 };
 
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <body style={{ fontFamily: "system-ui, sans-serif" }} className="overflow-x-hidden">
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <body className="overflow-x-hidden">
         <ServiceWorkerRegistration />
         <ThemeProvider>
           <ToastProvider>

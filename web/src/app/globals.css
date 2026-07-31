@@ -102,8 +102,12 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: system-ui, sans-serif;
+    font-family: var(--font-sans), system-ui, sans-serif;
   }
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
 
 @theme inline {
