@@ -146,6 +146,11 @@
   --color-status-danger: var(--status-danger);
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 /* Timer animations */
 
 /* Single comet traveling the rectangular border in 500ms, then invisible for 500ms */
