@@ -22,6 +22,32 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+
+    /* Chart series (fixed order — assign by slot, never re-order or cycle) */
+    --chart-1: #2a78d6;  /* blue — primary/accent series */
+    --chart-2: #008300;  /* green */
+    --chart-3: #e87ba4;  /* magenta */
+    --chart-4: #eda100;  /* yellow */
+    --chart-5: #1baf7a;  /* aqua */
+    --chart-6: #eb6834;  /* orange */
+
+    /* Chart chrome */
+    --chart-grid: #e5e7eb;
+    --chart-axis: #9ca3af;
+
+    /* Status (goal semantics — never used as a series color) */
+    --status-good: #0ca30c;
+    --status-good-text: #006300;
+    --status-warning: #fab219;
+    --status-danger: #d03b3b;
+
+    /* Heatmap sequential ramp, low → high intensity */
+    --heat-1: #cde2fb;
+    --heat-2: #86b6ef;
+    --heat-3: #3987e5;
+    --heat-4: #1c5cab;
+    --heat-5: #0d366b;
+    --heat-empty: hsl(var(--muted));
   }
 
   .dark {
@@ -44,6 +70,29 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    --chart-1: #3987e5;
+    --chart-2: #008300;
+    --chart-3: #d55181;
+    --chart-4: #c98500;
+    --chart-5: #199e70;
+    --chart-6: #d95926;
+
+    --chart-grid: #1f2937;
+    --chart-axis: #6b7280;
+
+    --status-good: #0ca30c;
+    --status-good-text: #0ca30c;
+    --status-warning: #fab219;
+    --status-danger: #e66767;
+
+    /* Dark ramp inverts lightness: low recedes toward the dark surface */
+    --heat-1: #0d366b;
+    --heat-2: #184f95;
+    --heat-3: #256abf;
+    --heat-4: #3987e5;
+    --heat-5: #86b6ef;
+    --heat-empty: hsl(var(--muted));
   }
 }
 
@@ -81,6 +130,16 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-status-good: var(--status-good);
+  --color-status-warning: var(--status-warning);
+  --color-status-danger: var(--status-danger);
 }
 
 /* Timer animations */
