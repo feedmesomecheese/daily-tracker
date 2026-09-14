@@ -1,47 +1,9 @@
-import { NextResponse } from "next/server";
-import { validateAiRequest, getAiSupabase, AI_CORS_HEADERS, handleAiOptions } from "@/lib/aiAuth";
+import { agentGET, agentPOST, handleAgentOptions } from "@/lib/agent/rest";
 
-export async function OPTIONS() { return handleAiOptions(); }
+// Thin transport shim. Behaviour lives in the shared tool registry
+// (src/lib/agent/registry.ts) so REST and MCP cannot drift apart.
 
-export async function GET(req: Request) {
-  const auth = await validateAiRequest(req);
-  if (auth instanceof NextResponse) return auth;
-  const { ownerId } = auth;
+export async function OPTIONS() { return handleAgentOptions(); }
 
-  const supabase = getAiSupabase();
-
-  const url = new URL(req.url);
-  const start = url.searchParams.get("start") || "";
-  const end = url.searchParams.get("end") || new Date().toISOString().slice(0, 10);
-
-  async function fetchMetric(metricId: string): Promise<{ date: string; value: number }[]> {
-    const PAGE_SIZE = 1000;
-    const results: { date: string; value: number }[] = [];
-    let offset = 0;
-    while (true) {
-      let query = supabase
-        .from("log")
-        .select("date, value")
-        .eq("owner_id", ownerId)
-        .eq("metric_id", metricId)
-        .not("value", "is", null)
-        .order("date", { ascending: true })
-        .range(offset, offset + PAGE_SIZE - 1);
-      if (start) query = query.gte("date", start);
-      if (end) query = query.lte("date", end);
-      const { data, error } = await query;
-      if (error || !data) break;
-      results.push(...data.filter((r) => r.value !== null).map((r) => ({ date: r.date, value: r.value })));
-      if (data.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
-    }
-    return results;
-  }
-
-  const [weight, bodyfat] = await Promise.all([
-    fetchMetric("weight"),
-    fetchMetric("bodyfat"),
-  ]);
-
-  return NextResponse.json({ period: { start: start || "all", end }, weight, bodyfat }, { headers: AI_CORS_HEADERS });
-}
+export const GET = agentGET("/api/ai/body");
+export const POST = agentPOST("/api/ai/body");
