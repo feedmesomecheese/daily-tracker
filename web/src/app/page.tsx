@@ -914,9 +914,10 @@ export default function Home() {
         return raw === "on" || raw === "1" ? 1 : 0;
       }
       case "time": {
-        // time = minutes (plain number)
-        const n = Number(raw);
-        return Number.isFinite(n) ? n : null;
+        // time = duration in minutes; accepts plain minutes ("960") or
+        // h:mm ("16:00"), matching validateField's parseTimeInput and how
+        // default_value/saved values are displayed (formatDurationHHMM).
+        return parseTimeInput(raw);
       }
 
       case "hhmm": {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { createWorkout, type CreateWorkoutInput } from "@/lib/domain/workouts";
 
 export type Workout = {
   id: string;
@@ -51,36 +52,8 @@ export type WorkoutExercise = {
   created_at: string;
 };
 
-type ExerciseSetInput = {
-  set_number: number;
-  reps: number | null;
-  weight: number | null;
-  is_pr?: boolean;
-  is_cycle_max?: boolean;
-  is_missed?: boolean;
-  is_move_up?: boolean;
-};
-
-type ExerciseInput = {
-  exercise_id: string | null;
-  exercise_name_display: string;
-  modifier_ids?: string[];
-  exercise_order: number;
-  superset_group?: number | null;
-  input_type?: string;
-  sets: ExerciseSetInput[];
-  // Cardio fields
-  duration_minutes?: number | null;
-  distance_miles?: number | null;
-  incline_pct?: number | null;
-  weight?: number | null;
-  // HIIT fields
-  time_on_seconds?: number | null;
-  time_off_seconds?: number | null;
-  cycles?: number | null;
-  // Notes (exercise-level)
-  notes?: string | null;
-};
+// Exercise and set input shapes now live with the shared write path in
+// @/lib/domain/workouts, so both this route and the agent tools use one type.
 
 // GET /api/workouts - List workouts
 export async function GET(req: Request) {
@@ -289,180 +262,27 @@ export async function POST(req: Request) {
   }
 
   const body = await req.json();
-  const {
-    date,
-    workout_type,
-    workout_type_id,
-    rating,
-    location,
-    started_at,
-    ended_at,
-    duration_minutes,
-    body_weight,
-    body_fat_pct,
-    notes,
-    exercises = [] as ExerciseInput[],
-    sets = [] as Partial<WorkoutSet>[],
-    tag_ids = [] as string[],
-  } = body;
-
-  if (!date) {
+  if (!body?.date) {
     return NextResponse.json({ error: "Date is required" }, { status: 400 });
   }
 
-  // Create the workout
-  const { data: workout, error: workoutError } = await supabase
-    .from("workouts")
-    .insert({
-      owner_id: user.id,
-      date,
-      workout_type: workout_type || null,
-      workout_type_id: workout_type_id || null,
-      rating: rating || null,
-      location: location || null,
-      started_at: started_at || null,
-      ended_at: ended_at || null,
-      duration_minutes: duration_minutes || null,
-      body_weight: body_weight || null,
-      body_fat_pct: body_fat_pct || null,
-      notes: notes || null,
-    })
-    .select()
-    .single();
+  const tagIds: string[] = body.tag_ids ?? [];
 
-  if (workoutError) {
-    return NextResponse.json({ error: workoutError.message }, { status: 500 });
+  let result;
+  try {
+    result = await createWorkout(supabase, user.id, body as CreateWorkoutInput);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  // Insert applied tags
-  if (tag_ids.length > 0) {
-    const tagRows = tag_ids.map((tid: string) => ({ workout_id: workout.id, tag_id: tid }));
-    await supabase.from("workout_applied_tags").insert(tagRows);
-  }
+  // Group sets under their exercise for the client, keeping any set that is
+  // not tied to a workout_exercise row separate (legacy flat sets).
+  type SetRow = { workout_exercise_id: string | null } & Record<string, unknown>;
+  const setsByExercise = new Map<string, SetRow[]>();
+  const orphanSets: SetRow[] = [];
 
-  // New flow: exercises[] array with nested sets
-  if (exercises.length > 0) {
-    for (const ex of exercises) {
-      // Create workout_exercise entry
-      const { data: workoutExercise, error: weError } = await supabase
-        .from("workout_exercises")
-        .insert({
-          workout_id: workout.id,
-          exercise_id: ex.exercise_id || null,
-          exercise_name_display: ex.exercise_name_display,
-          modifier_ids: ex.modifier_ids || [],
-          exercise_order: ex.exercise_order,
-          superset_group: ex.superset_group ?? null,
-          // Cardio fields
-          duration_minutes: ex.duration_minutes ?? null,
-          distance_miles: ex.distance_miles ?? null,
-          incline_pct: ex.incline_pct ?? null,
-          weight: ex.weight ?? null,
-          // HIIT fields
-          time_on_seconds: ex.time_on_seconds ?? null,
-          time_off_seconds: ex.time_off_seconds ?? null,
-          cycles: ex.cycles ?? null,
-          // Notes
-          notes: ex.notes ?? null,
-        })
-        .select()
-        .single();
-
-      if (weError) {
-        return NextResponse.json(
-          { workout, error: `Exercise entry failed: ${weError.message}` },
-          { status: 207 }
-        );
-      }
-
-      // Create sets for this exercise
-      if (ex.sets && ex.sets.length > 0) {
-        const setsToInsert = ex.sets.map((s: ExerciseSetInput, idx: number) => ({
-          workout_id: workout.id,
-          workout_exercise_id: workoutExercise.id,
-          exercise_id: ex.exercise_id || null,
-          exercise_name_display: ex.exercise_name_display,
-          modifier_ids: ex.modifier_ids || [],
-          set_order: ex.exercise_order * 100 + idx,
-          set_number: s.set_number,
-          set_type: "working",
-          reps: s.reps,
-          weight: s.weight,
-          is_pr: s.is_pr ?? false,
-          is_cycle_max: s.is_cycle_max ?? false,
-          is_missed: s.is_missed ?? false,
-          is_move_up: s.is_move_up ?? false,
-        }));
-
-        const { error: setsError } = await supabase
-          .from("workout_sets")
-          .insert(setsToInsert);
-
-        if (setsError) {
-          return NextResponse.json(
-            { workout, error: `Sets failed for ${ex.exercise_name_display}: ${setsError.message}` },
-            { status: 207 }
-          );
-        }
-      }
-    }
-  }
-
-  // Legacy flow: flat sets[] array (backward compat)
-  if (sets.length > 0 && exercises.length === 0) {
-    const setsToInsert = sets.map((set: Partial<WorkoutSet>, index: number) => ({
-      workout_id: workout.id,
-      exercise_id: set.exercise_id || null,
-      exercise_name_display: set.exercise_name_display || "Unknown",
-      modifier_ids: set.modifier_ids || [],
-      set_order: set.set_order ?? index,
-      set_number: set.set_number ?? 1,
-      set_type: set.set_type || "working",
-      reps: set.reps ?? null,
-      weight: set.weight ?? null,
-      rpe: set.rpe ?? null,
-      is_pr: set.is_pr ?? false,
-      is_cycle_max: set.is_cycle_max ?? false,
-      is_missed: set.is_missed ?? false,
-      is_move_up: set.is_move_up ?? false,
-      notes: set.notes || null,
-    }));
-
-    const { error: setsError } = await supabase
-      .from("workout_sets")
-      .insert(setsToInsert);
-
-    if (setsError) {
-      return NextResponse.json(
-        { workout, error: `Workout created but sets failed: ${setsError.message}` },
-        { status: 207 }
-      );
-    }
-  }
-
-  // Fetch complete workout with exercises and sets
-  const { data: completeWorkout } = await supabase
-    .from("workouts")
-    .select("*")
-    .eq("id", workout.id)
-    .single();
-
-  const { data: workoutExercises } = await supabase
-    .from("workout_exercises")
-    .select("*")
-    .eq("workout_id", workout.id)
-    .order("exercise_order", { ascending: true });
-
-  const { data: workoutSets } = await supabase
-    .from("workout_sets")
-    .select("*")
-    .eq("workout_id", workout.id)
-    .order("set_number", { ascending: true });
-
-  // Group sets by workout_exercise_id
-  const setsByExercise = new Map<string, typeof workoutSets>();
-  const orphanSets: typeof workoutSets = [];
-  for (const set of workoutSets || []) {
+  for (const set of result.sets as SetRow[]) {
     if (set.workout_exercise_id) {
       const existing = setsByExercise.get(set.workout_exercise_id) || [];
       existing.push(set);
@@ -472,13 +292,22 @@ export async function POST(req: Request) {
     }
   }
 
-  const exercisesWithSets = (workoutExercises || []).map((we: WorkoutExercise) => ({
+  const exercisesWithSets = (result.exercises as WorkoutExercise[]).map((we) => ({
     ...we,
     sets: setsByExercise.get(we.id) || [],
   }));
 
+  // A workout that saved but lost part of its detail is reported as 207 so the
+  // client can surface the problem without discarding what was written.
+  if (result.partialError) {
+    return NextResponse.json(
+      { ...result.workout, exercises: exercisesWithSets, sets: orphanSets, applied_tag_ids: tagIds, error: result.partialError },
+      { status: 207 }
+    );
+  }
+
   return NextResponse.json(
-    { ...completeWorkout, exercises: exercisesWithSets, sets: orphanSets, applied_tag_ids: tag_ids },
+    { ...result.workout, exercises: exercisesWithSets, sets: orphanSets, applied_tag_ids: tagIds },
     { status: 201 }
   );
 }

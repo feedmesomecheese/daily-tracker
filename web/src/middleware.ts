@@ -48,12 +48,16 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // If no user and not on login page, redirect to login
+  // If no user and not on login page, redirect to login.
+  // /oauth/* is excluded: the consent screen renders its own sign-in prompt so
+  // the authorization request's query parameters survive the round trip.
   if (
     !user &&
     !request.nextUrl.pathname.startsWith("/login") &&
     !request.nextUrl.pathname.startsWith("/forgot-password") &&
     !request.nextUrl.pathname.startsWith("/reset-password") &&
+    !request.nextUrl.pathname.startsWith("/oauth") &&
+    !request.nextUrl.pathname.startsWith("/.well-known") &&
     !request.nextUrl.pathname.startsWith("/api") &&
     !request.nextUrl.pathname.startsWith("/_next") &&
     !request.nextUrl.pathname.includes(".")

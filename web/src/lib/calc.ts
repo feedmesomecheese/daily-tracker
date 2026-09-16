@@ -13,6 +13,7 @@ export type NumericContext = Record<string, number | null>;
 type Token =
   | { kind: "number"; value: number }
   | { kind: "ident"; name: string }
+  | { kind: "call"; fn: string; argsRaw: string }
   | { kind: "op"; op: "+" | "-" | "*" | "/" }
   | { kind: "paren"; value: "(" | ")" };
 
@@ -62,11 +63,31 @@ function tokenizeExpr(expr: string): Token[] | null {
       continue;
     }
 
-    // identifier
+    // identifier (or function call, if immediately followed by "(")
     if (/[a-zA-Z_]/.test(ch)) {
       let j = i;
       while (j < expr.length && /[a-zA-Z0-9_]/.test(expr[j])) j++;
       const name = expr.slice(i, j);
+
+      if (expr[j] === "(") {
+        // Capture the balanced-paren argument list as a single call token so
+        // that function calls (e.g. prev(x)) can be combined with arithmetic
+        // operators, not just stand alone as the entire expression.
+        let depth = 1;
+        let k = j + 1;
+        while (k < expr.length && depth > 0) {
+          if (expr[k] === "(") depth++;
+          else if (expr[k] === ")") depth--;
+          if (depth === 0) break;
+          k++;
+        }
+        if (depth !== 0) return null;
+        const argsRaw = expr.slice(j + 1, k);
+        tokens.push({ kind: "call", fn: name, argsRaw });
+        i = k + 1;
+        continue;
+      }
+
       tokens.push({ kind: "ident", name });
       i = j;
       continue;
@@ -93,13 +114,13 @@ function tokenizeExpr(expr: string): Token[] | null {
   return tokens;
 }
 
-function toRpn(tokens: Token[]): (Token & { kind: "number" | "ident" | "op" })[] | null {
-  const output: (Token & { kind: "number" | "ident" | "op" })[] = [];
+function toRpn(tokens: Token[]): (Token & { kind: "number" | "ident" | "call" | "op" })[] | null {
+  const output: (Token & { kind: "number" | "ident" | "call" | "op" })[] = [];
   const ops: ("+" | "-" | "*" | "/" | "(")[] = [];
   const precedence: Record<string, number> = { "+": 1, "-": 1, "*": 2, "/": 2 };
 
   for (const t of tokens) {
-    if (t.kind === "number" || t.kind === "ident") {
+    if (t.kind === "number" || t.kind === "ident" || t.kind === "call") {
       output.push(t as any);
     } else if (t.kind === "op") {
       while (ops.length > 0) {
@@ -138,8 +159,9 @@ function toRpn(tokens: Token[]): (Token & { kind: "number" | "ident" | "op" })[]
 type Resolver = (name: string) => { value: number | null; type?: MetricType };
 
 function evalRpn(
-  rpn: (Token & { kind: "number" | "ident" | "op" })[],
-  resolve: Resolver
+  rpn: (Token & { kind: "number" | "ident" | "call" | "op" })[],
+  resolve: Resolver,
+  evalCall?: (fn: string, argsRaw: string) => number | null
 ): number | null {
   const stack: number[] = [];
 
@@ -157,6 +179,13 @@ function evalRpn(
         if (value == null) return null;
         stack.push(value);
       }
+      continue;
+    }
+    if (t.kind === "call") {
+      if (!evalCall) return null;
+      const v = evalCall(t.fn, t.argsRaw);
+      if (v == null) return null;
+      stack.push(v);
       continue;
     }
     if (t.kind === "op") {
@@ -392,12 +421,16 @@ export function evaluateCalculatedMetricsV2(
       return null;
     }
 
-    // Fallback: arithmetic expression via RPN
+    // Fallback: arithmetic expression via RPN. Function calls (e.g. prev(x))
+    // that appear as a sub-term of a larger expression (e.g. "prev(x) + y")
+    // are tokenized as "call" atoms and evaluated by recursing back into
+    // evalExpr on their reconstructed "fn(args)" string, so they get the
+    // exact same handling as a top-level call.
     const tokens = tokenizeExpr(s);
     if (!tokens) return null;
     const rpn = toRpn(tokens);
     if (!rpn) return null;
-    return evalRpn(rpn, resolve);
+    return evalRpn(rpn, resolve, (fn, argsRaw) => evalExpr(`${fn}(${argsRaw})`));
   };
 
   let currentMetricId: string | null = null;
@@ -425,7 +458,15 @@ export function evaluateCalculatedMetricsV2(
     visiting.add(id);
 
     try {
-        const v = evalExpr(def.calc_expr);
+        let v = evalExpr(def.calc_expr);
+        // hhmm represents a clock time (minutes since midnight, 0-1439). A
+        // formula that adds a duration to a clock time (e.g. prev(eat_finish)
+        // + fasting_goal) can legitimately cross midnight and land outside
+        // that range, so wrap it back into a valid clock time. This is a
+        // no-op for formulas (like diff(...)) that already stay in range.
+        if (v != null && def.type === "hhmm") {
+          v = ((v % 1440) + 1440) % 1440;
+        }
         cache[id] = v ?? null;
         errors[id] = null;
         return cache[id];

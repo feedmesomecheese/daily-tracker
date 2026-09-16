@@ -62,6 +62,17 @@ export default function LoginPage() {
   );
 }
 
+/**
+ * Where to land after signing in. Only same-origin relative paths are honoured,
+ * so a crafted ?next= cannot bounce someone off to another site.
+ */
+function safeNextParam(): string {
+  if (typeof window === "undefined") return "/";
+  const next = new URLSearchParams(window.location.search).get("next");
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/";
+  return next;
+}
+
 /* ---------- Login Form ---------- */
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -84,7 +95,7 @@ function LoginForm() {
         return;
       }
       setStatus("idle");
-      window.location.href = "/";
+      window.location.href = safeNextParam();
     } catch (err: unknown) {
       setStatus("error");
       setMessage(err instanceof Error ? err.message : String(err));

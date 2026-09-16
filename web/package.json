@@ -11,7 +11,8 @@
     "import:books": "tsx ../scripts/import-books.ts",
     "update:books": "tsx ../scripts/update-books-from-csv.ts",
     "books:titlecase": "tsx ../scripts/books-titlecase.ts",
-    "books:covers": "tsx ../scripts/books-find-covers.ts"
+    "books:covers": "tsx ../scripts/books-find-covers.ts",
+    "test:agent": "tsx scripts/test-agent-layer.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
