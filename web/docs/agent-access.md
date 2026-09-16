@@ -104,7 +104,7 @@ only thing keeping one user's agent out of another user's data.
 
 ## Setup
 
-1. Run `supabase/migrations/20260914_agent_access.sql`.
+1. Run `../supabase/migrations/20260914_agent_access.sql`.
 2. Confirm `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are set.
    No new environment variables are needed.
 3. Generate a key at Settings → AI Assistant, or connect Claude and approve.
