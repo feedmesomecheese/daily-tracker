@@ -79,9 +79,9 @@ Claude → GET  /.well-known/oauth-protected-resource   (from the 401 challenge)
        → POST /api/oauth/token                        (PKCE code exchange)
 ```
 
-Access tokens last 1 hour; refresh tokens last 30 days and rotate on use. A
-replayed authorization code revokes every token already issued to that client
-for that user. Only `S256` PKCE is accepted.
+Access tokens last 1 hour; refresh tokens last 1 year and rotate on use, so a
+connection in regular use never expires. A replayed authorization code revokes
+every token already issued to that client for that user. Only `S256` PKCE is accepted.
 
 The `.well-known` paths are rewrites in `next.config.ts` — the App Router will
 not serve routes from a dotted directory.

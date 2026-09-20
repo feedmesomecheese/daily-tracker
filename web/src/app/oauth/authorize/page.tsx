@@ -209,7 +209,7 @@ function AuthorizeContent() {
 
         <p className="text-xs text-muted-foreground">
           You can revoke this connection at any time from Settings → AI Assistant. Access expires
-          after 30 days of no use.
+          after a year of no use.
         </p>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

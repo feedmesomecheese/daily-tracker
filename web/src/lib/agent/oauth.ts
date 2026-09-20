@@ -10,7 +10,7 @@ import type { Scope } from "./types";
 
 export const AUTH_CODE_TTL_MS = 10 * 60 * 1000;          // 10 minutes
 export const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;        // 1 hour
-export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+export const REFRESH_TOKEN_TTL_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
 
 export const SUPPORTED_SCOPES: Scope[] = ["read", "write"];
 
