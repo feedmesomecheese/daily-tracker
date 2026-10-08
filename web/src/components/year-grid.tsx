@@ -4,6 +4,9 @@ import { useMemo } from "react";
 import {
   getHeatCellColor,
   formatCellValue,
+  formatTileValue,
+  HeatCell,
+  getHeatCellTextColor,
   type HeatmapDataPoint,
   type HeatmapMetricType,
   type HeatmapDirection,
@@ -155,22 +158,22 @@ export function YearGrid({
                   : formatCellDate(cell.date);
 
                 return (
-                  <div
+                  <HeatCell
                     key={cell.date}
+                    date={cell.date}
+                    value={value}
+                    bgColor={bgColor}
+                    fgColor={
+                      hasValue ? getHeatCellTextColor(value!, minVal, maxVal, metricType, direction) : undefined
+                    }
+                    text={hasValue && !isEmpty ? formatTileValue(value!, metricType) : ""}
                     title={title}
-                    className={`rounded-[2px] transition-all ${
-                      hasValue ? "cursor-pointer hover:ring-1 hover:ring-foreground/40" : "cursor-default"
-                    } ${isSelected ? "ring-2 ring-foreground z-10" : ""}`}
-                    style={{
-                      width: 12,
-                      height: 12,
-                      backgroundColor: bgColor,
-                      opacity: isEmpty ? 0.35 : 1,
-                      boxShadow: isGoalMet ? "inset 0 0 0 1.5px var(--status-good)" : undefined,
-                    }}
-                    onMouseEnter={() => hasValue && onHover?.({ date: cell.date, value: value! })}
-                    onMouseLeave={() => onHover?.(null)}
-                    onClick={() => hasValue && onCellClick?.(cell.date, value!)}
+                    isEmpty={isEmpty}
+                    isGoalMet={!!isGoalMet}
+                    isSelected={isSelected}
+                    onHover={onHover}
+                    onCellClick={onCellClick}
+                    size={12}
                   />
                 );
               })}

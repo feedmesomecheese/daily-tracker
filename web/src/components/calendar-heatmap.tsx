@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export type HeatmapDataPoint = {
@@ -64,6 +64,30 @@ export function getHeatCellColor(
   return `var(--heat-${bucket})`;
 }
 
+/** Text color readable against the cell's background (mirrors getHeatCellColor). */
+export function getHeatCellTextColor(
+  value: number,
+  min: number,
+  max: number,
+  metricType: HeatmapMetricType,
+  direction: HeatmapDirection
+): string {
+  if (metricType === "checkbox") {
+    return direction === "decrease" ? "var(--heat-fg-danger)" : "var(--heat-fg-4)";
+  }
+  let bucket = heatBucket(value, min, max);
+  if (direction === "decrease") bucket = (6 - bucket) as 1 | 2 | 3 | 4 | 5;
+  return `var(--heat-fg-${bucket})`;
+}
+
+/** Compact value for inside a tile (checkbox shows a check mark). */
+export function formatTileValue(value: number, metricType: HeatmapMetricType): string {
+  if (metricType === "checkbox") return value >= 0.5 ? "✓" : "";
+  if (metricType === "hhmm" || metricType === "time") return formatCellValue(value, metricType);
+  const rounded = Math.round(value * 10) / 10;
+  return String(rounded);
+}
+
 export function formatCellValue(value: number, metricType: HeatmapMetricType): string {
   switch (metricType) {
     case "hhmm":
@@ -81,6 +105,60 @@ function formatCellDate(date: string): string {
   const d = new Date(`${date}T00:00:00`);
   return d.toLocaleString("default", { month: "short", day: "numeric" });
 }
+
+type HeatCellProps = {
+  date: string;
+  value: number | undefined;
+  bgColor: string;
+  fgColor: string | undefined;
+  text: string;
+  title: string;
+  isEmpty: boolean;
+  isGoalMet: boolean;
+  isSelected: boolean;
+  onHover?: (cell: { date: string; value: number } | null) => void;
+  onCellClick?: (date: string, value: number) => void;
+  /** Fixed pixel size (year view); omit for aspect-square fill. */
+  size?: number;
+};
+
+/** Memoized so a hover only re-renders the cells whose selected state changed. */
+export const HeatCell = memo(function HeatCell({
+  date, value, bgColor, fgColor, text, title, isEmpty, isGoalMet, isSelected, onHover, onCellClick, size,
+}: HeatCellProps) {
+  const hasValue = value !== undefined;
+  // The outer element keeps the un-scaled hit box and owns all mouse events; the
+  // inner element does the visual pop with pointer-events-none, so an enlarged
+  // tile never steals hover from its neighbors during fast sweeps.
+  return (
+    <div
+      title={title}
+      className={`group relative ${size ? "" : "aspect-square"} ${
+        hasValue ? "cursor-pointer hover:z-30" : "cursor-default"
+      } ${isSelected ? "z-20" : ""}`}
+      style={{ width: size, height: size }}
+      onMouseEnter={() => hasValue && onHover?.({ date, value })}
+      onMouseLeave={() => onHover?.(null)}
+      onClick={() => hasValue && onCellClick?.(date, value)}
+    >
+      <div
+        className={`pointer-events-none absolute inset-0 flex items-center justify-center font-medium leading-none tabular-nums transition-transform duration-100 ${
+          size ? "rounded-[2px] text-[6px]" : "rounded-[3px] text-[8px]"
+        } ${
+          hasValue ? "group-hover:scale-[1.33] group-hover:shadow-md group-hover:ring-1 group-hover:ring-foreground/40" : ""
+        } ${isSelected ? "ring-2 ring-foreground" : ""}`}
+        style={{
+          backgroundColor: bgColor,
+          color: fgColor,
+          opacity: isEmpty ? 0.35 : 1,
+          boxShadow: isGoalMet ? "inset 0 0 0 1.5px var(--status-good)" : undefined,
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  );
+});
 
 export function CalendarHeatmap({
   data,
@@ -166,7 +244,7 @@ export function CalendarHeatmap({
         }
 
         return (
-          <Card key={month} className="overflow-hidden">
+          <Card key={month}>
             <CardContent className="px-2 pt-2 pb-1.5">
               <p className="text-[10px] font-medium mb-1 text-muted-foreground">
                 {firstDay.toLocaleString("default", { month: "short" })} {y}
@@ -196,22 +274,23 @@ export function CalendarHeatmap({
                     : formatCellDate(cell.date);
 
                   return (
-                    <div
+                    <HeatCell
                       key={cell.date}
-                      title={title}
-                      className={`aspect-square rounded-[3px] transition-all relative ${
-                        hasValue ? "cursor-pointer hover:ring-1 hover:ring-foreground/40 hover:z-10" : "cursor-default"
-                      } ${isSelected ? "ring-2 ring-foreground z-20 shadow-lg" : ""}`}
-                      style={{
-                        backgroundColor: bgColor,
-                        opacity: isEmpty ? 0.35 : 1,
-                        boxShadow: isGoalMet ? "inset 0 0 0 1.5px var(--status-good)" : undefined,
-                      }}
-                      onMouseEnter={() =>
-                        hasValue && onHover?.({ date: cell.date, value: cell.value! })
+                      date={cell.date}
+                      value={cell.value}
+                      bgColor={bgColor}
+                      fgColor={
+                        hasValue
+                          ? getHeatCellTextColor(cell.value!, minVal, maxVal, metricType, direction)
+                          : undefined
                       }
-                      onMouseLeave={() => onHover?.(null)}
-                      onClick={() => hasValue && onCellClick?.(cell.date, cell.value!)}
+                      text={hasValue && !isEmpty ? formatTileValue(cell.value!, metricType) : ""}
+                      title={title}
+                      isEmpty={isEmpty}
+                      isGoalMet={!!isGoalMet}
+                      isSelected={isSelected}
+                      onHover={onHover}
+                      onCellClick={onCellClick}
                     />
                   );
                 })}

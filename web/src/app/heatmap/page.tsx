@@ -452,8 +452,8 @@ export default function HeatmapPage() {
         <CardContent className="py-3 px-3 sm:px-6">
           <div className="flex flex-col gap-3">
             {/* Top row: Selected day info */}
-            <div className="flex items-center justify-between">
-              <div className="text-sm">
+            <div className="flex items-center justify-between min-h-8">
+              <div className="text-sm whitespace-nowrap">
                 {hoveredCell ? (
                   <span>
                     <span className="font-mono font-medium">
