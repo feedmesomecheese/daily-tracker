@@ -24,6 +24,8 @@ type Modifier = {
   name: string;
 };
 
+const OTHER_GROUP_KEY = "__other__";
+
 export type ExerciseGroupPanelsHandle = {
   triggerAdd: () => void;
 };
@@ -52,6 +54,8 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
 
   // The "primary" selected exercise for showing modifiers (last clicked)
   const [primaryExerciseId, setPrimaryExerciseId] = useState<string | null>(null);
+  // Card the primary exercise was picked from (an exercise can live in several groups)
+  const [primaryGroupKey, setPrimaryGroupKey] = useState<string | null>(null);
 
   // Long-press state
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -68,7 +72,7 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
     [selectedExerciseIds]
   );
 
-  const handleSelectExercise = (exerciseId: string, ctrlKey: boolean) => {
+  const handleSelectExercise = (exerciseId: string, groupKey: string, ctrlKey: boolean) => {
     if (ctrlKey || multiSelectMode || selectedExerciseIds.length > 0) {
       // Multi-select: toggle this exercise
       setSelectedExerciseIds((prev) => {
@@ -85,6 +89,7 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
           return next;
         } else {
           setPrimaryExerciseId(exerciseId);
+          setPrimaryGroupKey(groupKey);
           setSelectedModifiers([]);
           return [...prev, exerciseId];
         }
@@ -93,6 +98,7 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
       // First tap/click: select this one
       setSelectedExerciseIds([exerciseId]);
       setPrimaryExerciseId(exerciseId);
+      setPrimaryGroupKey(groupKey);
       setSelectedModifiers([]);
     }
   };
@@ -132,7 +138,7 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
   }, [selectedExerciseIds.length, onSelectionChange]);
 
   // Long-press handlers for mobile multi-select
-  const handleTouchStart = useCallback((exerciseId: string, e: React.TouchEvent) => {
+  const handleTouchStart = useCallback((exerciseId: string, groupKey: string, e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStartPos.current = { x: touch.clientX, y: touch.clientY };
     longPressTriggered.current = false;
@@ -146,6 +152,7 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
         return [...prev, exerciseId];
       });
       setPrimaryExerciseId(exerciseId);
+      setPrimaryGroupKey(groupKey);
       setSelectedModifiers([]);
       // Haptic feedback
       if (navigator.vibrate) navigator.vibrate(50);
@@ -180,7 +187,40 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
   );
   const ungroupedExercises = exercises.filter((e) => !groupedExerciseIds.has(e.id));
 
-  const renderExerciseButton = (ex: Exercise) => (
+  // Card that should show the modifiers on mobile: the one the primary exercise was picked from,
+  // falling back to the first card containing it (e.g. after the primary changed via deselect)
+  const primaryCardKey = (() => {
+    if (!primaryExercise || availableModifiers.length === 0) return null;
+    const cardKeys = [
+      ...primaryExercise.group_ids.filter((id) => groups.some((g) => g.id === id)),
+      ...(ungroupedExercises.some((e) => e.id === primaryExercise.id) ? [OTHER_GROUP_KEY] : []),
+    ];
+    return primaryGroupKey && cardKeys.includes(primaryGroupKey) ? primaryGroupKey : cardKeys[0] ?? null;
+  })();
+
+  const modifierCheckboxes = (
+    <>
+      <span className="text-xs text-muted-foreground">Modifiers:</span>
+      {availableModifiers.map((mod) => (
+        <label key={mod.id} className="flex items-center gap-1 text-sm">
+          <input
+            type="checkbox"
+            checked={selectedModifiers.includes(mod.id)}
+            onChange={(e) => {
+              if (e.target.checked) {
+                setSelectedModifiers([...selectedModifiers, mod.id]);
+              } else {
+                setSelectedModifiers(selectedModifiers.filter((m) => m !== mod.id));
+              }
+            }}
+          />
+          {mod.name}
+        </label>
+      ))}
+    </>
+  );
+
+  const renderExerciseButton = (ex: Exercise, groupKey: string) => (
     <button
       key={ex.id}
       type="button"
@@ -190,9 +230,9 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
           longPressTriggered.current = false;
           return;
         }
-        handleSelectExercise(ex.id, e.ctrlKey || e.metaKey);
+        handleSelectExercise(ex.id, groupKey, e.ctrlKey || e.metaKey);
       }}
-      onTouchStart={(e) => handleTouchStart(ex.id, e)}
+      onTouchStart={(e) => handleTouchStart(ex.id, groupKey, e)}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
       className={cn(
@@ -237,9 +277,14 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
               </CardHeader>
               <CardContent className="p-0">
                 <div className="max-h-40 overflow-y-auto">
-                  {groupExercises.map(renderExerciseButton)}
+                  {groupExercises.map((ex) => renderExerciseButton(ex, group.id))}
                 </div>
               </CardContent>
+              {primaryCardKey === group.id && (
+                <div className="sm:hidden flex flex-wrap items-center gap-2 border-t px-3 py-2">
+                  {modifierCheckboxes}
+                </div>
+              )}
             </Card>
           );
         })}
@@ -252,9 +297,14 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
             </CardHeader>
             <CardContent className="p-0">
               <div className="max-h-40 overflow-y-auto">
-                {ungroupedExercises.map(renderExerciseButton)}
+                {ungroupedExercises.map((ex) => renderExerciseButton(ex, OTHER_GROUP_KEY))}
               </div>
             </CardContent>
+            {primaryCardKey === OTHER_GROUP_KEY && (
+              <div className="sm:hidden flex flex-wrap items-center gap-2 border-t px-3 py-2">
+                {modifierCheckboxes}
+              </div>
+            )}
           </Card>
         )}
       </div>
@@ -269,24 +319,8 @@ const ExerciseGroupPanels = forwardRef<ExerciseGroupPanelsHandle, ExerciseGroupP
       {/* Modifiers + Add button */}
       <div className="flex flex-wrap items-center gap-3">
         {availableModifiers.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Modifiers:</span>
-            {availableModifiers.map((mod) => (
-              <label key={mod.id} className="flex items-center gap-1 text-sm">
-                <input
-                  type="checkbox"
-                  checked={selectedModifiers.includes(mod.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedModifiers([...selectedModifiers, mod.id]);
-                    } else {
-                      setSelectedModifiers(selectedModifiers.filter((m) => m !== mod.id));
-                    }
-                  }}
-                />
-                {mod.name}
-              </label>
-            ))}
+          <div className="hidden sm:flex flex-wrap items-center gap-2">
+            {modifierCheckboxes}
           </div>
         )}
         <div className="flex gap-2">
