@@ -1,6 +1,6 @@
 import { saveLogEntries, type LogEntryInput } from "@/lib/domain/saveLog";
 import { AgentInputError, type AgentTool } from "../types";
-import { loadMetrics, resolveMetric, assertWritable } from "./_metrics";
+import { loadMetrics, resolveMetric, assertWritable, type MetricMeta } from "./_metrics";
 
 /** A single call should not be able to rewrite an unbounded slice of history. */
 const MAX_ENTRIES_PER_CALL = 100;
@@ -107,11 +107,25 @@ const listMetrics: AgentTool = {
   readOnly: true,
   summary: "List trackable metrics",
   description:
-    "Returns every metric the user tracks, with its id, display name, type and whether it is calculated. Call this before logMetrics to use exact metric names and the right value format.",
+    "Returns every metric the user tracks, with its id, display name, type, whether it is calculated, and whether it is flagged for the phone Quick Add menu. Call this before logMetrics to use exact metric names and the right value format.",
   responseDescription: "Metric definitions available for reading and writing",
   inputSchema: { type: "object", properties: {} },
   handler: async (ctx) => {
-    const metrics = await loadMetrics(ctx);
+    // Queried here rather than in loadMetrics so the write tools don't depend
+    // on the quick_add column existing.
+    const { data, error } = await ctx.supabase
+      .from("config")
+      .select("metric_id, metric_name, type, group, is_calculated, quick_add")
+      .eq("owner_id", ctx.ownerId)
+      .eq("active", true)
+      // Same order as the Today page, so the Quick Add menu reads the same way
+      .order("group_order", { ascending: true, nullsFirst: false })
+      .order("metric_order", { ascending: true, nullsFirst: false })
+      .order("metric_id", { ascending: true });
+
+    if (error) throw new Error(error.message);
+
+    const metrics = (data ?? []) as Array<MetricMeta & { quick_add: boolean }>;
     return {
       metrics: metrics.map((m) => ({
         id: m.metric_id,
@@ -119,6 +133,7 @@ const listMetrics: AgentTool = {
         type: m.type,
         group: m.group,
         writable: !m.is_calculated,
+        quick_add: m.quick_add,
       })),
     };
   },

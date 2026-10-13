@@ -139,6 +139,7 @@ type Metric = {
   calc_expr: string | null;
   preset_values_csv: string | null;
   stt_enabled: boolean;
+  quick_add: boolean;
   analytics_config: AnalyticsConfig | null;
   notification_config: NotificationConfig | null;
   goals_config: GoalsConfig | null;
@@ -379,6 +380,19 @@ const SortableMetricRow = React.memo(function SortableMetricRow({
           onChange={(e) => onFieldChange(metric.metric_id, "active", e.target.checked)}
           className="h-4 w-4"
         />
+      </td>
+
+      {/* Quick Add - only for hhmm and checkbox metrics */}
+      <td className="py-2 px-2 w-[40px] text-center">
+        {(metric.type === "hhmm" || metric.type === "checkbox") && !metric.is_calculated && (
+          <input
+            type="checkbox"
+            checked={metric.quick_add}
+            onChange={(e) => onFieldChange(metric.metric_id, "quick_add", e.target.checked)}
+            className="h-4 w-4"
+            title="Show in the phone Quick Add menu"
+          />
+        )}
       </td>
 
       {/* More advanced fields */}
@@ -1041,6 +1055,7 @@ export default function MetricsPage() {
         calc_expr: (r.calc_expr ?? null) as string | null,
         preset_values_csv: (r.preset_values_csv ?? null) as string | null,
         stt_enabled: !!r.stt_enabled,
+        quick_add: !!r.quick_add,
         analytics_config: (r.analytics_config ?? null) as AnalyticsConfig | null,
         notification_config: (r.notification_config ?? null) as NotificationConfig | null,
         goals_config: (r.goals_config ?? null) as GoalsConfig | null,
@@ -1790,6 +1805,7 @@ export default function MetricsPage() {
                       <th className="text-center py-2 px-2 w-[40px]"><Hint text="Private — hidden from CSV exports and any shared views">Priv</Hint></th>
                       <th className="text-center py-2 px-2 w-[40px]"><Hint text="Required — you'll be reminded if this metric is missing when you save the day">Req</Hint></th>
                       <th className="text-center py-2 px-2 w-[40px]"><Hint text="Active — inactive metrics are hidden from the Today page but all historical data is preserved">Act</Hint></th>
+                      <th className="text-center py-2 px-2 w-[40px]"><Hint text="Quick Add — list this metric in the phone Quick Add menu for one-tap logging (time-of-day and checkbox metrics only)">Quick</Hint></th>
                       {showAdvanced && (
                         <>
                           <th className="text-center py-2 px-2 w-[50px]"><Hint text="Moving Average — shows a rolling average line on this metric's chart">MA</Hint></th>
@@ -1972,6 +1988,8 @@ export default function MetricsPage() {
                             className="h-4 w-4"
                           />
                         </td>
+                        {/* Quick Add - set after creating */}
+                        <td className="py-2 px-2 w-[40px]"></td>
                         {/* More advanced fields */}
                         {showAdvanced && (
                           <>

@@ -187,6 +187,9 @@ const UpdateSchema = z.object({
   // speech-to-text (only relevant for type = 'text')
   stt_enabled: z.boolean().optional(),
 
+  // phone quick-add shortcut (only relevant for type = 'hhmm' | 'checkbox')
+  quick_add: z.boolean().optional(),
+
   // analytics configuration
   analytics_config: AnalyticsConfigSchema,
 
@@ -373,6 +376,7 @@ export async function PATCH(req: Request) {
   if (body.calc_expr !== undefined) updates.calc_expr = body.calc_expr;
   if (body.preset_values_csv !== undefined) updates.preset_values_csv = body.preset_values_csv ?? null;
   if (body.stt_enabled !== undefined) updates.stt_enabled = body.stt_enabled;
+  if (body.quick_add !== undefined) updates.quick_add = body.quick_add;
 
   if (body.analytics_config !== undefined) updates.analytics_config = body.analytics_config ?? {};
   if (body.notification_config !== undefined) updates.notification_config = body.notification_config ?? {};
