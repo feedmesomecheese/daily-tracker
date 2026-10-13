@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import ExerciseDetailRow from "./ExerciseDetailRow";
 import ExerciseStatsSheet from "./ExerciseStatsSheet";
+import ActivityNoteSections from "./ActivityNoteSections";
 import BodyMeasurementsSheet, { findNearestPrior } from "@/components/BodyMeasurementsSheet";
 import type { WorkoutHistory, WorkoutType, WorkoutTag } from "../types";
 import { SUPERSET_COLORS } from "../types";
@@ -273,11 +274,10 @@ export default function WorkoutCentricView({ workouts, workoutTypes, tags = [], 
                               })}
                             </div>
                           )}
-                          {workout.notes && (
-                            <p className="text-sm text-muted-foreground mt-2 italic">
-                              {workout.notes}
-                            </p>
-                          )}
+                          <ActivityNoteSections
+                            notes={workout.notes}
+                            activityNotes={workout.activity_notes}
+                          />
                           <div className="flex justify-end pt-2 border-t mt-2">
                             <Link href={`/workouts?edit=${workout.id}`}>
                               <Button variant="ghost" size="sm" className="text-xs">

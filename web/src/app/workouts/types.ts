@@ -60,6 +60,28 @@ export type ActivitySession = {
   notes: string | null;
 };
 
+/** A parsed activity note (workout_activity_notes). `sections` is schemaless
+ *  by design — order it with orderSectionKeys from @/lib/tennis/sections. */
+export type WorkoutActivityNote = {
+  id: string;
+  workout_id: string;
+  activity: string;
+  status: "pending" | "parsed" | "skipped" | "failed";
+  source_excerpt: string | null;
+  mixed_note: boolean;
+  is_activity_session: boolean;
+  duplicate_of_workout_id: string | null;
+  confidence: string | null;
+  result: string | null;
+  score: string | null;
+  format: string | null;
+  league: string | null;
+  surface: string | null;
+  partner: string | null;
+  opponent: string | null;
+  sections: Record<string, string>;
+};
+
 export type WorkoutTag = {
   id: string;
   name: string;
@@ -78,6 +100,7 @@ export type WorkoutHistory = {
   notes: string | null;
   exercises?: WorkoutExercise[];
   activity_sessions?: ActivitySession[];
+  activity_notes?: WorkoutActivityNote[];
   applied_tag_ids?: string[];
   sets?: {
     exercise_name_display: string;

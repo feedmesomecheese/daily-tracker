@@ -179,6 +179,14 @@ export async function GET(req: Request) {
       .select("*")
       .in("workout_id", workoutIds);
 
+    // Fetch parsed activity notes (structured tennis sections). Tolerant on
+    // purpose: before 20261012_workout_activity_notes.sql is applied the table
+    // does not exist, the query errors, and the UI falls back to the raw note.
+    const activityNotes = (await fetchAllByWorkoutIds(
+      "workout_activity_notes",
+      "created_at",
+    )) as { workout_id: string; status: string }[];
+
     // Fetch applied tags
     const { data: appliedTags } = await supabase
       .from("workout_applied_tags")
@@ -199,6 +207,16 @@ export async function GET(req: Request) {
       const existing = activitiesByWorkout.get(a.workout_id) || [];
       existing.push(a);
       activitiesByWorkout.set(a.workout_id, existing);
+    }
+
+    // Group parsed activity notes by workout. 'pending' and 'failed' rows carry
+    // no sections yet, so they are dropped here rather than rendered as empty.
+    const notesByWorkout = new Map<string, typeof activityNotes>();
+    for (const n of activityNotes) {
+      if (n.status !== "parsed" && n.status !== "skipped") continue;
+      const existing = notesByWorkout.get(n.workout_id) || [];
+      existing.push(n);
+      notesByWorkout.set(n.workout_id, existing);
     }
 
     // Group applied tags by workout
@@ -237,6 +255,7 @@ export async function GET(req: Request) {
         ...w,
         exercises,
         activity_sessions: activitiesByWorkout.get(w.id) || [],
+        activity_notes: notesByWorkout.get(w.id) || [],
         // Legacy: include orphan sets for backward compat
         sets: orphanSetsByWorkout.get(w.id) || [],
         applied_tag_ids: tagsByWorkout.get(w.id) || [],
