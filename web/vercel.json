@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/email-backup",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/parse-activity-notes",
+      "schedule": "30 8 * * *"
     }
   ]
 }
