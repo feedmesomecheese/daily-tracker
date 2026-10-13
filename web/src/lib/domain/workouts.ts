@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { queueActivityNoteParse } from "./activity-notes";
 
 /**
  * Workout creation, shared by the web UI (/api/workouts POST) and the agent
@@ -196,6 +197,10 @@ export async function createWorkout(
       partialError = `Workout created but sets failed: ${setsError.message}`;
     }
   }
+
+  // Queue the note for activity parsing. Writes only to
+  // workout_activity_notes, never back to the workout, and never throws.
+  await queueActivityNoteParse(db, ownerId, workout.id, input.notes);
 
   const { data: completeWorkout } = await db
     .from("workouts")

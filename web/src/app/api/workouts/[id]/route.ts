@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServerFromRequest } from "@/lib/supabaseServer";
+import { queueActivityNoteParse } from "@/lib/domain/activity-notes";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -273,7 +274,12 @@ export async function PATCH(req: Request, { params }: Params) {
     }
   }
 
-  // 3. Return complete workout with exercises and sets
+  // 4. Re-queue the note for activity parsing. Runs after the exercise
+  // rewrite above, so detection sees the workout's final shape. Writes only to
+  // workout_activity_notes -- the note itself stays the source of truth.
+  await queueActivityNoteParse(supabase, user.id, id, workout.notes);
+
+  // 5. Return complete workout with exercises and sets
   const { data: workoutExercises } = await supabase
     .from("workout_exercises")
     .select("*")
